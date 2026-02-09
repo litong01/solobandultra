@@ -1,0 +1,188 @@
+name: Build & Release
+
+on:
+  # Trigger on version tags
+  push:
+    tags:
+      - 'v*'
+
+  # Allow manual trigger with a custom tag name
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag name (e.g., v1.0.0)'
+        required: true
+        type: string
+
+# Ensure only one release workflow runs at a time
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─────────────────────────────────────────────
+  # iOS Build (macOS runner with Xcode)
+  # ─────────────────────────────────────────────
+  build-ios:
+    name: Build iOS
+    runs-on: macos-14
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Build iOS app (Release, Simulator)
+        working-directory: ios/SoloBandUltra
+        run: |
+          xcodebuild \
+            -project SoloBandUltra.xcodeproj \
+            -scheme SoloBandUltra \
+            -configuration Release \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath ./DerivedData \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package iOS Simulator app
+        working-directory: ios/SoloBandUltra
+        run: |
+          cd DerivedData/Build/Products/Release-iphonesimulator
+          # Zip the .app bundle for distribution
+          ditto -c -k --sequesterRsrc --keepParent SoloBandUltra.app \
+            SoloBandUltra-iOS-Simulator.zip
+          mv SoloBandUltra-iOS-Simulator.zip "$GITHUB_WORKSPACE/"
+
+      - name: Upload iOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-build
+          path: SoloBandUltra-iOS-Simulator.zip
+          if-no-files-found: error
+
+  # ─────────────────────────────────────────────
+  # Android Build (Ubuntu runner with Gradle)
+  # ─────────────────────────────────────────────
+  build-android:
+    name: Build Android
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.5'
+
+      - name: Generate Gradle wrapper
+        working-directory: android
+        run: gradle wrapper
+
+      - name: Build Android debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug
+
+      - name: Build Android release AAB (unsigned)
+        working-directory: android
+        run: ./gradlew bundleRelease
+
+      - name: Rename build outputs
+        run: |
+          # Debug APK (ready to install on device)
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+            SoloBandUltra-Android-debug.apk
+
+          # Release AAB (for Play Store upload, needs signing for production)
+          cp android/app/build/outputs/bundle/release/app-release.aab \
+            SoloBandUltra-Android-release.aab
+
+      - name: Upload Android APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk-build
+          path: SoloBandUltra-Android-debug.apk
+          if-no-files-found: error
+
+      - name: Upload Android AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-aab-build
+          path: SoloBandUltra-Android-release.aab
+          if-no-files-found: error
+
+  # ─────────────────────────────────────────────
+  # Create GitHub Release with all build artifacts
+  # ─────────────────────────────────────────────
+  release:
+    name: Publish Release
+    needs: [build-ios, build-android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -lh ./artifacts/
+
+      - name: Determine release tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: SoloBand Ultra ${{ steps.tag.outputs.tag }}
+          generate_release_notes: true
+          body: |
+            ## SoloBand Ultra ${{ steps.tag.outputs.tag }}
+
+            ### Downloads
+
+            | Platform | File | Description |
+            |----------|------|-------------|
+            | iOS | `SoloBandUltra-iOS-Simulator.zip` | iOS Simulator build (unsigned) |
+            | Android | `SoloBandUltra-Android-debug.apk` | Debug APK — install directly on device |
+            | Android | `SoloBandUltra-Android-release.aab` | Release AAB — for Google Play upload |
+
+            ### Installation
+
+            **iOS Simulator:**
+            1. Unzip `SoloBandUltra-iOS-Simulator.zip`
+            2. Drag `SoloBandUltra.app` onto an open iOS Simulator window
+               — or install via CLI: `xcrun simctl install booted SoloBandUltra.app`
+
+            **Android:**
+            1. Download `SoloBandUltra-Android-debug.apk` to your device
+            2. Open the file and allow installation from unknown sources when prompted
+
+            > **Note:** The iOS build is for Simulator only. A signed IPA for physical devices requires Apple Developer certificates configured in the workflow.
+          files: |
+            ./artifacts/SoloBandUltra-iOS-Simulator.zip
+            ./artifacts/SoloBandUltra-Android-debug.apk
+            ./artifacts/SoloBandUltra-Android-release.aab
+          draft: false
+          prerelease: false

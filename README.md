@@ -132,6 +132,38 @@ The Rust libraries will be compiled as:
 - **iOS**: Static library (`.a`) linked via Xcode
 - **Android**: Shared library (`.so`) loaded via JNI
 
+## CI/CD — GitHub Actions
+
+The project includes a GitHub Actions workflow (`.github/workflows/build-and-release.yml`) that builds both iOS and Android bundles and publishes them as a GitHub Release.
+
+### Triggering a Release
+
+**Automatic — push a version tag:**
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+This triggers the workflow, builds both platforms in parallel, and creates a GitHub Release with the artifacts attached.
+
+**Manual — from the GitHub UI:**
+
+1. Go to **Actions** tab in your GitHub repository
+2. Select the **Build & Release** workflow on the left
+3. Click **Run workflow**
+4. Enter a release tag name (e.g., `v1.0.0`) and click **Run workflow**
+
+### Build Artifacts
+
+| Platform | Artifact | Description |
+|----------|----------|-------------|
+| iOS | `SoloBandUltra-iOS-Simulator.zip` | Simulator `.app` bundle (unsigned) |
+| Android | `SoloBandUltra-Android-debug.apk` | Debug APK, installable directly on devices |
+| Android | `SoloBandUltra-Android-release.aab` | Release AAB for Google Play Store upload |
+
+> **Note:** The iOS build is for Simulator testing only. To produce a signed IPA for physical devices, add your Apple Developer certificate and provisioning profile as GitHub Secrets and update the workflow accordingly.
+
 ## Tech Stack
 
 | Component | iOS | Android |
