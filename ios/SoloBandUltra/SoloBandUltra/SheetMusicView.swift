@@ -1,97 +1,141 @@
 import SwiftUI
+import WebKit
 
-/// View that will display rendered sheet music.
-/// Currently shows a placeholder; will be replaced with Rust-rendered content.
+/// Displays rendered sheet music SVG using a WKWebView.
 struct SheetMusicView: View {
-    @State private var zoomScale: CGFloat = 1.0
-    @State private var offset: CGSize = .zero
+    @State private var svgContent: String?
+    @State private var isLoading = true
+    @State private var errorMessage: String?
+    @State private var selectedFile: String = "asa-branca.musicxml"
 
-    var body: some View {
-        GeometryReader { geometry in
-            ScrollView([.horizontal, .vertical], showsIndicators: true) {
-                VStack(spacing: 24) {
-                    // Placeholder header
-                    VStack(spacing: 8) {
-                        Text("Asa Branca")
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-
-                        Text("White Wing")
-                            .font(.title3)
-                            .foregroundStyle(.secondary)
-
-                        Text("Luiz Gonzaga • Arr. Karim Ratib")
-                            .font(.subheadline)
-                            .foregroundStyle(.tertiary)
-                    }
-                    .padding(.top, 32)
-
-                    // Placeholder staff lines
-                    VStack(spacing: 40) {
-                        ForEach(0..<4, id: \.self) { systemIndex in
-                            StaffPlaceholder(systemIndex: systemIndex)
-                        }
-                    }
-                    .padding(.horizontal, 20)
-
-                    // Integration note
-                    VStack(spacing: 12) {
-                        Image(systemName: "music.note.list")
-                            .font(.system(size: 48))
-                            .foregroundStyle(.quaternary)
-
-                        Text("Sheet music rendering will be powered by Rust")
-                            .font(.callout)
-                            .foregroundStyle(.quaternary)
-                            .multilineTextAlignment(.center)
-                    }
-                    .padding(.vertical, 40)
-                }
-                .frame(minWidth: geometry.size.width)
-            }
-        }
-        .background(Color(.systemBackground))
-    }
-}
-
-// MARK: - Staff Placeholder
-
-struct StaffPlaceholder: View {
-    let systemIndex: Int
+    private let availableFiles = [
+        "asa-branca.musicxml",
+        "童年.mxl"
+    ]
 
     var body: some View {
         VStack(spacing: 0) {
-            // Measure indicator
-            HStack {
-                Text("System \(systemIndex + 1)")
-                    .font(.caption2)
-                    .foregroundStyle(.quaternary)
-                Spacer()
-            }
-
-            // Five staff lines
-            ZStack {
-                VStack(spacing: 8) {
-                    ForEach(0..<5, id: \.self) { _ in
-                        Rectangle()
-                            .fill(Color.gray.opacity(0.3))
-                            .frame(height: 1)
-                    }
-                }
-
-                // Placeholder note symbols
-                HStack(spacing: 24) {
-                    ForEach(0..<8, id: \.self) { noteIndex in
-                        Circle()
-                            .fill(Color.primary.opacity(0.15))
-                            .frame(width: 12, height: 12)
-                            .offset(y: CGFloat((noteIndex + systemIndex) % 5) * 9 - 18)
-                    }
+            // File picker
+            Picker("Score", selection: $selectedFile) {
+                ForEach(availableFiles, id: \.self) { file in
+                    Text(file).tag(file)
                 }
             }
-            .frame(height: 40)
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
             .padding(.vertical, 8)
+            .onChange(of: selectedFile) { _ in
+                loadScore()
+            }
+
+            // Score display
+            if isLoading {
+                ProgressView("Rendering score...")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let error = errorMessage {
+                VStack(spacing: 12) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 40))
+                        .foregroundStyle(.secondary)
+                    Text(error)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let svg = svgContent {
+                SVGWebView(svgString: svg)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                Text("No score loaded")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
+        .background(Color(.systemBackground))
+        .onAppear {
+            loadScore()
+        }
+    }
+
+    private func loadScore() {
+        isLoading = true
+        errorMessage = nil
+        svgContent = nil
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            // Find the file in the app bundle
+            let filename = selectedFile
+            let ext = (filename as NSString).pathExtension
+            let name = (filename as NSString).deletingPathExtension
+
+            guard let url = Bundle.main.url(forResource: name, withExtension: ext) else {
+                DispatchQueue.main.async {
+                    isLoading = false
+                    errorMessage = "File '\(filename)' not found in app bundle"
+                }
+                return
+            }
+
+            // Render using the Rust library
+            let svg = ScoreLib.renderFile(at: url.path)
+
+            DispatchQueue.main.async {
+                isLoading = false
+                if let svg = svg {
+                    svgContent = svg
+                } else {
+                    errorMessage = "Failed to render '\(filename)'"
+                }
+            }
+        }
+    }
+}
+
+/// WKWebView wrapper for displaying SVG content.
+struct SVGWebView: UIViewRepresentable {
+    let svgString: String
+
+    func makeUIView(context: Context) -> WKWebView {
+        let config = WKWebViewConfiguration()
+        let webView = WKWebView(frame: .zero, configuration: config)
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.scrollView.backgroundColor = .clear
+        webView.scrollView.showsVerticalScrollIndicator = true
+        webView.scrollView.showsHorizontalScrollIndicator = false
+        webView.scrollView.bounces = true
+        return webView
+    }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        let html = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes">
+        <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body {
+                background: white;
+                display: flex;
+                justify-content: center;
+                padding: 8px;
+            }
+            svg {
+                width: 100%;
+                height: auto;
+                max-width: 100%;
+            }
+        </style>
+        </head>
+        <body>
+        \(svgString)
+        </body>
+        </html>
+        """
+        webView.loadHTMLString(html, baseURL: nil)
     }
 }
 

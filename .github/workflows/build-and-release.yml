@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   # ─────────────────────────────────────────────
-  # iOS Build (macOS runner with Xcode)
+  # iOS Build (macOS runner with Xcode + Rust)
   # ─────────────────────────────────────────────
   build-ios:
     name: Build iOS
@@ -32,6 +32,42 @@ jobs:
 
       - name: Show Xcode version
         run: xcodebuild -version
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-ios
+
+      - name: Cache Cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/scorelib/target
+          key: ios-cargo-${{ hashFiles('rust/scorelib/Cargo.toml', 'rust/scorelib/Cargo.lock') }}
+          restore-keys: ios-cargo-
+
+      - name: Build Rust static library (iOS Simulator)
+        working-directory: rust/scorelib
+        run: |
+          # Temporarily adjust crate-type for static lib only (no cdylib linker needed)
+          cp Cargo.toml Cargo.toml.orig
+          sed -i '' 's/crate-type = .*/crate-type = ["lib", "staticlib"]/' Cargo.toml
+
+          cargo build --release --target aarch64-apple-ios-sim
+          cargo build --release --target x86_64-apple-ios
+
+          mv Cargo.toml.orig Cargo.toml
+
+      - name: Create universal iOS library (lipo)
+        run: |
+          mkdir -p ios/SoloBandUltra/lib
+          lipo -create \
+            rust/scorelib/target/aarch64-apple-ios-sim/release/libscorelib.a \
+            rust/scorelib/target/x86_64-apple-ios/release/libscorelib.a \
+            -output ios/SoloBandUltra/lib/libscorelib.a
+          lipo -info ios/SoloBandUltra/lib/libscorelib.a
 
       - name: Build iOS app (Release, Simulator)
         working-directory: ios/SoloBandUltra
@@ -64,7 +100,7 @@ jobs:
           if-no-files-found: error
 
   # ─────────────────────────────────────────────
-  # Android Build (Ubuntu runner with Gradle)
+  # Android Build (Ubuntu runner with Gradle + Rust)
   # ─────────────────────────────────────────────
   build-android:
     name: Build Android
@@ -78,6 +114,43 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+
+      - name: Cache Cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/scorelib/target
+          key: android-cargo-${{ hashFiles('rust/scorelib/Cargo.toml', 'rust/scorelib/Cargo.lock') }}
+          restore-keys: android-cargo-
+
+      - name: Build Rust shared library (Android)
+        working-directory: rust/scorelib
+        run: |
+          # The Android NDK is pre-installed on GitHub Actions runners
+          NDK_HOME="${ANDROID_NDK_HOME:-$ANDROID_NDK_LATEST_HOME}"
+          NDK_BIN="${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="${NDK_BIN}/aarch64-linux-android21-clang"
+          export CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER="${NDK_BIN}/x86_64-linux-android21-clang"
+
+          cargo build --release --target aarch64-linux-android
+          cargo build --release --target x86_64-linux-android
+
+      - name: Copy .so files to jniLibs
+        run: |
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          mkdir -p android/app/src/main/jniLibs/x86_64
+          cp rust/scorelib/target/aarch64-linux-android/release/libscorelib.so \
+            android/app/src/main/jniLibs/arm64-v8a/
+          cp rust/scorelib/target/x86_64-linux-android/release/libscorelib.so \
+            android/app/src/main/jniLibs/x86_64/
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -121,11 +194,38 @@ jobs:
           if-no-files-found: error
 
   # ─────────────────────────────────────────────
+  # Run Rust tests
+  # ─────────────────────────────────────────────
+  test-rust:
+    name: Test Rust
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/scorelib/target
+          key: test-cargo-${{ hashFiles('rust/scorelib/Cargo.toml', 'rust/scorelib/Cargo.lock') }}
+          restore-keys: test-cargo-
+
+      - name: Run tests
+        working-directory: rust/scorelib
+        run: cargo test -- --nocapture
+
+  # ─────────────────────────────────────────────
   # Create GitHub Release with all build artifacts
   # ─────────────────────────────────────────────
   release:
     name: Publish Release
-    needs: [build-ios, build-android]
+    needs: [build-ios, build-android, test-rust]
     runs-on: ubuntu-latest
     permissions:
       contents: write

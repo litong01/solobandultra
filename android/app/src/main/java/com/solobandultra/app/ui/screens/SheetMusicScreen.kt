@@ -1,9 +1,8 @@
 package com.solobandultra.app.ui.screens
 
-import androidx.compose.foundation.Canvas
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
@@ -14,15 +13,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import com.solobandultra.app.ScoreLib
 import com.solobandultra.app.ui.theme.SoloBandUltraTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,6 +31,43 @@ fun SheetMusicScreen(
 ) {
     var isPlaying by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
+
+    val availableFiles = listOf(
+        "sheetmusic/asa-branca.musicxml",
+        "sheetmusic/童年.mxl"
+    )
+    var selectedIndex by remember { mutableIntStateOf(0) }
+    var svgContent by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    fun loadScore(fileIndex: Int) {
+        isLoading = true
+        errorMessage = null
+        svgContent = null
+        scope.launch {
+            val svg = withContext(Dispatchers.IO) {
+                try {
+                    ScoreLib.renderAsset(context, availableFiles[fileIndex])
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            isLoading = false
+            if (svg != null) {
+                svgContent = svg
+            } else {
+                errorMessage = "Failed to render ${availableFiles[fileIndex]}"
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        loadScore(selectedIndex)
+    }
 
     Scaffold(
         topBar = {
@@ -71,122 +107,99 @@ fun SheetMusicScreen(
             )
         }
     ) { paddingValues ->
-        SheetMusicContent(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-        )
-    }
-}
-
-@Composable
-private fun SheetMusicContent(modifier: Modifier = Modifier) {
-    val scrollState = rememberScrollState()
-
-    Column(
-        modifier = modifier
-            .verticalScroll(scrollState)
-            .padding(horizontal = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Title section
-        Text(
-            text = "Asa Branca",
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center
-        )
-        Text(
-            text = "White Wing",
-            fontSize = 18.sp,
-            fontStyle = FontStyle.Italic,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
-        )
-        Text(
-            text = "Luiz Gonzaga • Arr. Karim Ratib",
-            fontSize = 14.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        // Placeholder staff systems
-        for (systemIndex in 0..3) {
-            StaffPlaceholder(systemIndex = systemIndex)
-            Spacer(modifier = Modifier.height(32.dp))
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Integration note
-        Icon(
-            imageVector = Icons.Default.MusicNote,
-            contentDescription = null,
-            modifier = Modifier.size(48.dp),
-            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "Sheet music rendering will be powered by Rust",
-            fontSize = 13.sp,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(48.dp))
-    }
-}
-
-@Composable
-private fun StaffPlaceholder(systemIndex: Int) {
-    val lineColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
-    val noteColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
-
-    Column {
-        Text(
-            text = "System ${systemIndex + 1}",
-            fontSize = 10.sp,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-
-        Canvas(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(50.dp)
         ) {
-            val lineSpacing = size.height / 6f
-
-            // Draw 5 staff lines
-            for (i in 1..5) {
-                val y = i * lineSpacing
-                drawLine(
-                    color = lineColor,
-                    start = Offset(0f, y),
-                    end = Offset(size.width, y),
-                    strokeWidth = 1f
-                )
+            // Score file selector
+            TabRow(selectedTabIndex = selectedIndex) {
+                availableFiles.forEachIndexed { index, file ->
+                    Tab(
+                        selected = selectedIndex == index,
+                        onClick = {
+                            selectedIndex = index
+                            loadScore(index)
+                        },
+                        text = {
+                            Text(file.substringAfterLast('/'))
+                        }
+                    )
+                }
             }
 
-            // Draw placeholder note circles
-            val noteCount = 8
-            val noteSpacing = size.width / (noteCount + 1)
-            for (i in 1..noteCount) {
-                val x = i * noteSpacing
-                val lineIndex = ((i + systemIndex) % 5) + 1
-                val y = lineIndex * lineSpacing
-                drawCircle(
-                    color = noteColor,
-                    radius = 6f,
-                    center = Offset(x, y)
-                )
+            // Score content
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                when {
+                    isLoading -> {
+                        CircularProgressIndicator()
+                    }
+                    errorMessage != null -> {
+                        Text(
+                            text = errorMessage ?: "Unknown error",
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    svgContent != null -> {
+                        SvgWebView(svg = svgContent!!)
+                    }
+                }
             }
         }
     }
+}
+
+@Composable
+private fun SvgWebView(svg: String) {
+    AndroidView(
+        factory = { context ->
+            WebView(context).apply {
+                webViewClient = WebViewClient()
+                settings.apply {
+                    builtInZoomControls = true
+                    displayZoomControls = false
+                    useWideViewPort = true
+                    loadWithOverviewMode = true
+                    setSupportZoom(true)
+                }
+                setBackgroundColor(android.graphics.Color.WHITE)
+            }
+        },
+        update = { webView ->
+            val html = """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes">
+                <style>
+                    * { margin: 0; padding: 0; box-sizing: border-box; }
+                    body {
+                        background: white;
+                        display: flex;
+                        justify-content: center;
+                        padding: 8px;
+                    }
+                    svg {
+                        width: 100%;
+                        height: auto;
+                        max-width: 100%;
+                    }
+                </style>
+                </head>
+                <body>
+                $svg
+                </body>
+                </html>
+            """.trimIndent()
+            webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+        },
+        modifier = Modifier.fillMaxSize()
+    )
 }
 
 @Composable

@@ -1,0 +1,27 @@
+[package]
+name = "scorelib"
+version = "0.1.0"
+edition = "2021"
+description = "MusicXML parser and score rendering library for SoloBand Ultra"
+
+[lib]
+name = "scorelib"
+crate-type = ["lib", "staticlib", "cdylib"]
+
+[dependencies]
+# Fast read-only XML parser
+roxmltree = "0.20"
+
+# ZIP archive support for .mxl files
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
+
+# Serialization (for FFI data exchange)
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# JNI support for Android
+jni = "0.21"
+
+[dev-dependencies]
+# For tests
+pretty_assertions = "1"

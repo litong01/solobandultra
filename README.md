@@ -1,23 +1,104 @@
 # SoloBand Ultra
 
-A native iOS and Android mobile app for rendering and playing MusicXML sheet music, powered by Rust libraries.
+A native iOS and Android mobile app for rendering and playing MusicXML sheet music, powered by a Rust rendering engine.
 
 ## Project Structure
 
 ```
 solobandultra/
-├── sheetmusic/              # MusicXML files
-│   └── asa-branca.musicxml  # "Asa Branca" by Luiz Gonzaga
+├── sheetmusic/              # MusicXML sample files
+│   ├── asa-branca.musicxml  # "Asa Branca" by Luiz Gonzaga (uncompressed)
+│   └── 童年.mxl              # "Childhood" by 罗大佑 (compressed MXL)
+├── rust/                    # Rust libraries
+│   └── scorelib/            # MusicXML parser & SVG score renderer
+│       ├── src/
+│       │   ├── lib.rs       # Public API + C FFI + convenience functions
+│       │   ├── model.rs     # Data model (Score, Part, Measure, Note, etc.)
+│       │   ├── parser.rs    # MusicXML XML parser
+│       │   ├── mxl.rs       # Compressed MXL (ZIP) support
+│       │   ├── renderer.rs  # SVG score rendering engine
+│       │   └── android.rs   # JNI bindings for Android
+│       └── tests/           # Integration tests
 ├── ios/                     # Native iOS app (SwiftUI)
 │   └── SoloBandUltra/
 │       ├── SoloBandUltra.xcodeproj/
+│       ├── include/         # C headers for Rust FFI
+│       ├── lib/             # Rust static library (built by build-rust.sh)
 │       └── SoloBandUltra/   # Swift source files
 ├── android/                 # Native Android app (Kotlin/Jetpack Compose)
-│   ├── app/                 # Android application module
-│   ├── build.gradle.kts     # Root build configuration
-│   └── settings.gradle.kts  # Project settings
+│   ├── app/
+│   │   └── src/main/
+│   │       ├── jniLibs/     # Rust shared libraries (built by build-rust.sh)
+│   │       └── assets/      # MusicXML sample files
+│   ├── build.gradle.kts
+│   └── settings.gradle.kts
+├── build-rust.sh            # Script to build Rust for iOS & Android
 └── README.md
 ```
+
+## Getting Started
+
+### Prerequisites
+
+- **[Docker Desktop](https://www.docker.com/products/docker-desktop/)** — Rust compilation runs entirely in a container; no Rust/Cargo installation needed on your system
+- **Xcode 15.0+** — for building/running the iOS app (also provides `lipo` for creating universal libraries)
+- **Android Studio** — for building/running the Android app
+
+### Building the Rust Libraries
+
+A convenience script builds the Rust scorelib inside a Docker container:
+
+```bash
+./build-rust.sh            # Build for both iOS and Android
+./build-rust.sh ios        # Build for iOS only
+./build-rust.sh android    # Build for Android only
+./build-rust.sh test       # Run Rust tests
+```
+
+The first run builds the Docker image (downloads Rust + Android NDK, ~2 min). Subsequent runs use the cached image and cached Cargo registry, so incremental builds are fast.
+
+This compiles the Rust code and places the binaries where each platform expects them:
+- **iOS**: `ios/SoloBandUltra/lib/libscorelib.a` (universal ARM64+x86_64 simulator)
+- **Android**: `android/app/src/main/jniLibs/{arm64-v8a,x86_64}/libscorelib.so`
+
+> **How it works:** Rust compilation happens inside a Linux container. For iOS, static libraries (`.a`) are just archives of object files — no Apple linker needed. The host's `lipo` (from Xcode) merges the architectures. For Android, the container includes the NDK linker to produce `.so` shared libraries.
+
+## Rust Score Library (`scorelib`)
+
+The core Rust library provides MusicXML parsing and SVG rendering:
+
+```rust
+use scorelib::{parse_file, render_score_to_svg};
+
+let score = parse_file("sheetmusic/asa-branca.musicxml").unwrap();
+println!("Title: {:?}", score.title);
+
+let svg = render_score_to_svg(&score);
+std::fs::write("output.svg", &svg).unwrap();
+```
+
+### Features
+
+- **MusicXML parsing** — Reads standard `.musicxml` (uncompressed) and `.mxl` (ZIP compressed) files
+- **Score rendering** — Produces clean SVG output with:
+  - Staff lines, clefs (treble, bass, alto), key signatures, time signatures
+  - Notes (filled/hollow noteheads, stems, flags, beams)
+  - Rests (whole, half, quarter, eighth, sixteenth)
+  - Accidentals (sharp, flat, natural)
+  - Barlines (single, double, repeat signs with dots)
+  - Chord symbols (harmony annotations)
+  - Ledger lines, dots, volta brackets
+  - Title and composer header
+- **Cross-platform FFI** — C API for iOS, JNI for Android
+- **Auto-detection** — Determines format from extension or content
+
+### Running Tests
+
+```bash
+./build-rust.sh test
+```
+
+Tests parse both sample files and render them to SVG in `rust/scorelib/test_output/` for visual inspection.
 
 ## iOS App
 
@@ -25,151 +106,98 @@ solobandultra/
 
 - **Xcode 15.0+** (with iOS 16.0+ SDK)
 - macOS Sonoma or later recommended
-- If Xcode is not installed, download it from the [Mac App Store](https://apps.apple.com/us/app/xcode/id497799835) or [Apple Developer Downloads](https://developer.apple.com/download/applications/)
+- Docker Desktop running
+- Rust library built (`./build-rust.sh ios`)
 
 ### Opening the Project in Xcode
 
-**Option A -- From the terminal:**
+**From the terminal:**
 
 ```bash
 open ios/SoloBandUltra/SoloBandUltra.xcodeproj
 ```
 
-This launches Xcode and opens the project directly.
+**From Xcode:**
 
-**Option B -- From Xcode:**
-
-1. Launch **Xcode** (from `/Applications` or Spotlight search)
-2. On the Welcome screen, click **Open Existing Project** (or go to **File > Open...**)
-3. Navigate to `ios/SoloBandUltra/` and select `SoloBandUltra.xcodeproj`
-4. Click **Open**
+1. Launch **Xcode**
+2. **File > Open...** → navigate to `ios/SoloBandUltra/` and select `SoloBandUltra.xcodeproj`
 
 ### Building & Running
 
-1. In Xcode, select the **SoloBandUltra** scheme from the scheme selector in the toolbar (should be auto-selected)
-2. Choose an iOS Simulator destination from the device dropdown (e.g., **iPhone 16**)
-3. Press **Cmd+R** to build and run
+1. First build the Rust library: `./build-rust.sh ios`
+2. In Xcode, select the **SoloBandUltra** scheme
+3. Choose an iOS Simulator destination (e.g., **iPhone 16**)
+4. Press **Cmd+R** to build and run
 
-Alternatively, build from the command line:
-
-```bash
-cd ios/SoloBandUltra
-xcodebuild -project SoloBandUltra.xcodeproj \
-  -scheme SoloBandUltra \
-  -destination 'generic/platform=iOS Simulator' \
-  -configuration Debug build
-```
+The app displays a segmented picker to switch between the two sample scores. Each score is parsed by the Rust library, rendered to SVG, and displayed in a scrollable/zoomable WebView.
 
 ### Audio in Silent Mode (iOS)
 
-The app is configured with `AVAudioSession` category `.playback`, which ensures audio plays even when the device's mute/silent switch is on. The `Info.plist` also includes `UIBackgroundModes: audio` for background playback support.
-
-Key files:
-- `AudioSessionManager.swift` - Manages AVAudioSession lifecycle, route changes, and interruptions
-- `SoloBandUltraApp.swift` - Configures the audio session on app launch
+The app uses `AVAudioSession` with `.playback` category, ensuring audio plays even when the mute switch is on.
 
 ## Android App
 
 ### Prerequisites
 
 - **Android Studio Hedgehog (2023.1.1)** or later
-- **Android SDK 34** (API 34)
-- **JDK 17** (bundled with Android Studio)
-- If Android Studio is not installed, download it from [developer.android.com/studio](https://developer.android.com/studio)
+- **Android SDK 34**
+- Docker Desktop running
+- Rust library built (`./build-rust.sh android`)
 
 ### Opening the Project in Android Studio
 
-**Option A -- From the terminal (macOS):**
+**From the terminal (macOS):**
 
 ```bash
 open -a "Android Studio" android/
 ```
 
-This launches Android Studio and opens the project directly.
+**From Android Studio:**
 
-**Option B -- From Android Studio:**
-
-1. Launch **Android Studio** (from `/Applications` or Spotlight search on macOS)
-2. On the Welcome screen, click **Open** (or go to **File > Open...**)
-3. Navigate to the `android/` directory inside this repository and select it
-4. Click **Open**
-5. Android Studio will detect the Gradle project and begin syncing -- wait for the sync to complete (this may take a few minutes on the first run as it downloads the Gradle wrapper and dependencies)
-
-> **Note:** If prompted to install missing SDK components or update Gradle, follow the on-screen instructions to accept and install.
+1. **File > Open...** → select the `android/` directory
+2. Wait for Gradle sync to complete
 
 ### Building & Running
 
-1. Once Gradle sync completes, select a device or emulator from the **device dropdown** in the toolbar
-   - To create an emulator: go to **Tools > Device Manager > Create Virtual Device** and follow the wizard
-2. Click the **Run** button (green play icon) or press **Shift+F10**
+1. First build the Rust library: `./build-rust.sh android`
+2. Select a device or emulator in Android Studio
+3. Click **Run** or press **Shift+F10**
+
+The app loads MusicXML files from assets, renders them to SVG using the Rust library via JNI, and displays the result in a zoomable WebView.
 
 ### Audio in Silent Mode (Android)
 
-On Android, "silent mode" affects the ringer/notification stream, not the media stream. The app uses `AudioAttributes` with `USAGE_MEDIA` and `CONTENT_TYPE_MUSIC`, ensuring audio plays through the media volume channel which is independent of the ringer mode. As long as the media volume is not zero, audio will play regardless of silent/vibrate mode.
-
-Key files:
-- `AudioSessionManager.kt` - Manages audio focus, audio attributes, and media stream configuration
-- `MainActivity.kt` - Initializes audio session and sets volume control to media stream
-
-## Architecture
-
-### Current State
-
-Both apps currently display a placeholder UI with:
-- Title bar ("SoloBand Ultra")
-- Sheet music display area (placeholder staff lines)
-- Playback controls (play/pause, stop, metronome)
-- Proper audio session configuration for silent mode playback
-
-### Future: Rust Integration
-
-The apps are designed to integrate with Rust libraries via FFI for:
-- **MusicXML parsing** - Reading and interpreting MusicXML files
-- **Score rendering** - Rendering sheet music notation to a canvas/view
-- **Audio playback** - Synthesizing and playing the musical score
-
-The Rust libraries will be compiled as:
-- **iOS**: Static library (`.a`) linked via Xcode
-- **Android**: Shared library (`.so`) loaded via JNI
+The app uses `AudioAttributes` with `USAGE_MEDIA` and `CONTENT_TYPE_MUSIC`, so audio plays through the media volume channel independent of ringer mode.
 
 ## CI/CD — GitHub Actions
 
-The project includes a GitHub Actions workflow (`.github/workflows/build-and-release.yml`) that builds both iOS and Android bundles and publishes them as a GitHub Release.
+The project includes a GitHub Actions workflow (`.github/workflows/build-and-release.yml`) that builds both platforms and publishes GitHub Releases.
 
 ### Triggering a Release
-
-**Automatic — push a version tag:**
 
 ```bash
 git tag v1.0.0
 git push origin v1.0.0
 ```
 
-This triggers the workflow, builds both platforms in parallel, and creates a GitHub Release with the artifacts attached.
-
-**Manual — from the GitHub UI:**
-
-1. Go to **Actions** tab in your GitHub repository
-2. Select the **Build & Release** workflow on the left
-3. Click **Run workflow**
-4. Enter a release tag name (e.g., `v1.0.0`) and click **Run workflow**
+Or manually from the GitHub Actions tab.
 
 ### Build Artifacts
 
 | Platform | Artifact | Description |
 |----------|----------|-------------|
 | iOS | `SoloBandUltra-iOS-Simulator.zip` | Simulator `.app` bundle (unsigned) |
-| Android | `SoloBandUltra-Android-debug.apk` | Debug APK, installable directly on devices |
-| Android | `SoloBandUltra-Android-release.aab` | Release AAB for Google Play Store upload |
-
-> **Note:** The iOS build is for Simulator testing only. To produce a signed IPA for physical devices, add your Apple Developer certificate and provisioning profile as GitHub Secrets and update the workflow accordingly.
+| Android | `SoloBandUltra-Android-debug.apk` | Debug APK for device testing |
+| Android | `SoloBandUltra-Android-release.aab` | Release AAB for Google Play |
 
 ## Tech Stack
 
-| Component | iOS | Android |
-|-----------|-----|---------|
-| Language | Swift 5.9 | Kotlin 1.9 |
-| UI Framework | SwiftUI | Jetpack Compose |
-| Min OS | iOS 16.0 | Android 8.0 (API 26) |
-| Audio | AVFoundation | AudioManager |
-| Build Tool | Xcode 15 | Gradle 8.5 / AGP 8.2 |
+| Component | iOS | Android | Shared |
+|-----------|-----|---------|--------|
+| Language | Swift 5.9 | Kotlin 1.9 | Rust |
+| UI Framework | SwiftUI | Jetpack Compose | — |
+| Score Rendering | — | — | Rust → SVG |
+| SVG Display | WKWebView | WebView | — |
+| Min OS | iOS 16.0 | Android 8.0 (API 26) | — |
+| Audio | AVFoundation | AudioManager | — |
+| Build Tool | Xcode 15 | Gradle 8.5 / AGP 8.2 | Cargo (in Docker) |

@@ -1,0 +1,38 @@
+# Docker image for building the Rust scorelib library.
+#
+# Provides a self-contained environment with:
+#   - Rust stable toolchain + iOS & Android cross-compilation targets
+#   - Android NDK (for linking .so shared libraries)
+#
+# Build this image:
+#   docker build --platform linux/amd64 -t scorelib-builder -f Dockerfile.build .
+#
+# Usage is handled by build-rust.sh — you shouldn't need to run this manually.
+
+FROM --platform=linux/amd64 rust:1-bookworm
+
+# Install Android NDK for cross-linking .so libraries
+ENV ANDROID_NDK_VERSION=r27c
+ENV ANDROID_NDK_HOME=/opt/android-ndk-${ANDROID_NDK_VERSION}
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends wget unzip \
+    && wget -q "https://dl.google.com/android/repository/android-ndk-${ANDROID_NDK_VERSION}-linux.zip" -O /tmp/ndk.zip \
+    && unzip -q /tmp/ndk.zip -d /opt \
+    && rm /tmp/ndk.zip \
+    && apt-get purge -y wget \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
+
+# Add iOS cross-compilation targets (staticlib only — no Apple linker needed)
+RUN rustup target add \
+    aarch64-apple-ios-sim \
+    x86_64-apple-ios \
+    aarch64-apple-ios
+
+# Add Android cross-compilation targets
+RUN rustup target add \
+    aarch64-linux-android \
+    x86_64-linux-android
+
+WORKDIR /src

@@ -12,6 +12,10 @@
 		AA00000000000000000003B1 /* SheetMusicView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000003A1 /* SheetMusicView.swift */; };
 		AA00000000000000000004B1 /* AudioSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000004A1 /* AudioSessionManager.swift */; };
 		AA00000000000000000005B1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000005A1 /* Assets.xcassets */; };
+		BB00000000000000000001B1 /* ScoreLibBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000000000000000001A1 /* ScoreLibBridge.swift */; };
+		BB00000000000000000003B1 /* libscorelib.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BB00000000000000000003A1 /* libscorelib.a */; };
+		BB00000000000000000004B1 /* asa-branca.musicxml in Resources */ = {isa = PBXBuildFile; fileRef = BB00000000000000000004A1 /* asa-branca.musicxml */; };
+		BB00000000000000000005B1 /* tongnian.mxl in Resources */ = {isa = PBXBuildFile; fileRef = BB00000000000000000005A1 /* tongnian.mxl */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -22,6 +26,11 @@
 		AA00000000000000000005A1 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AA00000000000000000006A1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AA00000000000000000007A1 /* SoloBandUltra.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SoloBandUltra.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BB00000000000000000001A1 /* ScoreLibBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreLibBridge.swift; sourceTree = "<group>"; };
+		BB00000000000000000002A1 /* SoloBandUltra-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "SoloBandUltra-Bridging-Header.h"; sourceTree = "<group>"; };
+		BB00000000000000000003A1 /* libscorelib.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libscorelib.a; path = lib/libscorelib.a; sourceTree = "<group>"; };
+		BB00000000000000000004A1 /* asa-branca.musicxml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = "asa-branca.musicxml"; sourceTree = "<group>"; };
+		BB00000000000000000005A1 /* tongnian.mxl */ = {isa = PBXFileReference; lastKnownFileType = file; name = "tongnian.mxl"; path = "童年.mxl"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -29,6 +38,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BB00000000000000000003B1 /* libscorelib.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -39,6 +49,7 @@
 			isa = PBXGroup;
 			children = (
 				AA0000000000000000000D02 /* SoloBandUltra */,
+				BB00000000000000000003A1 /* libscorelib.a */,
 				AA0000000000000000000D03 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -50,10 +61,22 @@
 				AA00000000000000000002A1 /* ContentView.swift */,
 				AA00000000000000000003A1 /* SheetMusicView.swift */,
 				AA00000000000000000004A1 /* AudioSessionManager.swift */,
+				BB00000000000000000001A1 /* ScoreLibBridge.swift */,
+				BB00000000000000000002A1 /* SoloBandUltra-Bridging-Header.h */,
+				BB0000000000000000000D04 /* Resources */,
 				AA00000000000000000005A1 /* Assets.xcassets */,
 				AA00000000000000000006A1 /* Info.plist */,
 			);
 			path = SoloBandUltra;
+			sourceTree = "<group>";
+		};
+		BB0000000000000000000D04 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				BB00000000000000000004A1 /* asa-branca.musicxml */,
+				BB00000000000000000005A1 /* tongnian.mxl */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 		AA0000000000000000000D03 /* Products */ = {
@@ -123,6 +146,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA00000000000000000005B1 /* Assets.xcassets in Resources */,
+				BB00000000000000000004B1 /* asa-branca.musicxml in Resources */,
+				BB00000000000000000005B1 /* tongnian.mxl in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -137,6 +162,7 @@
 				AA00000000000000000002B1 /* ContentView.swift in Sources */,
 				AA00000000000000000003B1 /* SheetMusicView.swift in Sources */,
 				AA00000000000000000004B1 /* AudioSessionManager.swift in Sources */,
+				BB00000000000000000001B1 /* ScoreLibBridge.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -270,15 +296,18 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/include";
 				INFOPLIST_FILE = SoloBandUltra/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/lib";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.solobandultra.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "SoloBandUltra/SoloBandUltra-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -293,15 +322,18 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/include";
 				INFOPLIST_FILE = SoloBandUltra/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/lib";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.solobandultra.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "SoloBandUltra/SoloBandUltra-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
