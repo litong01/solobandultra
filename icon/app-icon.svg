@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <!-- Dark background gradient -->
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0a1a"/>
+      <stop offset="100%" stop-color="#0d1020"/>
+    </linearGradient>
+    <!-- Bright gold gradient for saxophone -->
+    <linearGradient id="gold" x1="20%" y1="0%" x2="80%" y2="100%">
+      <stop offset="0%" stop-color="#FFE066"/>
+      <stop offset="35%" stop-color="#FFD030"/>
+      <stop offset="70%" stop-color="#F0A820"/>
+      <stop offset="100%" stop-color="#D48E10"/>
+    </linearGradient>
+    <!-- Highlight shine on saxophone body -->
+    <linearGradient id="shine" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FFF0A0" stop-opacity="0.7"/>
+      <stop offset="50%" stop-color="#FFD700" stop-opacity="0.0"/>
+      <stop offset="100%" stop-color="#FFF0A0" stop-opacity="0.4"/>
+    </linearGradient>
+    <!-- Dark interior for bell -->
+    <radialGradient id="bellInner" cx="50%" cy="50%">
+      <stop offset="0%" stop-color="#1a1020"/>
+      <stop offset="100%" stop-color="#2a1830"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1024" height="1024" rx="220" ry="220" fill="url(#bg)"/>
+
+  <!-- ═══ Staff Lines — bright white, clearly visible ═══ -->
+  <g stroke="white" stroke-width="4.5" stroke-linecap="round" opacity="0.85">
+    <line x1="90" y1="340" x2="934" y2="340"/>
+    <line x1="90" y1="400" x2="934" y2="400"/>
+    <line x1="90" y1="460" x2="934" y2="460"/>
+    <line x1="90" y1="520" x2="934" y2="520"/>
+    <line x1="90" y1="580" x2="934" y2="580"/>
+  </g>
+
+  <!-- ═══ Treble Clef (left side, white) ═══ -->
+  <g transform="translate(140, 460) scale(2.0)" opacity="0.7" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round">
+    <path d="
+      M0,0
+      c-2,-8 4,-16 4,-24
+      c0,-8 -6,-12 -8,-8
+      c-2,4 4,8 6,16
+      c2,8 0,20 -4,28
+      c-4,8 -2,16 4,16
+      c6,0 6,-8 2,-12
+    "/>
+    <circle cx="1" cy="14" r="3" fill="white"/>
+    <!-- Vertical line through clef -->
+    <line x1="2" y1="-30" x2="2" y2="24"/>
+  </g>
+
+  <!-- ═══ Quarter Note — right side, on line 2 ═══ -->
+  <g transform="translate(770, 400)">
+    <ellipse cx="0" cy="0" rx="24" ry="17" fill="white" opacity="0.8"
+             transform="rotate(-15)"/>
+    <line x1="22" y1="-4" x2="22" y2="-100" stroke="white" stroke-width="5.5"
+          opacity="0.8" stroke-linecap="round"/>
+  </g>
+
+  <!-- ═══ Quarter Note — left-center, on line 4 ═══ -->
+  <g transform="translate(310, 520)">
+    <ellipse cx="0" cy="0" rx="22" ry="16" fill="white" opacity="0.65"
+             transform="rotate(-15)"/>
+    <line x1="20" y1="-4" x2="20" y2="-95" stroke="white" stroke-width="5"
+          opacity="0.65" stroke-linecap="round"/>
+  </g>
+
+  <!-- ═══ Half Note — center, on line 3 ═══ -->
+  <g transform="translate(530, 460)">
+    <ellipse cx="0" cy="0" rx="22" ry="16" fill="none" stroke="white"
+             stroke-width="4.5" opacity="0.55" transform="rotate(-15)"/>
+    <line x1="20" y1="-4" x2="20" y2="-95" stroke="white" stroke-width="5"
+          opacity="0.55" stroke-linecap="round"/>
+  </g>
+
+  <!-- ═══ Saxophone — bright gold, prominent ═══ -->
+  <g transform="translate(520, 465) rotate(-25)">
+
+    <!-- Bell (wide opening at bottom) -->
+    <path d="
+      M-40,220
+      C-70,220 -100,190 -105,150
+      C-110,120 -95,100 -70,90
+      L-50,85
+    " fill="url(#gold)" stroke="#C88A10" stroke-width="1.5"/>
+
+    <!-- Bell rim (outer ellipse) -->
+    <ellipse cx="-72" cy="218" rx="52" ry="24" fill="url(#gold)"
+             transform="rotate(10, -72, 218)" stroke="#C88A10" stroke-width="1.5"/>
+    <!-- Bell opening (dark interior) -->
+    <ellipse cx="-72" cy="218" rx="40" ry="16" fill="url(#bellInner)"
+             transform="rotate(10, -72, 218)"/>
+
+    <!-- Lower bow (U-curve connecting bell to body) -->
+    <path d="
+      M-50,85
+      C-40,58 -18,38 2,38
+      C22,38 37,55 37,82
+      L34,102
+      C34,68 20,52 2,52
+      C-14,52 -30,64 -38,85
+      Z
+    " fill="url(#gold)" stroke="#C88A10" stroke-width="1"/>
+
+    <!-- Main body tube -->
+    <rect x="22" y="-205" width="20" height="307" rx="10" fill="url(#gold)"
+          stroke="#C88A10" stroke-width="1"/>
+
+    <!-- Shine highlight on body tube -->
+    <rect x="28" y="-195" width="7" height="290" rx="3.5" fill="url(#shine)"/>
+
+    <!-- Keys/pads on the body -->
+    <g>
+      <circle cx="44" cy="-35" r="11" fill="#E8B020" stroke="#C89018" stroke-width="1.5"/>
+      <circle cx="44" cy="8" r="10" fill="#E8B020" stroke="#C89018" stroke-width="1.5"/>
+      <circle cx="44" cy="48" r="11" fill="#E8B020" stroke="#C89018" stroke-width="1.5"/>
+      <circle cx="44" cy="-75" r="10" fill="#E8B020" stroke="#C89018" stroke-width="1.5"/>
+      <circle cx="44" cy="-115" r="9" fill="#E8B020" stroke="#C89018" stroke-width="1.5"/>
+      <circle cx="44" cy="-150" r="10" fill="#E8B020" stroke="#C89018" stroke-width="1.5"/>
+    </g>
+    <!-- Key rod -->
+    <line x1="42" y1="-155" x2="42" y2="55" stroke="#B88018" stroke-width="2.5"/>
+
+    <!-- Crook (curved neck at top) -->
+    <path d="
+      M22,-205
+      C22,-225 18,-248 4,-263
+      C-10,-278 -28,-283 -44,-275
+      L-38,-262
+      C-24,-268 -10,-265 2,-250
+      C12,-237 15,-222 15,-205
+      Z
+    " fill="url(#gold)" stroke="#C88A10" stroke-width="1.5"/>
+
+    <!-- Mouthpiece -->
+    <path d="
+      M-44,-275
+      C-54,-270 -64,-262 -68,-252
+      L-56,-248
+      C-52,-256 -44,-264 -38,-262
+      Z
+    " fill="#E8B020" stroke="#C88A10" stroke-width="1"/>
+
+    <!-- Mouthpiece tip (dark reed) -->
+    <ellipse cx="-65" cy="-255" rx="9" ry="6" fill="#222"
+             transform="rotate(-35, -65, -255)"/>
+  </g>
+</svg>
