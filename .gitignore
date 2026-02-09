@@ -1,0 +1,78 @@
+# =========================
+# macOS
+# =========================
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# =========================
+# iOS / Xcode
+# =========================
+
+# Build generated
+ios/**/DerivedData/
+ios/**/build/
+
+# User-specific Xcode settings (window positions, breakpoints, etc.)
+ios/**/*.xcuserdata/
+ios/**/*.xcworkspace/xcuserdata/
+
+# Xcode automatically generated state
+ios/**/*.xccheckout
+ios/**/*.moved-aside
+ios/**/*.xcscmblueprint
+
+# Swift Package Manager caches
+ios/**/.build/
+ios/**/Package.resolved
+
+# CocoaPods (if used in future)
+ios/**/Pods/
+
+# =========================
+# Android
+# =========================
+
+# Gradle build output
+android/app/build/
+android/build/
+android/.gradle/
+
+# Android Studio IDE settings (user-specific)
+android/.idea/
+android/*.iml
+android/app/*.iml
+
+# Local configuration (contains SDK path specific to your machine)
+android/local.properties
+
+# Gradle wrapper JAR (auto-downloaded by Android Studio)
+android/gradle/wrapper/gradle-wrapper.jar
+
+# Signing configs
+android/*.jks
+android/*.keystore
+
+# Android profiling/lint output
+android/**/captures/
+android/**/lint-results*
+
+# =========================
+# Rust (for future integration)
+# =========================
+target/
+**/*.rs.bk
+Cargo.lock
+
+# =========================
+# General
+# =========================
+*.log
+*.tmp
+*.swp
+*~
+.env
+.env.local
