@@ -46,6 +46,8 @@ android/.idea/
 android/*.iml
 android/app/*.iml
 
+# Ignore OpenSheetMusicDisplay
+opensheetmusicdisplay
 # Local configuration (contains SDK path specific to your machine)
 android/local.properties
 

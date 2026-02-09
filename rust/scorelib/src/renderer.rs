@@ -458,8 +458,7 @@ fn render_notes(
         let nx = note_positions[i];
 
         if note.rest {
-            let rest_y = staff_y + 15.0; // center of staff
-            render_rest(svg, nx, rest_y, note.note_type.as_deref());
+            render_rest(svg, nx, staff_y, note.note_type.as_deref());
             continue;
         }
 
@@ -486,23 +485,25 @@ fn render_notes(
 
             // Stem (not for whole notes)
             if !is_whole {
-                let stem_up = note.stem.as_deref() != Some("down");
-                let stem_up = if note.stem.is_none() {
-                    note_y > staff_y + 20.0 // above middle line → stem up
-                } else {
-                    stem_up
-                };
+                // Skip stem drawing for beamed notes — render_beam_group handles those.
+                let in_beam = note.beams.iter().any(|b|
+                    b.beam_type == "begin" || b.beam_type == "continue" || b.beam_type == "end");
 
-                let (sx, sy1, sy2) = if stem_up {
-                    (nx + NOTEHEAD_RX - 1.0, note_y, note_y - STEM_LENGTH)
-                } else {
-                    (nx - NOTEHEAD_RX + 1.0, note_y, note_y + STEM_LENGTH)
-                };
-                svg.line(sx, sy1, sx, sy2, NOTE_COLOR, STEM_WIDTH);
-
-                // Flag for unbeamed eighth notes and shorter
-                let in_beam = note.beams.iter().any(|b| b.beam_type == "begin" || b.beam_type == "continue" || b.beam_type == "end");
                 if !in_beam {
+                    let stem_up = match note.stem.as_deref() {
+                        Some("up") => true,
+                        Some("down") => false,
+                        _ => note_y >= staff_y + 20.0, // auto: on or below middle → up
+                    };
+
+                    let (sx, sy1, sy2) = if stem_up {
+                        (nx + NOTEHEAD_RX - 1.0, note_y, note_y - STEM_LENGTH)
+                    } else {
+                        (nx - NOTEHEAD_RX + 1.0, note_y, note_y + STEM_LENGTH)
+                    };
+                    svg.line(sx, sy1, sx, sy2, NOTE_COLOR, STEM_WIDTH);
+
+                    // Flags for unbeamed eighth notes and shorter
                     if let Some(ref nt) = note.note_type {
                         let flag_count = match nt.as_str() {
                             "eighth" => 1,
@@ -641,37 +642,62 @@ fn render_ledger_lines(svg: &mut SvgBuilder, x: f64, note_y: f64, staff_y: f64) 
 // Rest rendering
 // ═══════════════════════════════════════════════════════════════════════
 
-fn render_rest(svg: &mut SvgBuilder, x: f64, y: f64, note_type: Option<&str>) {
+fn render_rest(svg: &mut SvgBuilder, x: f64, staff_y: f64, note_type: Option<&str>) {
+    // Rests are positioned on the staff using standard engraving positions:
+    //   whole  — hangs from line 4 (staff_y + 10)
+    //   half   — sits on line 3   (staff_y + 20)
+    //   others — centred on the staff
+
     match note_type {
         Some("whole") => {
-            // Hanging rectangle below line 4
-            svg.rect(x - 6.0, y - 4.0, 12.0, 5.0, REST_COLOR, "none", 0.0);
+            // Rectangle hanging below line 4
+            svg.rect(x - 7.0, staff_y + 10.0, 14.0, 5.0, REST_COLOR, "none", 0.0);
         }
         Some("half") => {
-            // Sitting rectangle on line 3
-            svg.rect(x - 6.0, y + 1.0, 12.0, 5.0, REST_COLOR, "none", 0.0);
+            // Rectangle sitting on top of line 3
+            svg.rect(x - 7.0, staff_y + 15.0, 14.0, 5.0, REST_COLOR, "none", 0.0);
         }
         Some("quarter") => {
-            // Simplified quarter rest (zigzag)
-            let path = format!(
-                "M{},{} l3,-6 l-6,6 l3,3 l6,-6 l-3,-3 l-3,6",
-                x - 2.0, y - 5.0
-            );
-            svg.path(&path, REST_COLOR, "none", 1.5);
+            // Authentic quarter rest from VexFlow Gonville font glyph v7c.
+            // Glyph spans ~1014 font-units centred on origin; at VF_GLYPH_SCALE
+            // ≈ 28.5 SVG units ≈ 2.85 staff-spaces.  Centred on the middle line.
+            let path = vf_outline_to_svg(VF_QUARTER_REST, VF_GLYPH_SCALE);
+            let gx = x - 4.0;           // centre horizontally
+            let gy = staff_y + 20.0;     // origin at middle line
+            svg.elements.push(format!(
+                r#"<path d="{}" fill="{}" transform="translate({:.1},{:.1})"/>"#,
+                path, REST_COLOR, gx, gy
+            ));
         }
         Some("eighth") => {
-            // Simplified eighth rest
-            svg.circle(x + 2.0, y - 3.0, 2.0, REST_COLOR);
-            svg.line(x + 2.0, y - 3.0, x - 2.0, y + 8.0, REST_COLOR, 1.5);
+            // Authentic eighth rest from VexFlow Gonville font glyph va5.
+            let path = vf_outline_to_svg(VF_EIGHTH_REST, VF_GLYPH_SCALE);
+            let gx = x - 5.0;
+            let gy = staff_y + 20.0;
+            svg.elements.push(format!(
+                r#"<path d="{}" fill="{}" transform="translate({:.1},{:.1})"/>"#,
+                path, REST_COLOR, gx, gy
+            ));
         }
         Some("16th") => {
-            svg.circle(x + 2.0, y - 3.0, 2.0, REST_COLOR);
-            svg.circle(x + 3.0, y + 3.0, 2.0, REST_COLOR);
-            svg.line(x + 2.0, y - 3.0, x - 3.0, y + 12.0, REST_COLOR, 1.5);
+            // Authentic 16th rest from VexFlow Gonville font glyph v3c.
+            let path = vf_outline_to_svg(VF_16TH_REST, VF_GLYPH_SCALE);
+            let gx = x - 6.0;
+            let gy = staff_y + 20.0;
+            svg.elements.push(format!(
+                r#"<path d="{}" fill="{}" transform="translate({:.1},{:.1})"/>"#,
+                path, REST_COLOR, gx, gy
+            ));
         }
         _ => {
-            // Default: quarter rest symbol
-            svg.text(x, y + 5.0, "𝄾", 16.0, "normal", REST_COLOR, "middle");
+            // Fallback: quarter rest glyph
+            let path = vf_outline_to_svg(VF_QUARTER_REST, VF_GLYPH_SCALE);
+            let gx = x - 4.0;
+            let gy = staff_y + 20.0;
+            svg.elements.push(format!(
+                r#"<path d="{}" fill="{}" transform="translate({:.1},{:.1})"/>"#,
+                path, REST_COLOR, gx, gy
+            ));
         }
     }
 }
@@ -697,20 +723,29 @@ fn render_accidental(svg: &mut SvgBuilder, x: f64, y: f64, accidental: &str) {
 // ═══════════════════════════════════════════════════════════════════════
 
 fn render_flags(svg: &mut SvgBuilder, stem_x: f64, stem_end_y: f64, count: usize, stem_up: bool) {
+    // Flags are drawn as filled curved shapes (like a small banner).
     for i in 0..count {
-        let offset = i as f64 * 8.0;
-        let (y_start, curve_dir) = if stem_up {
-            (stem_end_y + offset, 1.0)
-        } else {
-            (stem_end_y - offset, -1.0)
-        };
+        let gap = i as f64 * 8.0;
 
-        let path = format!(
-            "M{},{} q8,{} 4,{}",
-            stem_x, y_start,
-            6.0 * curve_dir, 14.0 * curve_dir
-        );
-        svg.path(&path, "none", NOTE_COLOR, 1.5);
+        if stem_up {
+            // Flag hangs to the right and curves downward from the stem tip.
+            let y0 = stem_end_y + gap;
+            let path = format!(
+                "M{:.1},{:.1} c0,0 1,2 8,6 c4,3 4,8 2,14 \
+                 c-1,-4 -2,-7 -5,-9 c-3,-2 -5,-3 -5,-5 Z",
+                stem_x, y0
+            );
+            svg.path(&path, NOTE_COLOR, "none", 0.0);
+        } else {
+            // Flag hangs to the right and curves upward from the stem tip.
+            let y0 = stem_end_y - gap;
+            let path = format!(
+                "M{:.1},{:.1} c0,0 1,-2 8,-6 c4,-3 4,-8 2,-14 \
+                 c-1,4 -2,7 -5,9 c-3,2 -5,3 -5,5 Z",
+                stem_x, y0
+            );
+            svg.path(&path, NOTE_COLOR, "none", 0.0);
+        }
     }
 }
 
@@ -759,50 +794,90 @@ fn render_beam_group(
         return;
     }
 
-    // Determine stem direction from first note
-    let first_note = &measure.notes[group[0]];
-    let stem_up = first_note.stem.as_deref() != Some("down");
-
-    // Calculate beam endpoints
-    let mut beam_points: Vec<(f64, f64)> = Vec::new();
+    // Collect note-head positions for the group
+    struct BeamNote { x: f64, note_y: f64, stem_x: f64 }
+    let mut notes: Vec<BeamNote> = Vec::new();
 
     for &idx in group {
         let note = &measure.notes[idx];
         let nx = note_positions[idx];
         if let Some(ref pitch) = note.pitch {
             let note_y = staff_y + pitch_to_staff_y(pitch, clef, transpose_octave);
-            let stem_x = if stem_up { nx + NOTEHEAD_RX - 1.0 } else { nx - NOTEHEAD_RX + 1.0 };
-            let stem_end = if stem_up { note_y - STEM_LENGTH } else { note_y + STEM_LENGTH };
-            beam_points.push((stem_x, stem_end));
+            notes.push(BeamNote { x: nx, note_y, stem_x: 0.0 });
+        }
+    }
+    if notes.len() < 2 { return; }
+
+    // Determine stem direction from the average pitch position.
+    // If average note_y > middle line → stem up (notes are low); else stem down.
+    let avg_y: f64 = notes.iter().map(|n| n.note_y).sum::<f64>() / notes.len() as f64;
+    let middle_line = staff_y + 20.0;
+
+    // Use explicit XML stem direction from first note if available, else auto
+    let first_note = &measure.notes[group[0]];
+    let stem_up = match first_note.stem.as_deref() {
+        Some("up") => true,
+        Some("down") => false,
+        _ => avg_y >= middle_line, // auto: notes below middle → stems up
+    };
+
+    // Set stem_x for each note
+    for n in &mut notes {
+        n.stem_x = if stem_up { n.x + NOTEHEAD_RX - 1.0 } else { n.x - NOTEHEAD_RX + 1.0 };
+    }
+
+    // Calculate beam line from first and last note stem ends.
+    // Start with a default stem length, then optionally shorten.
+    let first_stem_end = if stem_up { notes.first().unwrap().note_y - STEM_LENGTH }
+                         else { notes.first().unwrap().note_y + STEM_LENGTH };
+    let last_stem_end  = if stem_up { notes.last().unwrap().note_y - STEM_LENGTH }
+                         else { notes.last().unwrap().note_y + STEM_LENGTH };
+
+    let first_x = notes.first().unwrap().stem_x;
+    let last_x  = notes.last().unwrap().stem_x;
+    let beam_dx = last_x - first_x;
+
+    // Beam line equation: beam_y(x) = first_stem_end + slope * (x - first_x)
+    let slope = if beam_dx.abs() > 0.1 {
+        ((last_stem_end - first_stem_end) / beam_dx).clamp(-0.5, 0.5) // limit slope
+    } else { 0.0 };
+    let beam_y = |sx: f64| first_stem_end + slope * (sx - first_x);
+
+    // Ensure every stem is at least MIN_STEM (18 units) long.
+    // If any stem would be too short, shift the entire beam line.
+    let min_stem = 18.0;
+    let mut beam_shift = 0.0_f64;
+    for n in &notes {
+        let by = beam_y(n.stem_x) + beam_shift;
+        let stem_len = (n.note_y - by).abs();
+        if stem_len < min_stem {
+            let needed = min_stem - stem_len;
+            if stem_up { beam_shift -= needed; } else { beam_shift += needed; }
         }
     }
 
-    if beam_points.len() < 2 {
-        return;
+    let beam_y_adj = |sx: f64| beam_y(sx) + beam_shift;
+
+    // Draw stems: each stem goes from the notehead to the beam line
+    for n in &notes {
+        let by = beam_y_adj(n.stem_x);
+        svg.line(n.stem_x, n.note_y, n.stem_x, by, NOTE_COLOR, STEM_WIDTH);
     }
 
-    // Draw beam as a thick line between first and last stem ends
-    let first = beam_points.first().unwrap();
-    let last = beam_points.last().unwrap();
+    // Draw primary beam as filled polygon
+    let by_first = beam_y_adj(first_x);
+    let by_last  = beam_y_adj(last_x);
+    svg.beam_line(first_x, by_first, last_x, by_last, BEAM_THICKNESS);
 
-    // Primary beam
-    let beam_y_offset = if stem_up { 0.0 } else { 0.0 };
-    svg.beam_line(
-        first.0, first.1 + beam_y_offset,
-        last.0, last.1 + beam_y_offset,
-        BEAM_THICKNESS,
-    );
-
-    // Check for secondary beams (16th notes)
-    let has_secondary = group.iter().any(|&idx| {
+    // Secondary beams (16th notes — beam number 2)
+    let has_16th = group.iter().any(|&idx| {
         measure.notes[idx].beams.iter().any(|b| b.number == 2)
     });
-
-    if has_secondary && beam_points.len() >= 2 {
+    if has_16th && notes.len() >= 2 {
         let offset = if stem_up { BEAM_THICKNESS + 3.0 } else { -(BEAM_THICKNESS + 3.0) };
         svg.beam_line(
-            first.0, first.1 + offset,
-            last.0, last.1 + offset,
+            first_x, by_first + offset,
+            last_x, by_last + offset,
             BEAM_THICKNESS,
         );
     }
@@ -936,6 +1011,65 @@ fn render_barlines(
 // ═══════════════════════════════════════════════════════════════════════
 // Empty SVG fallback
 // ═══════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════
+// VexFlow font glyph support
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Scale factor for VexFlow font glyphs: point * 72 / (resolution * 100).
+/// Default notation font scale = 39, resolution = 1000.
+const VF_GLYPH_SCALE: f64 = 39.0 * 72.0 / (1000.0 * 100.0); // 0.02808
+
+// Glyph outlines from VexFlow's vexflow_font.js (Gonville font).
+// Format: m x y | l x y | b endX endY cp1X cp1Y cp2X cp2Y
+// Y-up coordinate system (negated for SVG).
+
+const VF_QUARTER_REST: &str = "m 49 505 b 53 506 50 505 51 506 b 70 496 58 506 62 503 b 81 485 73 492 78 488 l 96 473 l 111 459 l 122 449 l 134 438 l 182 396 l 255 330 b 292 291 292 298 292 298 l 292 290 l 292 284 l 283 270 b 209 36 234 197 209 113 b 288 -170 209 -44 235 -119 b 299 -184 295 -179 299 -181 b 300 -191 300 -187 300 -188 b 285 -206 300 -199 294 -206 b 280 -206 283 -206 281 -206 b 247 -201 270 -202 259 -201 b 176 -222 223 -201 197 -208 b 114 -340 136 -249 114 -292 b 172 -471 114 -384 134 -433 b 185 -492 182 -481 185 -487 b 181 -502 185 -496 183 -499 b 171 -508 176 -505 174 -508 b 152 -498 166 -508 160 -503 b 0 -284 65 -428 12 -352 b 0 -260 0 -278 0 -270 b 1 -238 0 -252 0 -242 b 148 -140 16 -177 73 -140 b 209 -148 167 -140 189 -142 b 215 -149 212 -148 215 -149 b 215 -149 215 -149 215 -149 l 215 -149 b 201 -136 215 -148 209 -142 l 157 -97 l 96 -41 b 17 34 21 24 17 29 b 17 37 17 36 17 36 b 17 38 17 37 17 38 b 25 56 17 44 17 44 b 110 298 81 131 110 219 b 46 474 110 390 86 438 b 42 483 43 480 42 481 b 42 487 42 484 42 487 b 49 505 42 494 44 499";
+
+const VF_EIGHTH_REST: &str = "m 88 302 b 103 303 93 302 98 303 b 202 224 149 303 191 270 b 205 199 204 216 205 208 b 178 129 205 173 196 147 l 175 126 l 182 127 b 307 249 236 142 284 190 b 313 259 308 254 311 258 b 329 267 317 265 323 267 b 349 247 340 267 349 259 b 201 -263 349 242 204 -258 b 182 -273 197 -270 190 -273 b 163 -260 174 -273 166 -269 b 161 -256 161 -259 161 -258 b 217 -59 161 -248 170 -220 b 272 129 247 43 272 127 b 272 129 272 129 272 129 b 264 122 272 129 268 126 b 140 80 227 94 183 80 b 36 115 102 80 65 91 b 0 194 10 136 0 165 b 88 302 0 244 32 292";
+
+const VF_16TH_REST: &str = "m 189 302 b 204 303 193 302 198 303 b 303 224 250 303 292 270 b 306 199 304 216 306 208 b 279 129 306 173 296 147 l 276 126 l 281 127 b 408 249 337 142 385 190 b 412 259 409 254 412 258 b 430 267 417 265 423 267 b 450 247 441 267 450 259 b 200 -605 450 242 204 -599 b 182 -616 197 -612 190 -616 b 163 -602 174 -616 166 -610 b 161 -598 161 -601 161 -601 b 217 -402 161 -589 170 -562 b 272 -213 247 -298 272 -213 b 272 -213 272 -213 272 -213 b 264 -219 272 -213 268 -216 b 140 -262 227 -247 182 -262 b 36 -226 102 -262 65 -249 b 0 -145 12 -206 0 -176 b 17 -84 0 -124 5 -104 b 103 -38 38 -54 70 -38 b 191 -91 137 -38 172 -56 b 205 -141 201 -106 205 -124 b 178 -212 205 -167 196 -194 l 175 -215 l 182 -213 b 307 -93 236 -198 284 -151 b 372 129 308 -88 372 127 b 372 129 372 129 372 129 b 364 122 372 129 368 126 b 240 80 328 94 283 80 b 137 115 202 80 166 91 b 99 194 111 136 99 165 b 189 302 99 244 133 292";
+
+/// Convert a VexFlow font outline string to a standard SVG path string.
+/// VexFlow format: m x y | l x y | b endX endY cp1X cp1Y cp2X cp2Y
+/// Y coords are negated (VexFlow font Y-up → SVG Y-down).
+fn vf_outline_to_svg(outline: &str, scale: f64) -> String {
+    let mut result = String::with_capacity(outline.len());
+    let parts: Vec<&str> = outline.split_whitespace().collect();
+    let mut i = 0;
+    while i < parts.len() {
+        match parts[i] {
+            "m" if i + 2 < parts.len() => {
+                let x: f64 = parts[i+1].parse().unwrap_or(0.0) * scale;
+                let y: f64 = parts[i+2].parse().unwrap_or(0.0) * -scale;
+                result.push_str(&format!("M{:.2},{:.2}", x, y));
+                i += 3;
+            }
+            "l" if i + 2 < parts.len() => {
+                let x: f64 = parts[i+1].parse().unwrap_or(0.0) * scale;
+                let y: f64 = parts[i+2].parse().unwrap_or(0.0) * -scale;
+                result.push_str(&format!("L{:.2},{:.2}", x, y));
+                i += 3;
+            }
+            "b" if i + 6 < parts.len() => {
+                // VexFlow: b endX endY cp1X cp1Y cp2X cp2Y
+                // SVG:     C cp1X -cp1Y cp2X -cp2Y endX -endY
+                let ex: f64 = parts[i+1].parse().unwrap_or(0.0) * scale;
+                let ey: f64 = parts[i+2].parse().unwrap_or(0.0) * -scale;
+                let c1x: f64 = parts[i+3].parse().unwrap_or(0.0) * scale;
+                let c1y: f64 = parts[i+4].parse().unwrap_or(0.0) * -scale;
+                let c2x: f64 = parts[i+5].parse().unwrap_or(0.0) * scale;
+                let c2y: f64 = parts[i+6].parse().unwrap_or(0.0) * -scale;
+                result.push_str(&format!("C{:.2},{:.2},{:.2},{:.2},{:.2},{:.2}",
+                    c1x, c1y, c2x, c2y, ex, ey));
+                i += 7;
+            }
+            _ => { i += 1; }
+        }
+    }
+    result.push('Z');
+    result
+}
 
 fn empty_svg(message: &str) -> String {
     format!(
