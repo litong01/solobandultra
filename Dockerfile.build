@@ -9,7 +9,7 @@
 #
 # Usage is handled by build-rust.sh — you shouldn't need to run this manually.
 
-FROM --platform=linux/amd64 rust:1-bookworm
+FROM rust:1-bookworm
 
 # Install Android NDK for cross-linking .so libraries
 ENV ANDROID_NDK_VERSION=r27c
