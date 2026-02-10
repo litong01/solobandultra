@@ -175,6 +175,19 @@ pub struct Note {
     pub default_x: Option<f64>,
     /// Default Y position in tenths (for layout)
     pub default_y: Option<f64>,
+    /// Lyrics attached to this note
+    pub lyrics: Vec<Lyric>,
+}
+
+/// A lyric syllable attached to a note.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Lyric {
+    /// Lyric line number (e.g. 1 for verse 1, 2 for verse 2)
+    pub number: i32,
+    /// The text of this syllable
+    pub text: String,
+    /// Syllabic type: "single", "begin", "middle", "end"
+    pub syllabic: Option<String>,
 }
 
 /// Pitch of a note.

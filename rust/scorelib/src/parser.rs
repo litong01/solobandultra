@@ -423,6 +423,7 @@ fn parse_note(node: &Node) -> Note {
         default_y: node
             .attribute("default-y")
             .and_then(|v| v.parse().ok()),
+        lyrics: Vec::new(),
     };
 
     for child in node.children().filter(|n| n.is_element()) {
@@ -458,6 +459,28 @@ fn parse_note(node: &Node) -> Note {
             }
             "tie" => {
                 note.tie = child.attribute("type").map(String::from);
+            }
+            "lyric" => {
+                let number = child
+                    .attribute("number")
+                    .and_then(|n| n.parse().ok())
+                    .unwrap_or(1);
+                let mut text = String::new();
+                let mut syllabic = None;
+                for lc in child.children().filter(|n| n.is_element()) {
+                    match lc.tag_name().name() {
+                        "text" => {
+                            text = lc.text().unwrap_or("").trim().to_string();
+                        }
+                        "syllabic" => {
+                            syllabic = lc.text().map(|t| t.trim().to_string());
+                        }
+                        _ => {}
+                    }
+                }
+                if !text.is_empty() {
+                    note.lyrics.push(Lyric { number, text, syllabic });
+                }
             }
             _ => {}
         }

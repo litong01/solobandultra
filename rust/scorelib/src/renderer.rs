@@ -304,6 +304,41 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
             }
         }
 
+        // ── Pre-compute lyrics baseline for this system ──
+        // Find the lowest note/stem y across all measures in this system so
+        // lyrics sit below everything.  We compute per part/staff.
+        let mut system_lowest_y: f64 = system_y + STAFF_HEIGHT; // at least bottom staff line
+        for ml_pre in &system.measures {
+            for part_info in &system.parts {
+                let pidx = part_info.part_idx;
+                let ps = &part_states[pidx];
+                if ml_pre.measure_idx >= score.parts[pidx].measures.len() {
+                    continue;
+                }
+                let measure = &score.parts[pidx].measures[ml_pre.measure_idx];
+                // Only check the bottom staff of each part (lyrics go below it)
+                let bottom_staff_num = part_info.num_staves;
+                let staff_y_bottom = system_y
+                    + part_info.y_offset
+                    + (bottom_staff_num as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP);
+                let staff_filter = if part_info.num_staves > 1 {
+                    Some(bottom_staff_num as i32)
+                } else {
+                    None
+                };
+                let lowest = measure_lowest_note_y(
+                    measure, staff_y_bottom,
+                    ps.clefs.get(bottom_staff_num).and_then(|c| c.as_ref()),
+                    ps.transpose_octave, staff_filter,
+                );
+                if lowest > system_lowest_y {
+                    system_lowest_y = lowest;
+                }
+            }
+        }
+        let lyrics_base_y = (system_lowest_y + LYRICS_PAD_BELOW)
+            .max(system_y + LYRICS_MIN_Y_BELOW_STAFF);
+
         // ── Render measures ──
         for ml in &system.measures {
             let mx = ml.x;
@@ -435,6 +470,17 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                     if staff_num == 1 {
                         render_barlines(&mut svg, measure, mx, mw, staff_y);
                     }
+
+                    // Lyrics (render on bottom staff only)
+                    if staff_num == part_info.num_staves {
+                        let note_xs = note_x_positions_from_beat_map(
+                            &measure.notes, ps.divisions, &ml.beat_x_map,
+                        );
+                        render_lyrics(
+                            &mut svg, measure, &note_xs,
+                            lyrics_base_y, staff_filter,
+                        );
+                    }
                 }
             }
 
@@ -558,14 +604,31 @@ fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], page_width: f6
         }
     }
 
+    // Track divisions per part for lyrics-aware width computation.
+    // This mirrors the divisions tracking in the system rendering loop.
+    let mut lyrics_divs: Vec<i32> = vec![1; score.parts.len()];
+
     // Compute the minimum packing width for each measure based on beat duration,
     // plus extra space for mid-piece key/time signature changes.
     // The extra space is computed dynamically based on the actual number of
     // accidentals involved (e.g. 6 flats needs much more space than 1 sharp).
+    // Additionally, lyrics text widths can push measures wider so that syllables
+    // don't overlap.
     let measure_min_widths: Vec<f64> = measure_beats
         .iter()
         .enumerate()
         .map(|(mi, &beats)| {
+            // Update divisions for each part from this measure's attributes
+            for (pidx, part) in score.parts.iter().enumerate() {
+                if mi < part.measures.len() {
+                    if let Some(ref attrs) = part.measures[mi].attributes {
+                        if let Some(d) = attrs.divisions {
+                            lyrics_divs[pidx] = d;
+                        }
+                    }
+                }
+            }
+
             let mut w = (beats * PER_BEAT_MIN_WIDTH).max(MIN_MEASURE_WIDTH);
             if has_key_change[mi] {
                 // Cancellation naturals (only when direction changes or count decreases)
@@ -582,6 +645,16 @@ fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], page_width: f6
                 w += new_width;
             }
             if has_time_change[mi] { w += TIME_SIG_SPACE; }
+
+            // Lyrics-based minimum: ensure the measure is wide enough that
+            // lyric syllables don't overlap horizontally.
+            // The elongation is capped at MAX_LYRICS_ELONGATION_FACTOR × beat
+            // width (OSMD-inspired) to prevent absurdly wide measures.
+            let lyrics_w = lyrics_min_measure_width(&score.parts, mi, &lyrics_divs, w);
+            if lyrics_w > w {
+                w = lyrics_w;
+            }
+
             w
         })
         .collect();
@@ -739,7 +812,9 @@ fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], page_width: f6
                 }
             }
 
-            let beat_x_map = compute_beat_x_map(&all_beat_times, x, w, left_inset, right_inset);
+            // Compute per-beat lyric events for lyrics-aware spacing (OSMD-style)
+            let lyric_evts = collect_lyric_events(&score.parts, mi, &divisions_per_part);
+            let beat_x_map = compute_beat_x_map(&all_beat_times, x, w, left_inset, right_inset, &lyric_evts);
 
             measures.push(MeasureLayout {
                 measure_idx: mi,
@@ -777,6 +852,26 @@ fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], page_width: f6
             }
         }
 
+        // Check if any measures in this system have lyrics; if so add extra
+        // vertical space below the system for lyric text lines.
+        let mut max_lyric_verses = 0i32;
+        for ml_check in &measures {
+            for &(pidx, _) in parts_staves {
+                if ml_check.measure_idx < score.parts[pidx].measures.len() {
+                    for note in &score.parts[pidx].measures[ml_check.measure_idx].notes {
+                        for lyric in &note.lyrics {
+                            max_lyric_verses = max_lyric_verses.max(lyric.number);
+                        }
+                    }
+                }
+            }
+        }
+        let lyrics_extra = if max_lyric_verses > 0 {
+            LYRICS_MIN_Y_BELOW_STAFF - STAFF_HEIGHT + max_lyric_verses as f64 * LYRICS_LINE_HEIGHT
+        } else {
+            0.0
+        };
+
         systems.push(SystemLayout {
             y: current_y,
             x_start,
@@ -790,7 +885,7 @@ fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], page_width: f6
 
         // Total height of this system
         let system_height = y_offset; // already computed above
-        current_y += system_height + SYSTEM_SPACING;
+        current_y += system_height + lyrics_extra + SYSTEM_SPACING;
     }
 
     let total_height = current_y + 40.0;
@@ -1246,6 +1341,228 @@ fn render_notes(
     }
 }
 
+const LYRICS_COLOR: &str = "#333333";
+const LYRICS_FONT_SIZE: f64 = 13.0;
+const LYRICS_PAD_BELOW: f64 = 16.0;  // padding below the lowest note/stem
+const LYRICS_LINE_HEIGHT: f64 = 16.0; // spacing between lyric verse lines
+const LYRICS_MIN_Y_BELOW_STAFF: f64 = 54.0; // minimum offset from staff_y (below bottom line)
+
+// ── OSMD-inspired lyrics spacing constants ──────────────────────────────
+// These mirror the approach of OpenSheetMusicDisplay (see EngravingRules):
+// 1. We estimate text widths and compare to available spacing.
+// 2. Measures are elongated (up to a cap) so lyrics don't overlap.
+// 3. The last lyric in a measure can bleed past the barline.
+// 4. Multi-syllable words get extra spacing for the connecting dash.
+
+/// Average character width relative to font size (sans-serif approximation).
+const LYRICS_CHAR_WIDTH_FACTOR: f64 = 0.55;
+/// Minimum horizontal gap between adjacent lyric texts (in px).
+const LYRICS_MIN_GAP: f64 = 6.0;
+/// Extra gap for connecting dash between syllables of the same word (px).
+const LYRICS_DASH_EXTRA_GAP: f64 = 8.0;
+/// How many pixels of the last lyric's width can overlap into the next measure
+/// (past the barline). OSMD uses ~3.4 em; our equivalent in px at 13px font.
+const LYRICS_OVERLAP_INTO_NEXT_MEASURE: f64 = 20.0;
+/// Maximum factor by which lyrics can elongate a measure beyond its beat-based
+/// minimum width. Prevents absurdly wide measures. (OSMD default: 2.5)
+const MAX_LYRICS_ELONGATION_FACTOR: f64 = 2.5;
+
+// ── Lyrics text-width helpers ───────────────────────────────────────────
+
+/// Estimate the rendered width of a text string in pixels for a given font size.
+fn estimate_text_width(text: &str, font_size: f64) -> f64 {
+    text.len() as f64 * font_size * LYRICS_CHAR_WIDTH_FACTOR
+}
+
+/// Metadata about a lyric event at a specific beat: its text width, whether
+/// it is part of a multi-syllable word (needs dash), and whether it is the
+/// last lyric beat in the measure (can overlap into next measure).
+#[derive(Clone, Debug)]
+struct LyricEvent {
+    beat_time: f64,
+    text_width: f64,
+    /// True if this syllable is "begin" or "middle" (dash follows).
+    has_dash: bool,
+    /// True if this is the last lyric-bearing beat in the measure.
+    is_last: bool,
+}
+
+/// Collect per-beat lyric events for a single measure across all parts.
+/// Returns sorted, de-duplicated events (one per unique beat time, keeping
+/// the maximum width and most restrictive dash flag).
+fn collect_lyric_events(parts: &[Part], mi: usize, divisions_map: &[i32]) -> Vec<LyricEvent> {
+    let mut events: Vec<LyricEvent> = Vec::new();
+
+    for (pidx, part) in parts.iter().enumerate() {
+        if mi >= part.measures.len() { continue; }
+        let measure = &part.measures[mi];
+        let divisions = divisions_map[pidx].max(1);
+        let beat_times = compute_note_beat_times(&measure.notes, divisions);
+
+        for (i, note) in measure.notes.iter().enumerate() {
+            if note.lyrics.is_empty() { continue; }
+            let w = note.lyrics.iter()
+                .map(|l| estimate_text_width(&l.text, LYRICS_FONT_SIZE))
+                .fold(0.0f64, f64::max);
+            if w <= 0.0 { continue; }
+            // Check if any lyric on this note has a dash after it
+            let has_dash = note.lyrics.iter().any(|l| {
+                matches!(l.syllabic.as_deref(), Some("begin") | Some("middle"))
+            });
+            events.push(LyricEvent {
+                beat_time: beat_times[i],
+                text_width: w,
+                has_dash,
+                is_last: false,
+            });
+        }
+    }
+
+    if events.is_empty() { return vec![]; }
+
+    // Sort by beat time and merge duplicates
+    events.sort_by(|a, b| a.beat_time.partial_cmp(&b.beat_time).unwrap());
+    let mut merged: Vec<LyricEvent> = Vec::new();
+    for ev in &events {
+        if let Some(last) = merged.last_mut() {
+            if (last.beat_time - ev.beat_time).abs() < 0.001 {
+                last.text_width = last.text_width.max(ev.text_width);
+                last.has_dash = last.has_dash || ev.has_dash;
+                continue;
+            }
+        }
+        merged.push(ev.clone());
+    }
+
+    // Mark the last event
+    if let Some(last) = merged.last_mut() {
+        last.is_last = true;
+    }
+
+    merged
+}
+
+/// Compute the minimum spacing required between two consecutive lyric events.
+/// Accounts for text widths, dashes, and whether the right event is the last
+/// in the measure (allowed to bleed past the barline).
+fn lyric_pair_min_spacing(left: &LyricEvent, right: &LyricEvent) -> f64 {
+    let gap = if left.has_dash {
+        LYRICS_MIN_GAP + LYRICS_DASH_EXTRA_GAP
+    } else {
+        LYRICS_MIN_GAP
+    };
+    let right_half = if right.is_last {
+        // Last lyric can overlap into next measure, so we need less space
+        (right.text_width / 2.0 - LYRICS_OVERLAP_INTO_NEXT_MEASURE).max(0.0)
+    } else {
+        right.text_width / 2.0
+    };
+    left.text_width / 2.0 + gap + right_half
+}
+
+/// Compute the minimum measure width needed to accommodate lyrics without
+/// overlapping, using OSMD-inspired logic. The result is capped at
+/// `MAX_LYRICS_ELONGATION_FACTOR` times the beat-based minimum width.
+fn lyrics_min_measure_width(
+    parts: &[Part],
+    mi: usize,
+    divisions_map: &[i32],
+    beat_based_width: f64,
+) -> f64 {
+    let events = collect_lyric_events(parts, mi, divisions_map);
+    if events.is_empty() { return 0.0; }
+
+    // Total width needed for lyrics
+    let mut total = 0.0;
+    for i in 0..events.len() {
+        if i == 0 {
+            total += events[i].text_width / 2.0; // left half of first lyric
+        }
+        if i > 0 {
+            total += lyric_pair_min_spacing(&events[i - 1], &events[i]);
+        }
+    }
+    // Right half of last lyric (with overlap allowance)
+    if let Some(last) = events.last() {
+        let right_half = if last.is_last {
+            (last.text_width / 2.0 - LYRICS_OVERLAP_INTO_NEXT_MEASURE).max(0.0)
+        } else {
+            last.text_width / 2.0
+        };
+        total += right_half;
+    }
+    total += 28.0; // left + right inset padding
+
+    // Cap at MAX_LYRICS_ELONGATION_FACTOR × beat-based width
+    let cap = beat_based_width * MAX_LYRICS_ELONGATION_FACTOR;
+    total.min(cap)
+}
+
+/// Compute the lowest y-coordinate of rendered notes/stems in a measure.
+/// This accounts for noteheads, downward stems, and ledger-line regions.
+fn measure_lowest_note_y(
+    measure: &Measure,
+    staff_y: f64,
+    clef: Option<&Clef>,
+    transpose_octave: i32,
+    staff_filter: Option<i32>,
+) -> f64 {
+    let mut lowest = staff_y + STAFF_HEIGHT; // at least the bottom staff line
+    for note in &measure.notes {
+        if let Some(sf) = staff_filter {
+            if note.staff.unwrap_or(1) != sf { continue; }
+        }
+        if let Some(ref pitch) = note.pitch {
+            let note_y = staff_y + pitch_to_staff_y(pitch, clef, transpose_octave);
+            // Account for the notehead itself
+            let bottom = note_y + NOTEHEAD_RY;
+            if bottom > lowest { lowest = bottom; }
+            // Account for downward stems
+            if note.stem.as_deref() == Some("down") {
+                let stem_bottom = note_y + STEM_LENGTH;
+                if stem_bottom > lowest { lowest = stem_bottom; }
+            }
+        }
+    }
+    lowest
+}
+
+fn render_lyrics(
+    svg: &mut SvgBuilder,
+    measure: &Measure,
+    note_positions: &[f64],
+    lyrics_base_y: f64,
+    staff_filter: Option<i32>,
+) {
+    for (i, note) in measure.notes.iter().enumerate() {
+        if let Some(sf) = staff_filter {
+            if note.staff.unwrap_or(1) != sf { continue; }
+        }
+        if i >= note_positions.len() { break; }
+        let nx = note_positions[i];
+
+        for lyric in &note.lyrics {
+            let verse_offset = (lyric.number - 1) as f64 * LYRICS_LINE_HEIGHT;
+            let ly = lyrics_base_y + verse_offset;
+
+            // Add hyphen suffix for syllables that continue ("begin" or "middle")
+            let display_text = match lyric.syllabic.as_deref() {
+                Some("begin") | Some("middle") => format!("{} -", lyric.text),
+                _ => lyric.text.clone(),
+            };
+
+            svg.text(
+                nx, ly,
+                &display_text,
+                LYRICS_FONT_SIZE,
+                "normal",
+                LYRICS_COLOR,
+                "middle",
+            );
+        }
+    }
+}
+
 /// Compute the beat-time offset for each note in a measure,
 /// using per-voice time tracking to handle MusicXML backup semantics.
 /// Notes in different voices (e.g. voice 1 on staff 1, voice 5 on staff 2)
@@ -1276,12 +1593,19 @@ fn compute_note_beat_times(notes: &[Note], divisions: i32) -> Vec<f64> {
 /// all parts. This is the core of cross-staff/cross-part vertical alignment:
 /// notes at the same beat position get the same x coordinate regardless of
 /// which part or staff they belong to.
+///
+/// `lyric_events` provides per-beat lyric metadata (text width, dash, last
+/// flag) from `collect_lyric_events`. When present, the algorithm enforces
+/// minimum spacing between consecutive beats so lyric syllables don't overlap,
+/// using OSMD-inspired logic: multi-syllable dashes get extra gap, and the
+/// last lyric is allowed to bleed past the barline.
 fn compute_beat_x_map(
     all_beat_times: &[Vec<f64>],
     mx: f64,
     mw: f64,
     left_pad: f64,
     right_pad: f64,
+    lyric_events: &[LyricEvent],
 ) -> Vec<(f64, f64)> {
     let usable_width = mw - left_pad - right_pad;
 
@@ -1302,14 +1626,67 @@ fn compute_beat_x_map(
 
     let max_beat = unique_beats.last().copied().unwrap_or(1.0).max(0.001);
 
-    // Map to x positions proportionally within the measure
-    unique_beats
-        .iter()
-        .map(|&bt| {
-            let x = mx + left_pad + (bt / max_beat) * usable_width;
-            (bt, x)
-        })
-        .collect()
+    // If no lyrics, use pure proportional spacing
+    if lyric_events.is_empty() {
+        return unique_beats
+            .iter()
+            .map(|&bt| {
+                let x = mx + left_pad + (bt / max_beat) * usable_width;
+                (bt, x)
+            })
+            .collect();
+    }
+
+    // Helper: look up lyric event for a beat time
+    let event_at = |bt: f64| -> Option<&LyricEvent> {
+        lyric_events.iter().find(|ev| (ev.beat_time - bt).abs() < 0.001)
+    };
+
+    // Compute per-interval minimum distances based on lyrics.
+    // For each pair of consecutive beats, the minimum distance is the
+    // maximum of:
+    //   (a) the proportional (beat-based) distance, and
+    //   (b) the lyrics-based distance: half_left + gap + half_right,
+    //       with extra gap for dashes and overlap allowance for the last.
+    let n = unique_beats.len();
+    let mut min_dists: Vec<f64> = Vec::with_capacity(n.saturating_sub(1));
+    let mut total_min = 0.0f64;
+
+    for i in 1..n {
+        let prop_dist = ((unique_beats[i] - unique_beats[i - 1]) / max_beat) * usable_width;
+
+        let left_ev = event_at(unique_beats[i - 1]);
+        let right_ev = event_at(unique_beats[i]);
+
+        let lyrics_dist = match (left_ev, right_ev) {
+            (Some(le), Some(re)) => lyric_pair_min_spacing(le, re),
+            (Some(le), None) => le.text_width / 2.0,
+            (None, Some(re)) => re.text_width / 2.0,
+            (None, None) => 0.0,
+        };
+
+        let min_dist = prop_dist.max(lyrics_dist);
+        min_dists.push(min_dist);
+        total_min += min_dist;
+    }
+
+    // Scale so the total fits within usable_width.
+    // If total_min <= usable_width, we have room and scale up each interval
+    // proportionally so the total equals usable_width.
+    // If total_min > usable_width, scale down (shouldn't happen when
+    // measure_min_widths already accounts for lyrics, but handle gracefully).
+    let scale = if total_min > 0.0 { usable_width / total_min } else { 1.0 };
+
+    let mut result = Vec::with_capacity(n);
+    let mut x = mx + left_pad;
+    result.push((unique_beats[0], x));
+
+    for i in 0..min_dists.len() {
+        x += min_dists[i] * scale;
+        result.push((unique_beats[i + 1], x));
+    }
+
+    result
 }
 
 /// Look up the x position for a given beat time in the beat map.
