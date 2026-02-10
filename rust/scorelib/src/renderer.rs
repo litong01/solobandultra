@@ -18,6 +18,9 @@ const PAGE_MARGIN_TOP: f64 = 30.0;
 const STAFF_LINE_SPACING: f64 = 10.0; // distance between staff lines
 const STAFF_HEIGHT: f64 = 40.0; // 5 lines, 4 spaces
 const SYSTEM_SPACING: f64 = 90.0; // vertical space between systems
+const GRAND_STAFF_GAP: f64 = 60.0; // vertical gap between staves in a grand staff
+const PART_GAP: f64 = 80.0; // vertical gap between different parts/instruments
+const BRACE_WIDTH: f64 = 10.0; // width of the brace/bracket
 
 const HEADER_HEIGHT: f64 = 70.0; // space for title + composer
 const FIRST_SYSTEM_TOP: f64 = PAGE_MARGIN_TOP + HEADER_HEIGHT;
@@ -56,20 +59,30 @@ struct ScoreLayout {
     total_height: f64,
 }
 
+/// Info about one part's staves within a system
+struct PartStaffInfo {
+    part_idx: usize,
+    y_offset: f64,     // vertical offset from system.y to this part's first staff
+    num_staves: usize, // staves in this part (1 for most, 2 for piano)
+}
+
 struct SystemLayout {
-    y: f64, // Y of top staff line
+    y: f64, // Y of top-most staff line in the system
     #[allow(dead_code)]
     x_start: f64, // content start (after clef/key/time)
     x_end: f64,
     measures: Vec<MeasureLayout>,
+    parts: Vec<PartStaffInfo>,
     show_clef: bool,
     show_time: bool,
+    total_staves: usize, // total staves across all parts
 }
 
 struct MeasureLayout {
     measure_idx: usize,
     x: f64,
     width: f64,
+    beat_x_map: Vec<(f64, f64)>, // (beat_time, x_position)
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -82,8 +95,15 @@ pub fn render_score_to_svg(score: &Score) -> String {
         return empty_svg("No parts in score");
     }
 
-    let part = &score.parts[0]; // Render first part for now
-    let layout = compute_layout(score, part);
+    // Determine staves per part
+    let parts_staves: Vec<(usize, usize)> = score
+        .parts
+        .iter()
+        .enumerate()
+        .map(|(i, part)| (i, detect_staves(part)))
+        .collect();
+
+    let layout = compute_layout(score, &parts_staves);
 
     let mut svg = SvgBuilder::new(PAGE_WIDTH, layout.total_height);
 
@@ -93,132 +113,260 @@ pub fn render_score_to_svg(score: &Score) -> String {
     // Title and composer
     render_header(&mut svg, score);
 
-    // Get running attributes (clef, key, time) that carry across measures
-    let mut current_clef: Option<&Clef> = None;
-    let mut current_key: Option<&Key> = None;
-    let mut current_time: Option<&TimeSignature> = None;
-    let mut current_divisions: i32 = 1;
-    let mut transpose_octave: i32 = 0;
-
-    // Pre-scan for initial attributes
-    for measure in &part.measures {
-        if let Some(ref attrs) = measure.attributes {
-            if attrs.clef.is_some() {
-                current_clef = attrs.clef.as_ref();
-            }
-            if attrs.key.is_some() {
-                current_key = attrs.key.as_ref();
-            }
-            if attrs.time.is_some() {
-                current_time = attrs.time.as_ref();
-            }
-            if let Some(d) = attrs.divisions {
-                current_divisions = d;
-            }
-            if let Some(ref t) = attrs.transpose {
-                transpose_octave = t.octave_change.unwrap_or(0);
-            }
-            break; // only need first measure's attributes for initialization
-        }
+    // Running attributes per part — (clefs vec indexed 1-based, key, time, divisions, transpose)
+    struct PartState {
+        clefs: Vec<Option<Clef>>,  // index 0 unused, 1..=num_staves
+        key: Option<Key>,
+        time: Option<TimeSignature>,
+        divisions: i32,
+        transpose_octave: i32,
     }
+
+    let mut part_states: Vec<PartState> = parts_staves
+        .iter()
+        .map(|&(pidx, ns)| {
+            let part = &score.parts[pidx];
+            let mut clefs: Vec<Option<Clef>> = vec![None; ns + 1];
+            let mut key = None;
+            let mut time = None;
+            let mut divisions = 1;
+            let mut transpose_octave = 0;
+
+            // Pre-scan for initial attributes
+            for measure in &part.measures {
+                if let Some(ref attrs) = measure.attributes {
+                    for clef in &attrs.clefs {
+                        let idx = clef.number as usize;
+                        if idx < clefs.len() {
+                            clefs[idx] = Some(clef.clone());
+                        }
+                    }
+                    if attrs.key.is_some() {
+                        key = attrs.key.clone();
+                    }
+                    if attrs.time.is_some() {
+                        time = attrs.time.clone();
+                    }
+                    if let Some(d) = attrs.divisions {
+                        divisions = d;
+                    }
+                    if let Some(ref t) = attrs.transpose {
+                        transpose_octave = t.octave_change.unwrap_or(0);
+                    }
+                    break;
+                }
+            }
+
+            // Default treble clef for staff 1 if none found
+            if clefs[1].is_none() {
+                clefs[1] = Some(Clef {
+                    number: 1,
+                    sign: "G".into(),
+                    line: 2,
+                    octave_change: None,
+                });
+            }
+
+            PartState { clefs, key, time, divisions, transpose_octave }
+        })
+        .collect();
 
     // Render each system
     for system in &layout.systems {
-        let staff_y = system.y;
+        let system_y = system.y;
 
-        // Staff lines
-        render_staff_lines(&mut svg, PAGE_MARGIN_LEFT, system.x_end, staff_y);
+        // ── Staff lines, clefs, key/time signatures per part ──
+        for part_info in &system.parts {
+            let ps = &part_states[part_info.part_idx];
 
-        // Clef
-        if system.show_clef {
-            if let Some(clef) = current_clef {
-                render_clef(&mut svg, PAGE_MARGIN_LEFT + 5.0, staff_y, clef);
+            for staff_num in 1..=part_info.num_staves {
+                let staff_y = system_y
+                    + part_info.y_offset
+                    + (staff_num as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP);
+
+                // Staff lines
+                render_staff_lines(&mut svg, PAGE_MARGIN_LEFT, system.x_end, staff_y);
+
+                // Clef
+                if system.show_clef {
+                    if let Some(ref clef) = ps.clefs[staff_num] {
+                        render_clef(&mut svg, PAGE_MARGIN_LEFT + 5.0, staff_y, clef);
+                    }
+                }
+
+                // Key signature
+                let key_x = PAGE_MARGIN_LEFT + CLEF_SPACE;
+                if let Some(ref key) = ps.key {
+                    render_key_signature(
+                        &mut svg, key_x, staff_y, key,
+                        ps.clefs[staff_num].as_ref(),
+                    );
+                }
+
+                // Time signature
+                if system.show_time {
+                    if let Some(ref time) = ps.time {
+                        let time_x = key_x + key_sig_width(ps.key.as_ref());
+                        render_time_signature(&mut svg, time_x, staff_y, time);
+                    }
+                }
+            }
+
+            // Brace for multi-staff parts (e.g. piano grand staff)
+            if part_info.num_staves > 1 {
+                let top_y = system_y + part_info.y_offset;
+                let bottom_y = top_y
+                    + (part_info.num_staves as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP)
+                    + STAFF_HEIGHT;
+                render_brace(&mut svg, PAGE_MARGIN_LEFT - 2.0, top_y, bottom_y);
             }
         }
 
-        // Key signature (at start of each system)
-        let key_x = PAGE_MARGIN_LEFT + CLEF_SPACE;
-        if let Some(key) = current_key {
-            render_key_signature(&mut svg, key_x, staff_y, key, current_clef);
+        // Bracket spanning ALL staves in the system (if multiple parts)
+        if system.parts.len() > 1 || system.total_staves > 1 {
+            let first_part = system.parts.first().unwrap();
+            let last_part = system.parts.last().unwrap();
+            let top_y = system_y + first_part.y_offset;
+            let bottom_y = system_y
+                + last_part.y_offset
+                + (last_part.num_staves as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP)
+                + STAFF_HEIGHT;
+
+            // Connecting barline at the left edge
+            svg.line(
+                PAGE_MARGIN_LEFT, top_y, PAGE_MARGIN_LEFT, bottom_y,
+                BARLINE_COLOR, BARLINE_WIDTH,
+            );
         }
 
-        // Time signature (only on first system or when it changes)
-        if system.show_time {
-            if let Some(time) = current_time {
-                let time_x = key_x + key_sig_width(current_key);
-                render_time_signature(&mut svg, time_x, staff_y, time);
-            }
-        }
-
-        // Render measures
+        // ── Render measures ──
         for ml in &system.measures {
-            let measure = &part.measures[ml.measure_idx];
             let mx = ml.x;
             let mw = ml.width;
 
-            // Update running attributes
-            if let Some(ref attrs) = measure.attributes {
-                if let Some(ref c) = attrs.clef {
-                    current_clef = Some(c);
+            for part_info in &system.parts {
+                let pidx = part_info.part_idx;
+                let part = &score.parts[pidx];
+                let ps = &mut part_states[pidx];
+
+                if ml.measure_idx >= part.measures.len() {
+                    continue;
                 }
-                if let Some(ref k) = attrs.key {
-                    current_key = Some(k);
+                let measure = &part.measures[ml.measure_idx];
+
+                // Update running attributes for this part
+                if let Some(ref attrs) = measure.attributes {
+                    for clef in &attrs.clefs {
+                        let idx = clef.number as usize;
+                        if idx < ps.clefs.len() {
+                            ps.clefs[idx] = Some(clef.clone());
+                        }
+                    }
+                    if let Some(ref k) = attrs.key {
+                        ps.key = Some(k.clone());
+                    }
+                    if let Some(ref t) = attrs.time {
+                        ps.time = Some(t.clone());
+                    }
+                    if let Some(d) = attrs.divisions {
+                        ps.divisions = d;
+                    }
+                    if let Some(ref t) = attrs.transpose {
+                        ps.transpose_octave = t.octave_change.unwrap_or(0);
+                    }
                 }
-                if let Some(ref t) = attrs.time {
-                    current_time = Some(t);
-                }
-                if let Some(d) = attrs.divisions {
-                    current_divisions = d;
-                }
-                if let Some(ref t) = attrs.transpose {
-                    transpose_octave = t.octave_change.unwrap_or(0);
+
+                for staff_num in 1..=part_info.num_staves {
+                    let staff_y = system_y
+                        + part_info.y_offset
+                        + (staff_num as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP);
+
+                    // Chord symbols (only on top staff of first part)
+                    if staff_num == 1 && pidx == parts_staves[0].0 {
+                        render_harmonies(&mut svg, measure, mx, mw, staff_y);
+                    }
+
+                    // Notes and rests for this staff
+                    let staff_filter = if part_info.num_staves > 1 {
+                        Some(staff_num as i32)
+                    } else {
+                        None
+                    };
+
+                    render_notes(
+                        &mut svg,
+                        measure,
+                        staff_y,
+                        ps.clefs[staff_num].as_ref(),
+                        ps.divisions,
+                        ps.transpose_octave,
+                        staff_filter,
+                        &ml.beat_x_map,
+                    );
+
+                    // Barlines (per-staff)
+                    if staff_num == 1 {
+                        render_barlines(&mut svg, measure, mx, mw, staff_y);
+                    }
                 }
             }
 
-            // Chord symbols
-            render_harmonies(&mut svg, measure, mx, mw, staff_y);
-
-            // Notes and rests
-            render_notes(
-                &mut svg,
-                measure,
-                mx,
-                mw,
-                staff_y,
-                current_clef,
-                current_divisions,
-                transpose_octave,
-            );
-
-            // Barlines
-            render_barlines(&mut svg, measure, mx, mw, staff_y);
-
-            // Right barline (regular)
-            svg.line(
-                mx + mw, staff_y,
-                mx + mw, staff_y + STAFF_HEIGHT,
-                BARLINE_COLOR, BARLINE_WIDTH,
-            );
+            // Right barline spanning all staves across all parts
+            let first_part = system.parts.first().unwrap();
+            let last_part = system.parts.last().unwrap();
+            let top_y = system_y + first_part.y_offset;
+            let bottom_y = system_y
+                + last_part.y_offset
+                + (last_part.num_staves as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP)
+                + STAFF_HEIGHT;
+            svg.line(mx + mw, top_y, mx + mw, bottom_y, BARLINE_COLOR, BARLINE_WIDTH);
         }
     }
 
     svg.build()
 }
 
+/// Detect the number of staves in a part by scanning for staves attribute
+/// or staff numbers on notes.
+fn detect_staves(part: &Part) -> usize {
+    let mut max_staff = 1usize;
+    for measure in &part.measures {
+        if let Some(ref attrs) = measure.attributes {
+            if let Some(s) = attrs.staves {
+                max_staff = max_staff.max(s as usize);
+            }
+            for clef in &attrs.clefs {
+                max_staff = max_staff.max(clef.number as usize);
+            }
+        }
+        for note in &measure.notes {
+            if let Some(s) = note.staff {
+                max_staff = max_staff.max(s as usize);
+            }
+        }
+    }
+    max_staff
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Layout computation
 // ═══════════════════════════════════════════════════════════════════════
 
-fn compute_layout(_score: &Score, part: &Part) -> ScoreLayout {
+fn compute_layout(score: &Score, parts_staves: &[(usize, usize)]) -> ScoreLayout {
+    // parts_staves: Vec of (part_idx, num_staves) for each part
+
     let content_width = PAGE_WIDTH - PAGE_MARGIN_LEFT - PAGE_MARGIN_RIGHT;
     let mut systems: Vec<SystemLayout> = Vec::new();
     let mut current_y = FIRST_SYSTEM_TOP;
+
+    // Use the first part for system grouping (measure count should be same across parts)
+    let ref_part = &score.parts[parts_staves[0].0];
 
     // Group measures into systems based on new-system hints
     let mut system_groups: Vec<Vec<usize>> = Vec::new();
     let mut current_group: Vec<usize> = Vec::new();
 
-    for (i, measure) in part.measures.iter().enumerate() {
+    for (i, measure) in ref_part.measures.iter().enumerate() {
         if measure.new_system && !current_group.is_empty() {
             system_groups.push(current_group);
             current_group = Vec::new();
@@ -230,17 +378,24 @@ fn compute_layout(_score: &Score, part: &Part) -> ScoreLayout {
     }
 
     // If no system breaks were found, auto-layout with ~4 measures per system
-    if system_groups.len() <= 1 && part.measures.len() > 4 {
+    if system_groups.len() <= 1 && ref_part.measures.len() > 4 {
         system_groups.clear();
         let measures_per_system = 4;
-        for chunk in (0..part.measures.len()).collect::<Vec<_>>().chunks(measures_per_system) {
+        for chunk in (0..ref_part.measures.len()).collect::<Vec<_>>().chunks(measures_per_system) {
             system_groups.push(chunk.to_vec());
         }
     }
 
-    // Get initial key signature for width calculation
-    let initial_key = part.measures.iter()
+    // Get initial key signature for width calculation (from any part)
+    let initial_key = score.parts.iter()
+        .flat_map(|p| p.measures.iter())
         .find_map(|m| m.attributes.as_ref().and_then(|a| a.key.as_ref()));
+
+    // Total staves across all parts
+    let total_staves: usize = parts_staves.iter().map(|&(_, ns)| ns).sum();
+
+    // Track divisions per part (for beat mapping)
+    let mut divisions_per_part: Vec<i32> = vec![1; score.parts.len()];
 
     for (sys_idx, group) in system_groups.iter().enumerate() {
         let is_first = sys_idx == 0;
@@ -252,13 +407,23 @@ fn compute_layout(_score: &Score, part: &Part) -> ScoreLayout {
         let x_end = PAGE_MARGIN_LEFT + content_width;
         let available = x_end - x_start;
 
-        // Distribute measure widths proportionally
+        // Distribute measure widths proportionally — take max weight across all parts
         let measure_weights: Vec<f64> = group
             .iter()
-            .map(|&i| {
-                let m = &part.measures[i];
-                let note_count = m.notes.len().max(1) as f64;
-                (note_count * MIN_NOTE_SPACING).max(MIN_MEASURE_WIDTH)
+            .map(|&mi| {
+                parts_staves
+                    .iter()
+                    .map(|&(pidx, _)| {
+                        let part = &score.parts[pidx];
+                        if mi < part.measures.len() {
+                            let m = &part.measures[mi];
+                            let note_count = m.notes.len().max(1) as f64;
+                            (note_count * MIN_NOTE_SPACING).max(MIN_MEASURE_WIDTH)
+                        } else {
+                            MIN_MEASURE_WIDTH
+                        }
+                    })
+                    .fold(0.0f64, f64::max)
             })
             .collect();
 
@@ -274,12 +439,57 @@ fn compute_layout(_score: &Score, part: &Part) -> ScoreLayout {
 
         for (j, &mi) in group.iter().enumerate() {
             let w = measure_weights[j] * scale;
+
+            // Build the shared beat-to-x map for this measure across all parts
+            let mut all_beat_times: Vec<Vec<f64>> = Vec::new();
+            for &(pidx, _) in parts_staves {
+                let part = &score.parts[pidx];
+                // Update divisions from this measure's attributes
+                if mi < part.measures.len() {
+                    if let Some(ref attrs) = part.measures[mi].attributes {
+                        if let Some(d) = attrs.divisions {
+                            divisions_per_part[pidx] = d;
+                        }
+                    }
+                    let beat_times = compute_note_beat_times(
+                        &part.measures[mi].notes,
+                        divisions_per_part[pidx],
+                    );
+                    all_beat_times.push(beat_times);
+                }
+            }
+
+            let beat_x_map = compute_beat_x_map(&all_beat_times, x, w);
+
             measures.push(MeasureLayout {
                 measure_idx: mi,
                 x,
                 width: w,
+                beat_x_map,
             });
             x += w;
+        }
+
+        // Compute per-part vertical offsets within this system
+        let mut parts_info: Vec<PartStaffInfo> = Vec::new();
+        let mut y_offset = 0.0;
+
+        for (i, &(pidx, num_staves)) in parts_staves.iter().enumerate() {
+            parts_info.push(PartStaffInfo {
+                part_idx: pidx,
+                y_offset,
+                num_staves,
+            });
+
+            // Height of this part's staves
+            let part_height = STAFF_HEIGHT
+                + (num_staves as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP);
+            y_offset += part_height;
+
+            // Gap between parts (not after the last)
+            if i < parts_staves.len() - 1 {
+                y_offset += PART_GAP;
+            }
         }
 
         systems.push(SystemLayout {
@@ -287,11 +497,15 @@ fn compute_layout(_score: &Score, part: &Part) -> ScoreLayout {
             x_start,
             x_end,
             measures,
+            parts: parts_info,
             show_clef: true,
             show_time: is_first,
+            total_staves,
         });
 
-        current_y += STAFF_HEIGHT + SYSTEM_SPACING;
+        // Total height of this system
+        let system_height = y_offset; // already computed above
+        current_y += system_height + SYSTEM_SPACING;
     }
 
     let total_height = current_y + 40.0;
@@ -343,6 +557,30 @@ fn render_header(svg: &mut SvgBuilder, score: &Score) {
 // ═══════════════════════════════════════════════════════════════════════
 // Staff rendering
 // ═══════════════════════════════════════════════════════════════════════
+
+fn render_brace(svg: &mut SvgBuilder, x: f64, top_y: f64, bottom_y: f64) {
+    // Draw a grand-staff brace (curly bracket) using cubic Bézier curves.
+    let mid_y = (top_y + bottom_y) / 2.0;
+    let h = bottom_y - top_y;
+    let w = BRACE_WIDTH;
+
+    // Right half of the brace (two mirrored C-curves meeting at the midpoint)
+    let path = format!(
+        "M{:.1},{:.1} C{:.1},{:.1} {:.1},{:.1} {:.1},{:.1} \
+         C{:.1},{:.1} {:.1},{:.1} {:.1},{:.1}",
+        // Top point
+        x, top_y,
+        // Control points → midpoint (tip points left)
+        x, top_y + h * 0.28,
+        x - w, mid_y - h * 0.08,
+        x - w, mid_y,
+        // Midpoint → bottom
+        x - w, mid_y + h * 0.08,
+        x, bottom_y - h * 0.28,
+        x, bottom_y,
+    );
+    svg.path(&path, "none", NOTE_COLOR, 2.5);
+}
 
 fn render_staff_lines(svg: &mut SvgBuilder, x1: f64, x2: f64, staff_y: f64) {
     for i in 0..5 {
@@ -439,22 +677,30 @@ fn render_time_signature(svg: &mut SvgBuilder, x: f64, staff_y: f64, time: &Time
 fn render_notes(
     svg: &mut SvgBuilder,
     measure: &Measure,
-    mx: f64, mw: f64, staff_y: f64,
+    staff_y: f64,
     clef: Option<&Clef>,
     divisions: i32,
     transpose_octave: i32,
+    staff_filter: Option<i32>,
+    beat_x_map: &[(f64, f64)],
 ) {
     if measure.notes.is_empty() {
         return;
     }
 
-    // Position notes horizontally based on their order and duration
-    let note_positions = compute_note_x_positions(measure, mx, mw, divisions);
+    // Position notes horizontally using the shared beat map
+    let note_positions = note_x_positions_from_beat_map(&measure.notes, divisions, beat_x_map);
 
     // Collect beam groups for eighth notes and shorter
-    let beam_groups = find_beam_groups(measure);
+    let beam_groups = find_beam_groups(measure, staff_filter);
 
     for (i, note) in measure.notes.iter().enumerate() {
+        // Filter by staff when rendering a multi-staff part
+        if let Some(sf) = staff_filter {
+            let note_staff = note.staff.unwrap_or(1);
+            if note_staff != sf { continue; }
+        }
+
         let nx = note_positions[i];
 
         if note.rest {
@@ -526,38 +772,96 @@ fn render_notes(
     }
 }
 
-fn compute_note_x_positions(
-    measure: &Measure, mx: f64, mw: f64, divisions: i32,
-) -> Vec<f64> {
-    let notes = &measure.notes;
-    if notes.is_empty() {
-        return Vec::new();
-    }
-
-    let padding = 8.0;
-    let usable_width = mw - padding * 2.0;
-
-    // Compute time offset for each note
-    let mut time_offsets: Vec<f64> = Vec::new();
-    let mut current_time = 0.0;
+/// Compute the beat-time offset for each note in a measure,
+/// using per-voice time tracking to handle MusicXML backup semantics.
+/// Notes in different voices (e.g. voice 1 on staff 1, voice 5 on staff 2)
+/// each get their own time cursor, so backup elements are implicitly handled.
+fn compute_note_beat_times(notes: &[Note], divisions: i32) -> Vec<f64> {
+    use std::collections::HashMap;
+    let mut voice_times: HashMap<i32, f64> = HashMap::new();
+    let mut beat_times = Vec::with_capacity(notes.len());
 
     for note in notes {
+        let voice = note.voice.unwrap_or(1);
+        let current = voice_times.entry(voice).or_insert(0.0);
+
         if note.chord {
-            // Chord notes share the same position as the previous note
-            time_offsets.push(current_time);
+            // Chord notes share the same time as the previous note in this voice
+            beat_times.push(*current);
         } else {
-            time_offsets.push(current_time);
+            beat_times.push(*current);
             let dur = note.duration as f64 / divisions.max(1) as f64;
-            current_time += dur;
+            *current += dur;
         }
     }
 
-    let total_time = current_time.max(0.001);
+    beat_times
+}
 
-    // Map time offsets to x positions
-    notes.iter().enumerate().map(|(i, _)| {
-        mx + padding + (time_offsets[i] / total_time) * usable_width
-    }).collect()
+/// Build a sorted beat-time → x-position mapping from note beat times across
+/// all parts. This is the core of cross-staff/cross-part vertical alignment:
+/// notes at the same beat position get the same x coordinate regardless of
+/// which part or staff they belong to.
+fn compute_beat_x_map(
+    all_beat_times: &[Vec<f64>],
+    mx: f64,
+    mw: f64,
+) -> Vec<(f64, f64)> {
+    let padding = 8.0;
+    let usable_width = mw - padding * 2.0;
+
+    // Collect all unique beat times across all parts
+    let mut unique_beats: Vec<f64> = Vec::new();
+    for beats in all_beat_times {
+        for &bt in beats {
+            if !unique_beats.iter().any(|&u| (u - bt).abs() < 0.001) {
+                unique_beats.push(bt);
+            }
+        }
+    }
+    unique_beats.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+    if unique_beats.is_empty() {
+        return vec![];
+    }
+
+    let max_beat = unique_beats.last().copied().unwrap_or(1.0).max(0.001);
+
+    // Map to x positions proportionally within the measure
+    unique_beats
+        .iter()
+        .map(|&bt| {
+            let x = mx + padding + (bt / max_beat) * usable_width;
+            (bt, x)
+        })
+        .collect()
+}
+
+/// Look up the x position for a given beat time in the beat map.
+fn lookup_beat_x(beat_x_map: &[(f64, f64)], beat_time: f64) -> f64 {
+    let mut best_x = beat_x_map.first().map_or(0.0, |b| b.1);
+    let mut best_dist = f64::MAX;
+    for &(bt, x) in beat_x_map {
+        let dist = (bt - beat_time).abs();
+        if dist < best_dist {
+            best_dist = dist;
+            best_x = x;
+        }
+    }
+    best_x
+}
+
+/// Build a Vec<f64> of x positions for each note in a measure, using the beat map.
+fn note_x_positions_from_beat_map(
+    notes: &[Note],
+    divisions: i32,
+    beat_x_map: &[(f64, f64)],
+) -> Vec<f64> {
+    let beat_times = compute_note_beat_times(notes, divisions);
+    beat_times
+        .iter()
+        .map(|&bt| lookup_beat_x(beat_x_map, bt))
+        .collect()
 }
 
 fn pitch_to_staff_y(pitch: &Pitch, clef: Option<&Clef>, transpose_octave: i32) -> f64 {
@@ -753,13 +1057,17 @@ fn render_flags(svg: &mut SvgBuilder, stem_x: f64, stem_end_y: f64, count: usize
 // Beam rendering
 // ═══════════════════════════════════════════════════════════════════════
 
-fn find_beam_groups(measure: &Measure) -> Vec<Vec<usize>> {
+fn find_beam_groups(measure: &Measure, staff_filter: Option<i32>) -> Vec<Vec<usize>> {
     let mut groups: Vec<Vec<usize>> = Vec::new();
     let mut current_group: Vec<usize> = Vec::new();
 
     for (i, note) in measure.notes.iter().enumerate() {
         if note.chord || note.rest {
             continue;
+        }
+        // Skip notes not on the filtered staff
+        if let Some(sf) = staff_filter {
+            if note.staff.unwrap_or(1) != sf { continue; }
         }
         let has_beam_begin = note.beams.iter().any(|b| b.number == 1 && b.beam_type == "begin");
         let has_beam_cont = note.beams.iter().any(|b| b.number == 1 && b.beam_type == "continue");

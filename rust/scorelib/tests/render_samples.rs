@@ -54,6 +54,21 @@ fn render_tongnian_svg() {
 }
 
 #[test]
+fn render_chopin_trois_valses_svg() {
+    let path = sheetmusic_dir().join("chopin-trois-valses.mxl");
+    let svg = render_file_to_svg(&path).expect("Failed to render chopin-trois-valses");
+
+    assert!(svg.starts_with("<svg"));
+    assert!(svg.contains("</svg>"));
+    assert!(svg.contains("<ellipse"), "SVG should contain noteheads");
+
+    let out = output_dir().join("chopin-trois-valses.svg");
+    std::fs::write(&out, &svg).expect("Failed to write SVG");
+    println!("✓ Rendered chopin-trois-valses.svg ({} bytes)", svg.len());
+    println!("  Output: {}", out.display());
+}
+
+#[test]
 fn render_produces_valid_svg_dimensions() {
     let path = sheetmusic_dir().join("asa-branca.musicxml");
     let score = parse_file(&path).unwrap();

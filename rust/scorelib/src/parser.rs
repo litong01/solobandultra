@@ -292,8 +292,9 @@ fn parse_attributes(node: &Node) -> Attributes {
         divisions: None,
         key: None,
         time: None,
-        clef: None,
+        clefs: Vec::new(),
         transpose: None,
+        staves: None,
     };
 
     for child in node.children().filter(|n| n.is_element()) {
@@ -301,7 +302,8 @@ fn parse_attributes(node: &Node) -> Attributes {
             "divisions" => attrs.divisions = parse_i32(&child),
             "key" => attrs.key = Some(parse_key(&child)),
             "time" => attrs.time = Some(parse_time(&child)),
-            "clef" => attrs.clef = Some(parse_clef(&child)),
+            "staves" => attrs.staves = parse_i32(&child),
+            "clef" => attrs.clefs.push(parse_clef(&child)),
             "transpose" => attrs.transpose = Some(parse_transpose(&child)),
             _ => {}
         }
@@ -341,7 +343,12 @@ fn parse_time(node: &Node) -> TimeSignature {
 }
 
 fn parse_clef(node: &Node) -> Clef {
+    let number = node
+        .attribute("number")
+        .and_then(|n| n.parse::<i32>().ok())
+        .unwrap_or(1);
     let mut clef = Clef {
+        number,
         sign: "G".to_string(),
         line: 2,
         octave_change: None,
@@ -391,6 +398,7 @@ fn parse_note(node: &Node) -> Note {
         dot: false,
         accidental: None,
         tie: None,
+        staff: None,
         default_x: node
             .attribute("default-x")
             .and_then(|v| v.parse().ok()),
@@ -404,6 +412,7 @@ fn parse_note(node: &Node) -> Note {
             "pitch" => note.pitch = Some(parse_pitch(&child)),
             "duration" => note.duration = parse_i32(&child).unwrap_or(0),
             "voice" => note.voice = parse_i32(&child),
+            "staff" => note.staff = parse_i32(&child),
             "type" => {
                 note.note_type = child.text().map(|t| t.trim().to_string());
             }

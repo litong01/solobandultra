@@ -34,7 +34,8 @@ fun SheetMusicScreen(
 
     val availableFiles = listOf(
         "sheetmusic/asa-branca.musicxml",
-        "sheetmusic/童年.mxl"
+        "sheetmusic/童年.mxl",
+        "sheetmusic/chopin-trois-valses.mxl"
     )
     var selectedIndex by remember { mutableIntStateOf(0) }
     var svgContent by remember { mutableStateOf<String?>(null) }

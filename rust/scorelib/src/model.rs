@@ -91,10 +91,14 @@ pub struct Attributes {
     pub key: Option<Key>,
     /// Time signature
     pub time: Option<TimeSignature>,
-    /// Clef
-    pub clef: Option<Clef>,
+    /// Clef(s) — one per staff.  For single-staff parts this holds one
+    /// element; for grand-staff (piano) parts it holds two or more,
+    /// each tagged with a staff `number`.
+    pub clefs: Vec<Clef>,
     /// Transposition
     pub transpose: Option<Transpose>,
+    /// Number of staves in this part (e.g. 2 for piano grand staff)
+    pub staves: Option<i32>,
 }
 
 /// Key signature.
@@ -118,6 +122,8 @@ pub struct TimeSignature {
 /// Clef definition.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Clef {
+    /// Staff number this clef belongs to (1-based; defaults to 1)
+    pub number: i32,
     /// Clef sign: "G" (treble), "F" (bass), "C" (alto/tenor)
     pub sign: String,
     /// Staff line the clef sits on
@@ -159,6 +165,8 @@ pub struct Note {
     pub accidental: Option<String>,
     /// Tie: "start", "stop"
     pub tie: Option<String>,
+    /// Staff number (1-based; for multi-staff parts like piano)
+    pub staff: Option<i32>,
     /// Default X position in tenths (for layout)
     pub default_x: Option<f64>,
     /// Default Y position in tenths (for layout)

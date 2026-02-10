@@ -10,7 +10,8 @@ struct SheetMusicView: View {
 
     private let availableFiles = [
         "asa-branca.musicxml",
-        "童年.mxl"
+        "童年.mxl",
+        "chopin-trois-valses.mxl"
     ]
 
     var body: some View {

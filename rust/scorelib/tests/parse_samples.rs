@@ -58,7 +58,8 @@ fn assert_score_asa_branca(score: &Score) {
     assert_eq!(time.beats, 2);
     assert_eq!(time.beat_type, 4);
 
-    let clef = attrs.clef.as_ref().expect("Should have clef");
+    assert!(!attrs.clefs.is_empty(), "Should have at least one clef");
+    let clef = &attrs.clefs[0];
     assert_eq!(clef.sign, "G");
     assert_eq!(clef.line, 2);
     assert_eq!(clef.octave_change, Some(-1));
@@ -167,6 +168,85 @@ fn assert_score_tongnian(score: &Score) {
     println!("  Part name: {}", part.name);
     println!("  Measures: {}", part.measures.len());
     println!("  Total notes: {}", total_notes);
+}
+
+// ─── Compressed MXL (.mxl) — Chopin ─────────────────────────────
+
+#[test]
+fn parse_chopin_trois_valses_mxl() {
+    let path = sheetmusic_dir().join("chopin-trois-valses.mxl");
+    let score = parse_file(&path).expect("Failed to parse chopin-trois-valses.mxl");
+
+    // Parts
+    assert!(
+        !score.parts.is_empty(),
+        "Score should have at least one part"
+    );
+
+    let part = &score.parts[0];
+
+    // Measures
+    assert!(
+        !part.measures.is_empty(),
+        "Part should have at least one measure"
+    );
+
+    // First measure with attributes should have time and key signatures
+    let first_attrs = part
+        .measures
+        .iter()
+        .find_map(|m| m.attributes.as_ref())
+        .expect("Score should have attributes somewhere");
+
+    assert!(first_attrs.divisions.is_some(), "Should have divisions");
+    assert!(first_attrs.key.is_some(), "Should have key signature");
+    assert!(first_attrs.time.is_some(), "Should have time signature");
+
+    // Should have notes
+    let total_notes: usize = part.measures.iter().map(|m| m.notes.len()).sum();
+    assert!(
+        total_notes > 0,
+        "Score should have notes, got {}",
+        total_notes
+    );
+
+    // Verify grand staff structure (2 staves)
+    assert_eq!(first_attrs.staves, Some(2), "Piano should have 2 staves");
+    assert!(first_attrs.clefs.len() >= 2, "Should have clefs for both staves");
+
+    let treble = first_attrs.clefs.iter().find(|c| c.number == 1).expect("Should have staff 1 clef");
+    assert_eq!(treble.sign, "G", "Staff 1 should be treble clef");
+
+    let bass = first_attrs.clefs.iter().find(|c| c.number == 2).expect("Should have staff 2 clef");
+    assert_eq!(bass.sign, "F", "Staff 2 should be bass clef");
+
+    // Verify notes have staff assignments
+    let staff1_notes = part.measures.iter()
+        .flat_map(|m| m.notes.iter())
+        .filter(|n| n.staff == Some(1))
+        .count();
+    let staff2_notes = part.measures.iter()
+        .flat_map(|m| m.notes.iter())
+        .filter(|n| n.staff == Some(2))
+        .count();
+    assert!(staff1_notes > 0, "Should have notes on staff 1 (treble)");
+    assert!(staff2_notes > 0, "Should have notes on staff 2 (bass)");
+
+    // Verify key signature (Db major = -5 flats)
+    let key = first_attrs.key.as_ref().expect("Should have key");
+    assert_eq!(key.fifths, -5, "Should be Db major (5 flats)");
+
+    println!("✓ chopin-trois-valses.mxl parsed successfully");
+    println!("  Title: {:?}", score.title);
+    println!("  Composer: {:?}", score.composer);
+    println!("  Version: {:?}", score.version);
+    println!("  Parts: {}", score.parts.len());
+    println!("  Part name: {}", part.name);
+    println!("  Staves: {:?}", first_attrs.staves);
+    println!("  Clefs: {} (treble={}, bass={})", first_attrs.clefs.len(), treble.sign, bass.sign);
+    println!("  Key: {} fifths", key.fifths);
+    println!("  Measures: {}", part.measures.len());
+    println!("  Total notes: {} (staff1={}, staff2={})", total_notes, staff1_notes, staff2_notes);
 }
 
 // ─── Auto-detection ─────────────────────────────────────────────────
