@@ -157,6 +157,8 @@ pub struct Note {
     pub beams: Vec<Beam>,
     /// Whether this is a rest
     pub rest: bool,
+    /// Whether this rest fills the entire measure (MusicXML: `<rest measure="yes"/>`)
+    pub measure_rest: bool,
     /// Whether this note is part of a chord with the previous note
     pub chord: bool,
     /// Whether the note has a dot

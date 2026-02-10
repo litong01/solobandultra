@@ -394,6 +394,7 @@ fn parse_note(node: &Node) -> Note {
         stem: None,
         beams: Vec::new(),
         rest: false,
+        measure_rest: false,
         chord: false,
         dot: false,
         accidental: None,
@@ -427,7 +428,12 @@ fn parse_note(node: &Node) -> Note {
                 let beam_type = child.text().unwrap_or("").trim().to_string();
                 note.beams.push(Beam { number, beam_type });
             }
-            "rest" => note.rest = true,
+            "rest" => {
+                note.rest = true;
+                if child.attribute("measure") == Some("yes") {
+                    note.measure_rest = true;
+                }
+            }
             "chord" => note.chord = true,
             "dot" => note.dot = true,
             "accidental" => {

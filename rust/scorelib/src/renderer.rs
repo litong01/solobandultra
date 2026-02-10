@@ -311,6 +311,7 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                         ps.transpose_octave,
                         staff_filter,
                         &ml.beat_x_map,
+                        mx, mw,
                     );
 
                     // Barlines (per-staff)
@@ -710,6 +711,8 @@ fn render_notes(
     transpose_octave: i32,
     staff_filter: Option<i32>,
     beat_x_map: &[(f64, f64)],
+    measure_x: f64,
+    measure_w: f64,
 ) {
     if measure.notes.is_empty() {
         return;
@@ -717,6 +720,9 @@ fn render_notes(
 
     // Position notes horizontally using the shared beat map
     let note_positions = note_x_positions_from_beat_map(&measure.notes, divisions, beat_x_map);
+
+    // Pre-compute the centre of this measure for whole-measure rests
+    let measure_center_x = measure_x + measure_w / 2.0;
 
     // Collect beam groups for eighth notes and shorter
     let beam_groups = find_beam_groups(measure, staff_filter);
@@ -731,7 +737,13 @@ fn render_notes(
         let nx = note_positions[i];
 
         if note.rest {
-            render_rest(svg, nx, staff_y, note.note_type.as_deref());
+            // Centre whole-measure rests (and rests with no type) in the measure
+            let rest_x = if note.measure_rest || note.note_type.is_none() {
+                measure_center_x
+            } else {
+                nx
+            };
+            render_rest(svg, rest_x, staff_y, note.note_type.as_deref(), note.measure_rest);
             continue;
         }
 
@@ -985,22 +997,34 @@ fn render_ledger_lines(svg: &mut SvgBuilder, x: f64, note_y: f64, staff_y: f64) 
 // Rest rendering
 // ═══════════════════════════════════════════════════════════════════════
 
-fn render_rest(svg: &mut SvgBuilder, x: f64, staff_y: f64, note_type: Option<&str>) {
+fn render_rest(svg: &mut SvgBuilder, x: f64, staff_y: f64, note_type: Option<&str>, measure_rest: bool) {
     // Rests are positioned on the staff using standard engraving positions:
-    //   whole  — hangs from line 4 (staff_y + 10)
-    //   half   — sits on line 3   (staff_y + 20)
-    //   others — centred on the staff
+    //   whole / measure — hangs from line 4 (staff_y + 10)
+    //   half            — sits on line 3   (staff_y + 20)
+    //   others          — centred on the staff
+    //
+    // A full-measure rest (MusicXML: <rest measure="yes"/>) is ALWAYS rendered
+    // as a whole-note rest rectangle, regardless of the time signature.  This is
+    // standard music engraving convention.
 
-    match note_type {
-        Some("whole") => {
+    // If this is a measure rest, or if note_type is missing (common for
+    // full-measure rests in MusicXML), render as whole-note rest.
+    if measure_rest || note_type.is_none() {
+        // Whole-note rest: rectangle hanging below staff line 4
+        svg.rect(x - 7.0, staff_y + 10.0, 14.0, 5.0, REST_COLOR, "none", 0.0);
+        return;
+    }
+
+    match note_type.unwrap() {
+        "whole" => {
             // Rectangle hanging below line 4
             svg.rect(x - 7.0, staff_y + 10.0, 14.0, 5.0, REST_COLOR, "none", 0.0);
         }
-        Some("half") => {
+        "half" => {
             // Rectangle sitting on top of line 3
             svg.rect(x - 7.0, staff_y + 15.0, 14.0, 5.0, REST_COLOR, "none", 0.0);
         }
-        Some("quarter") => {
+        "quarter" => {
             // Authentic quarter rest from VexFlow Gonville font glyph v7c.
             // Glyph spans ~1014 font-units centred on origin; at VF_GLYPH_SCALE
             // ≈ 28.5 SVG units ≈ 2.85 staff-spaces.  Centred on the middle line.
@@ -1012,7 +1036,7 @@ fn render_rest(svg: &mut SvgBuilder, x: f64, staff_y: f64, note_type: Option<&st
                 path, REST_COLOR, gx, gy
             ));
         }
-        Some("eighth") => {
+        "eighth" => {
             // Authentic eighth rest from VexFlow Gonville font glyph va5.
             let path = vf_outline_to_svg(VF_EIGHTH_REST, VF_GLYPH_SCALE);
             let gx = x - 5.0;
@@ -1022,7 +1046,7 @@ fn render_rest(svg: &mut SvgBuilder, x: f64, staff_y: f64, note_type: Option<&st
                 path, REST_COLOR, gx, gy
             ));
         }
-        Some("16th") => {
+        "16th" => {
             // Authentic 16th rest from VexFlow Gonville font glyph v3c.
             let path = vf_outline_to_svg(VF_16TH_REST, VF_GLYPH_SCALE);
             let gx = x - 6.0;
@@ -1033,14 +1057,8 @@ fn render_rest(svg: &mut SvgBuilder, x: f64, staff_y: f64, note_type: Option<&st
             ));
         }
         _ => {
-            // Fallback: quarter rest glyph
-            let path = vf_outline_to_svg(VF_QUARTER_REST, VF_GLYPH_SCALE);
-            let gx = x - 4.0;
-            let gy = staff_y + 20.0;
-            svg.elements.push(format!(
-                r#"<path d="{}" fill="{}" transform="translate({:.1},{:.1})"/>"#,
-                path, REST_COLOR, gx, gy
-            ));
+            // Fallback: whole-note rest (safest default for unknown types)
+            svg.rect(x - 7.0, staff_y + 10.0, 14.0, 5.0, REST_COLOR, "none", 0.0);
         }
     }
 }
