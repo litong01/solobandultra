@@ -1309,12 +1309,11 @@ fn render_notes(
                     });
 
                     // Extend stem for notes with multiple flags so the
-                    // parallel flag lines don't crowd the notehead.
-                    // Each extra flag adds 5 px along the stem.
+                    // VexFlow glyph doesn't encroach on the notehead.
                     let stem_extra = match flag_count {
-                        2 => 5.0,   // 16th notes
-                        3 => 10.0,  // 32nd notes
-                        4 => 15.0,  // 64th notes
+                        2 => 4.0,   // 16th notes
+                        3 => 9.0,   // 32nd notes
+                        4 => 13.0,  // 64th notes
                         _ => 0.0,
                     };
                     let stem_len = STEM_LENGTH + stem_extra;
@@ -1881,31 +1880,125 @@ fn render_accidental(svg: &mut SvgBuilder, x: f64, y: f64, accidental: &str) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// Flag rendering
+// Flag rendering — VexFlow font glyphs (from OSMD's vexflow_font.js)
 // ═══════════════════════════════════════════════════════════════════════
-// Simple straight-line flags.  Each flag is a short diagonal stroke
-// from the stem tip going outward (right and away from the notehead).
-// For multi-flag notes (16th, 32nd, 64th), parallel strokes are stacked
-// with vertical spacing along the stem.
+// Each glyph is a single combined outline.  Format: VexFlow outline
+// commands — m (moveTo), l (lineTo), b (bezier), q (quadratic).
+//
+// IMPORTANT: VexFlow's 'b' command parameter order is:
+//   b endX endY cp1X cp1Y cp2X cp2Y
+// which maps to SVG:  C cp1X,cp1Y  cp2X,cp2Y  endX,endY
+// (The end point is listed FIRST in the outline, then the two control
+// points.  They are re-ordered for the standard bezierCurveTo call.)
 
-/// Render note flags (1 = 8th, 2 = 16th, 3 = 32nd, 4 = 64th).
-/// Each flag is a short diagonal line from the stem.
-fn render_flags(svg: &mut SvgBuilder, stem_x: f64, stem_end_y: f64, count: usize, stem_up: bool) {
-    let flag_dx = 9.0;   // horizontal extent of each flag
-    let flag_dy = 3.5;   // vertical extent (toward notehead)
-    let flag_gap = 5.0;  // spacing between parallel flags along stem
-    let stroke_w = 2.4;  // flag line thickness
+/// Scale: VexFlow font units → our SVG pixels.
+/// Calibrated so an 8th flag is ≈21 px tall, ≈7 px wide.
+const FLAG_GLYPH_SCALE: f64 = 0.021;
 
-    let dir = if stem_up { 1.0 } else { -1.0 };
+// ── 8th note flags ──────────────────────────────────────────────────
+const FLAG_8TH_UP: &str = "m -24 -161 l -24 -5 l -20 -5 b 0 -24 -9 -5 -2 -12 b 171 -315 21 -124 84 -233 b 317 -660 268 -406 317 -531 b 187 -1014 317 -782 274 -909 b 161 -1034 172 -1034 171 -1034 b 141 -1013 149 -1034 141 -1025 b 152 -991 141 -1004 142 -1002 b 266 -682 228 -899 266 -788 b 174 -430 266 -588 236 -498 b -23 -317 136 -388 66 -348 b -24 -161 -23 -316 -24 -285";
+const FLAG_8TH_DOWN: &str = "m 230 1031 b 238 1032 232 1032 235 1032 b 259 1014 245 1032 251 1027 b 367 662 330 906 367 782 b 364 602 367 641 367 621 b 232 317 352 488 304 384 b 57 120 155 245 103 187 b -1 18 31 84 6 40 b -19 4 -4 11 -12 4 l -21 4 l -21 159 l -21 315 l -16 315 b 96 335 10 315 62 324 b 315 695 227 380 315 527 b 313 738 315 709 314 724 b 224 991 304 825 273 916 b 216 1013 219 999 216 1007 b 230 1031 216 1021 220 1028";
 
-    for i in 0..count {
-        let offset = i as f64 * flag_gap * dir;
-        let x1 = stem_x;
-        let y1 = stem_end_y + offset;
-        let x2 = stem_x + flag_dx;
-        let y2 = y1 + flag_dy * dir;
-        svg.line(x1, y1, x2, y2, NOTE_COLOR, stroke_w);
+// ── 16th note flags ─────────────────────────────────────────────────
+const FLAG_16TH_UP: &str = "m -24 -147 l -24 -5 l -20 -5 b -1 -19 -12 -5 -4 -11 b 58 -123 6 -43 31 -86 b 196 -278 93 -173 134 -219 b 317 -570 274 -356 317 -460 b 294 -713 317 -617 308 -666 l 289 -724 l 294 -735 b 317 -873 308 -780 317 -827 b 235 -1132 317 -963 288 -1054 b 209 -1165 228 -1140 224 -1146 b 189 -1177 204 -1172 196 -1177 b 171 -1164 182 -1177 175 -1172 b 168 -1154 170 -1161 168 -1159 b 181 -1132 168 -1149 172 -1142 b 269 -891 238 -1064 269 -975 b 269 -881 269 -886 269 -884 b 262 -814 269 -857 265 -827 b 258 -800 261 -811 259 -806 b 142 -628 240 -731 198 -667 b -8 -589 112 -606 47 -589 b -20 -589 -13 -589 -19 -589 l -24 -589 l -24 -449 l -24 -308 l -20 -308 b -1 -322 -12 -308 -4 -313 b 58 -424 6 -345 31 -388 b 194 -580 93 -476 136 -523 b 259 -660 221 -606 245 -635 b 261 -663 259 -662 261 -663 b 264 -656 262 -663 262 -660 b 269 -587 268 -632 269 -610 b 264 -521 269 -566 268 -544 b 262 -512 264 -517 262 -513 b 258 -498 261 -509 259 -503 b 142 -326 240 -428 198 -365 b -8 -287 112 -303 47 -288 b -20 -287 -13 -287 -19 -287 l -24 -287 l -24 -147";
+const FLAG_16TH_DOWN: &str = "m 302 1031 b 308 1032 304 1032 307 1032 b 330 1016 318 1032 325 1027 b 362 867 351 970 362 920 b 340 738 362 824 353 780 l 336 727 l 340 717 b 362 591 355 677 362 634 b 257 323 362 496 325 401 b 204 272 243 306 227 290 b 20 56 129 206 66 133 b -1 18 12 44 0 22 b -19 4 -4 9 -12 4 l -21 4 l -21 140 l -21 276 l -12 277 b 167 333 61 288 127 309 b 319 598 262 388 319 491 b 311 664 319 620 317 642 l 310 673 l 304 664 b 204 548 279 620 250 587 b 20 333 129 483 66 409 b -1 292 12 320 0 298 b -19 280 -4 285 -12 280 l -21 280 l -21 416 l -21 552 l -12 553 b 167 609 61 564 127 585 b 319 874 264 666 319 770 b 294 992 319 914 311 954 b 288 1011 288 1004 288 1007 b 302 1031 288 1021 294 1028";
+
+// ── 32nd note flags ─────────────────────────────────────────────────
+const FLAG_32ND_UP: &str = "m -24 -145 l -24 -5 l -20 -5 b 1 -26 -10 -5 -6 -9 b 175 -241 31 -86 96 -166 b 314 -548 259 -323 304 -420 b 315 -589 315 -555 315 -571 b 314 -630 315 -606 315 -623 b 298 -730 311 -664 306 -699 l 295 -742 l 296 -748 b 314 -850 304 -778 311 -813 b 315 -892 315 -857 315 -874 b 314 -932 315 -909 315 -925 b 298 -1032 311 -967 306 -1002 l 295 -1045 l 296 -1050 b 314 -1153 304 -1081 311 -1115 b 315 -1193 315 -1160 315 -1177 b 314 -1235 315 -1211 315 -1228 b 217 -1526 306 -1338 270 -1444 b 201 -1533 213 -1532 208 -1533 b 182 -1522 193 -1533 185 -1529 b 179 -1514 181 -1518 179 -1517 b 189 -1489 179 -1508 182 -1501 b 266 -1217 240 -1403 266 -1308 b 262 -1156 266 -1196 265 -1177 b 110 -907 247 -1043 190 -950 b 0 -889 87 -895 50 -889 l -1 -889 l -24 -889 l -24 -749 l -24 -610 l -20 -610 b 1 -631 -10 -610 -6 -614 b 175 -846 31 -691 96 -771 b 259 -956 213 -884 236 -914 b 265 -966 262 -961 264 -966 b 265 -966 265 -966 265 -966 b 265 -953 265 -964 265 -959 b 266 -920 266 -943 266 -932 b 262 -853 266 -898 265 -873 b 110 -605 247 -741 190 -648 b 0 -587 87 -592 50 -587 l -1 -587 l -24 -587 l -24 -448 l -24 -308 l -20 -308 b 1 -328 -10 -308 -6 -312 b 175 -544 31 -388 96 -469 b 259 -655 213 -581 236 -612 b 265 -663 262 -659 264 -663 b 265 -663 265 -663 265 -663 b 265 -650 265 -663 265 -657 b 266 -617 266 -641 266 -630 b 262 -551 266 -595 265 -570 b 110 -303 247 -438 190 -345 b 0 -284 87 -290 50 -284 l -1 -284 l -24 -284 l -24 -145";
+const FLAG_32ND_DOWN: &str = "m 276 1378 b 284 1379 279 1379 281 1379 b 306 1360 292 1379 298 1374 b 352 1247 326 1326 343 1286 b 366 1139 362 1213 366 1175 b 347 1009 366 1093 359 1049 l 344 1002 l 347 992 b 352 971 348 986 351 977 b 366 863 362 936 366 899 b 347 732 366 818 359 773 l 344 725 l 347 716 b 352 695 348 710 351 700 b 366 588 362 659 366 623 b 223 262 366 464 314 345 b 189 233 212 252 212 252 b 35 76 126 183 73 129 b -1 16 20 56 2 27 b -19 4 -4 9 -12 4 l -21 4 l -21 137 l -21 270 l -17 270 b 186 344 59 281 134 308 b 319 606 270 399 319 499 b 317 650 319 620 319 635 l 315 659 l 314 655 b 223 537 288 607 258 570 b 189 509 212 528 212 528 b 35 352 126 459 73 405 b -1 292 20 333 2 303 b -19 280 -4 285 -12 280 l -21 280 l -21 413 l -21 546 l -17 546 b 186 620 59 557 134 584 b 319 882 270 675 319 775 b 317 925 319 896 319 911 l 315 935 l 314 931 b 223 813 288 884 258 846 b 189 785 212 805 212 805 b 35 628 126 735 73 681 b -1 569 20 609 2 580 b -19 556 -4 562 -12 556 l -21 556 l -21 689 l -21 823 l -17 823 b 202 907 68 835 152 867 b 319 1157 280 968 319 1061 b 270 1338 319 1218 303 1281 b 262 1358 264 1349 262 1353 b 262 1364 262 1360 262 1363 b 276 1378 265 1371 269 1376";
+
+// ── 64th note flags ─────────────────────────────────────────────────
+const FLAG_64TH_UP: &str = "m -24 -145 l -24 -5 l -20 -5 b 0 -23 -9 -5 -2 -12 b 27 -87 4 -38 14 -66 b 138 -220 53 -136 88 -177 b 235 -328 179 -255 208 -288 b 314 -592 287 -409 314 -501 b 292 -732 314 -639 307 -687 l 289 -742 l 294 -756 b 314 -896 307 -802 314 -849 b 292 -1035 314 -943 307 -991 l 289 -1045 l 294 -1057 b 314 -1197 307 -1104 314 -1152 b 292 -1338 314 -1246 307 -1292 l 289 -1347 l 294 -1360 b 314 -1500 307 -1407 314 -1454 b 273 -1689 314 -1565 300 -1628 b 250 -1712 265 -1710 261 -1712 b 228 -1691 236 -1712 228 -1704 l 228 -1685 l 234 -1675 b 270 -1507 258 -1621 270 -1564 b 98 -1193 270 -1381 209 -1261 b 40 -1174 76 -1179 58 -1174 b -10 -1189 24 -1174 8 -1178 b -20 -1192 -14 -1192 -16 -1192 l -24 -1192 l -24 -1052 l -24 -913 l -20 -913 b 0 -931 -9 -913 -2 -920 b 27 -995 4 -946 14 -974 b 138 -1128 53 -1043 88 -1085 b 257 -1275 190 -1172 228 -1220 b 262 -1283 259 -1279 262 -1283 l 262 -1283 b 269 -1249 264 -1282 268 -1260 b 270 -1206 270 -1233 270 -1220 b 98 -891 270 -1075 206 -957 b 40 -871 76 -877 58 -871 b -10 -886 24 -871 8 -875 b -20 -889 -14 -889 -16 -889 l -24 -889 l -24 -749 l -24 -610 l -20 -610 b 0 -628 -9 -610 -2 -617 b 27 -692 4 -644 14 -671 b 138 -825 53 -741 88 -782 b 257 -973 190 -870 228 -917 b 262 -981 259 -977 262 -981 l 262 -981 b 269 -946 264 -979 268 -957 b 270 -903 270 -931 270 -917 b 98 -588 270 -774 206 -655 b 40 -569 76 -574 58 -569 b -10 -584 24 -569 8 -574 b -20 -587 -14 -587 -16 -587 l -24 -587 l -24 -448 l -24 -308 l -20 -308 b 0 -326 -9 -308 -2 -315 b 27 -390 4 -341 14 -369 b 138 -523 53 -438 88 -480 b 257 -670 190 -567 228 -614 b 262 -678 259 -674 262 -678 b 262 -678 262 -678 262 -678 b 269 -644 264 -677 268 -656 b 270 -601 270 -628 270 -614 b 98 -285 270 -471 206 -352 b 40 -266 76 -273 58 -266 b -10 -281 24 -266 8 -272 b -20 -284 -14 -284 -16 -284 l -24 -284 l -24 -145";
+const FLAG_64TH_DOWN: &str = "m 259 1553 b 265 1553 261 1553 264 1553 b 288 1540 272 1553 277 1550 b 367 1351 340 1493 367 1424 b 336 1221 367 1308 357 1263 l 332 1211 l 333 1208 b 367 1077 356 1170 367 1124 b 336 945 367 1032 357 986 l 332 935 l 333 932 b 367 800 356 893 367 848 b 336 669 367 756 357 710 l 332 659 l 333 656 b 367 523 356 617 367 571 b 345 412 367 485 360 446 b 231 273 322 356 284 310 b -1 19 121 195 27 93 b -17 4 -4 11 -10 5 l -21 4 l -21 134 l -21 265 l -17 265 b 133 291 20 265 96 278 b 318 537 245 328 318 433 b 307 603 318 559 315 582 b 303 614 304 612 304 614 b 298 609 302 614 300 613 b 231 549 281 589 258 567 b -1 295 121 471 27 369 b -17 280 -4 287 -10 281 l -21 280 l -21 410 l -21 541 l -17 541 b 133 567 20 541 96 555 b 318 813 245 605 318 709 b 307 880 318 835 315 859 b 303 891 304 888 304 891 b 298 885 302 891 300 888 b 231 825 281 866 258 843 b -1 571 121 748 27 645 b -17 556 -4 563 -10 557 l -21 556 l -21 687 l -21 817 l -17 817 b 133 843 20 817 96 830 b 318 1089 245 881 318 985 b 307 1156 318 1111 315 1134 b 303 1167 304 1164 304 1167 b 298 1161 302 1167 300 1164 b 231 1102 281 1140 258 1120 b -1 848 121 1024 27 921 b -17 832 -4 839 -10 834 l -21 832 l -21 963 l -21 1093 l -17 1093 b 114 1113 12 1093 78 1103 b 313 1314 215 1142 289 1218 b 318 1364 317 1331 318 1347 b 255 1511 318 1422 295 1478 b 243 1532 247 1519 243 1525 b 259 1553 243 1540 250 1550";
+
+/// Convert a VexFlow glyph outline string to an SVG path `d` attribute.
+///
+/// VexFlow outline token format:
+///   m x y                          → SVG M (moveTo)
+///   l x y                          → SVG L (lineTo)
+///   b endX endY cp1X cp1Y cp2X cp2Y → SVG C cp1X,cp1Y cp2X,cp2Y endX,endY
+///   q endX endY cpX cpY            → SVG Q cpX,cpY endX,endY
+///
+/// The y-axis is inverted (font y goes up; SVG y goes down).
+fn vexflow_outline_to_svg(outline: &str, scale: f64, ox: f64, oy: f64) -> String {
+    let tokens: Vec<&str> = outline.split_whitespace().collect();
+    let mut path = String::with_capacity(outline.len());
+    let mut i = 0;
+
+    while i < tokens.len() {
+        match tokens[i] {
+            "m" if i + 2 < tokens.len() => {
+                let x: f64 = tokens[i + 1].parse().unwrap_or(0.0);
+                let y: f64 = tokens[i + 2].parse().unwrap_or(0.0);
+                path.push_str(&format!("M{:.1} {:.1}", ox + x * scale, oy - y * scale));
+                i += 3;
+            }
+            "l" if i + 2 < tokens.len() => {
+                let x: f64 = tokens[i + 1].parse().unwrap_or(0.0);
+                let y: f64 = tokens[i + 2].parse().unwrap_or(0.0);
+                path.push_str(&format!("L{:.1} {:.1}", ox + x * scale, oy - y * scale));
+                i += 3;
+            }
+            "b" if i + 6 < tokens.len() => {
+                // VexFlow order: endX endY cp1X cp1Y cp2X cp2Y
+                let ex: f64  = tokens[i + 1].parse().unwrap_or(0.0);
+                let ey: f64  = tokens[i + 2].parse().unwrap_or(0.0);
+                let c1x: f64 = tokens[i + 3].parse().unwrap_or(0.0);
+                let c1y: f64 = tokens[i + 4].parse().unwrap_or(0.0);
+                let c2x: f64 = tokens[i + 5].parse().unwrap_or(0.0);
+                let c2y: f64 = tokens[i + 6].parse().unwrap_or(0.0);
+                // SVG order: C cp1X,cp1Y cp2X,cp2Y endX,endY
+                path.push_str(&format!(
+                    "C{:.1} {:.1} {:.1} {:.1} {:.1} {:.1}",
+                    ox + c1x * scale, oy - c1y * scale,
+                    ox + c2x * scale, oy - c2y * scale,
+                    ox + ex * scale,  oy - ey * scale,
+                ));
+                i += 7;
+            }
+            "q" if i + 4 < tokens.len() => {
+                // VexFlow order: endX endY cpX cpY
+                let ex: f64 = tokens[i + 1].parse().unwrap_or(0.0);
+                let ey: f64 = tokens[i + 2].parse().unwrap_or(0.0);
+                let cx: f64 = tokens[i + 3].parse().unwrap_or(0.0);
+                let cy: f64 = tokens[i + 4].parse().unwrap_or(0.0);
+                // SVG order: Q cpX,cpY endX,endY
+                path.push_str(&format!(
+                    "Q{:.1} {:.1} {:.1} {:.1}",
+                    ox + cx * scale, oy - cy * scale,
+                    ox + ex * scale, oy - ey * scale,
+                ));
+                i += 5;
+            }
+            _ => { i += 1; }
+        }
     }
+
+    path.push('Z');
+    path
+}
+
+/// Render note flags using VexFlow font glyph outlines.
+///
+/// The glyph is rendered with both fill AND a thin matching stroke so
+/// that sub-pixel-thin connection areas remain visible at our scale.
+fn render_flags(svg: &mut SvgBuilder, stem_x: f64, stem_end_y: f64, count: usize, stem_up: bool) {
+    let outline = match (count, stem_up) {
+        (1, true)  => FLAG_8TH_UP,
+        (1, false) => FLAG_8TH_DOWN,
+        (2, true)  => FLAG_16TH_UP,
+        (2, false) => FLAG_16TH_DOWN,
+        (3, true)  => FLAG_32ND_UP,
+        (3, false) => FLAG_32ND_DOWN,
+        (4, true)  => FLAG_64TH_UP,
+        (4, false) => FLAG_64TH_DOWN,
+        _ => return,
+    };
+
+    let s = FLAG_GLYPH_SCALE;
+    let path = vexflow_outline_to_svg(outline, s, stem_x, stem_end_y);
+    // Fill + thin stroke ensures narrow connecting regions stay visible.
+    svg.path(&path, NOTE_COLOR, NOTE_COLOR, 0.3);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
