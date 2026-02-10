@@ -22,6 +22,42 @@ DOCKER_IMAGE="scorelib-builder"
 RUST_SRC="rust/scorelib"
 IOS_LIB_DIR="ios/SoloBandUltra/lib"
 ANDROID_JNI_DIR="android/app/src/main/jniLibs"
+SHEETMUSIC_SRC="sheetmusic"
+ANDROID_ASSETS_DIR="android/app/src/main/assets/sheetmusic"
+IOS_RESOURCES_DIR="ios/SoloBandUltra/SoloBandUltra/SheetMusic"
+
+# ─── Sync sheet music files ──────────────────────────────────────────
+
+sync_sheetmusic() {
+    echo "═══ Syncing sheet music files ═══"
+
+    mkdir -p "$ANDROID_ASSETS_DIR" "$IOS_RESOURCES_DIR"
+
+    # Remove stale files from targets that no longer exist in source
+    for target_dir in "$ANDROID_ASSETS_DIR" "$IOS_RESOURCES_DIR"; do
+        for f in "$target_dir"/*.musicxml "$target_dir"/*.mxl; do
+            [ -e "$f" ] || continue
+            basename="$(basename "$f")"
+            if [ ! -e "$SHEETMUSIC_SRC/$basename" ]; then
+                echo "  Removing stale: $target_dir/$basename"
+                rm "$f"
+            fi
+        done
+    done
+
+    # Copy all sheet music files from source to both platforms
+    count=0
+    for f in "$SHEETMUSIC_SRC"/*.musicxml "$SHEETMUSIC_SRC"/*.mxl; do
+        [ -e "$f" ] || continue
+        basename="$(basename "$f")"
+        cp "$f" "$ANDROID_ASSETS_DIR/$basename"
+        cp "$f" "$IOS_RESOURCES_DIR/$basename"
+        count=$((count + 1))
+    done
+
+    echo "✓ Synced $count sheet music file(s) to Android assets and iOS Resources"
+    echo ""
+}
 
 # ─── Preflight checks ──────────────────────────────────────────────
 
@@ -147,6 +183,8 @@ run_tests() {
 check_docker
 
 TARGET="${1:-all}"
+
+sync_sheetmusic
 
 case "$TARGET" in
     ios)

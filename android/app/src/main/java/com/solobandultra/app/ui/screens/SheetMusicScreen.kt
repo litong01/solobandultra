@@ -33,17 +33,20 @@ fun SheetMusicScreen(
     var isPlaying by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
 
-    val availableFiles = listOf(
-        "sheetmusic/asa-branca.musicxml",
-        "sheetmusic/童年.mxl",
-        "sheetmusic/chopin-trois-valses.mxl"
-    )
+    val context = LocalContext.current
+
+    // Dynamically discover all .musicxml and .mxl files in the assets/sheetmusic folder
+    val availableFiles = remember {
+        val files = context.assets.list("sheetmusic") ?: emptyArray()
+        files.filter { it.endsWith(".musicxml") || it.endsWith(".mxl") }
+             .sorted()
+             .map { "sheetmusic/$it" }
+    }
     var selectedIndex by remember { mutableIntStateOf(0) }
     var svgContent by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val screenWidthDp = LocalConfiguration.current.screenWidthDp.toFloat()
 
