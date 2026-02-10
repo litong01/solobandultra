@@ -26,7 +26,9 @@ const HEADER_HEIGHT: f64 = 70.0; // space for title + composer
 const FIRST_SYSTEM_TOP: f64 = PAGE_MARGIN_TOP + HEADER_HEIGHT;
 
 const CLEF_SPACE: f64 = 32.0; // horizontal space for clef at system start
-const KEY_SIG_SPACE: f64 = 6.5; // per accidental in key signature
+const KEY_SIG_SHARP_SPACE: f64 = 10.0; // per sharp in key signature (ha=331 * scale + gap)
+const KEY_SIG_FLAT_SPACE: f64 = 8.0; // per flat in key signature (ha=257 * scale + gap)
+const KEY_SIG_NATURAL_SPACE: f64 = 8.0; // per natural in key cancellation
 const TIME_SIG_SPACE: f64 = 24.0; // horizontal space for time signature
 
 const NOTEHEAD_RX: f64 = 5.5; // notehead ellipse x-radius
@@ -413,7 +415,7 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                                 for i in 0..num_naturals.min(positions.len()) {
                                     let ny = staff_y + positions[i] as f64 * 5.0;
                                     render_natural_sign(&mut svg, inline_x, ny);
-                                    inline_x += KEY_SIG_SPACE;
+                                    inline_x += KEY_SIG_NATURAL_SPACE;
                                 }
                                 inline_x += 2.0; // small gap before new key
                             }
@@ -547,7 +549,19 @@ fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], page_width: f6
 
     let content_width = page_width - PAGE_MARGIN_LEFT - PAGE_MARGIN_RIGHT;
     let mut systems: Vec<SystemLayout> = Vec::new();
-    let mut current_y = FIRST_SYSTEM_TOP;
+
+    // If the score has a composer/arranger AND chord symbols in the first few
+    // measures, push the first system down so they don't overlap.
+    let has_composer = score.composer.is_some() || score.arranger.is_some();
+    let has_early_chords = score.parts.iter().any(|p| {
+        p.measures.iter().take(8).any(|m| !m.harmonies.is_empty())
+    });
+    let first_system_top = if has_composer && has_early_chords {
+        FIRST_SYSTEM_TOP + 18.0 // extra line for chord symbols above staff
+    } else {
+        FIRST_SYSTEM_TOP
+    };
+    let mut current_y = first_system_top;
 
     // Use the first part for system grouping (measure count should be same across parts)
     let ref_part = &score.parts[parts_staves[0].0];
@@ -638,7 +652,7 @@ fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], page_width: f6
                 let new_fifths = running_keys[mi].as_ref().map_or(0, |k| k.fifths);
                 let num_cancel = cancellation_natural_count(old_fifths, new_fifths);
                 if num_cancel > 0 {
-                    w += num_cancel as f64 * KEY_SIG_SPACE + 4.0;
+                    w += num_cancel as f64 * KEY_SIG_NATURAL_SPACE + 4.0;
                 }
                 // New key signature
                 let new_width = running_keys[mi].as_ref().map_or(0.0, |k| key_sig_width(Some(k))) + 4.0;
@@ -775,7 +789,7 @@ fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], page_width: f6
                     let new_fifths = running_keys[mi].as_ref().map_or(0, |k| k.fifths);
                     let num_cancel = cancellation_natural_count(pf, new_fifths);
                     if num_cancel > 0 {
-                        left_inset += num_cancel as f64 * KEY_SIG_SPACE + 2.0;
+                        left_inset += num_cancel as f64 * KEY_SIG_NATURAL_SPACE + 2.0;
                     }
                 }
                 // Space for new key signature
@@ -898,8 +912,9 @@ fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], page_width: f6
 
 fn key_sig_width(key: Option<&Key>) -> f64 {
     match key {
-        Some(k) => k.fifths.unsigned_abs() as f64 * KEY_SIG_SPACE,
-        None => 0.0,
+        Some(k) if k.fifths > 0 => k.fifths as f64 * KEY_SIG_SHARP_SPACE,
+        Some(k) if k.fifths < 0 => k.fifths.unsigned_abs() as f64 * KEY_SIG_FLAT_SPACE,
+        _ => 0.0,
     }
 }
 
@@ -1046,26 +1061,26 @@ fn render_key_signature(
     let is_treble = clef.map_or(true, |c| c.sign == "G");
 
     if key.fifths > 0 {
-        // Sharps: F C G D A E B
-        let sharp_positions_treble: &[f64] = &[0.0, 15.0, -5.0, 10.0, 25.0, 5.0, 20.0];
-        let positions = if is_treble { sharp_positions_treble } else {
-            &[10.0, 25.0, 5.0, 20.0, 35.0, 15.0, 30.0] // bass clef
-        };
+        // Sharps: F C G D A E B — line positions matching OSMD
+        // Treble: [0, 1.5, -0.5, 1, 2.5, 0.5, 2] * STAFF_LINE_SPACING
+        let positions_treble: &[f64] = &[0.0, 15.0, -5.0, 10.0, 25.0, 5.0, 20.0];
+        let positions_bass: &[f64]   = &[10.0, 25.0, 5.0, 20.0, 35.0, 15.0, 30.0];
+        let positions = if is_treble { positions_treble } else { positions_bass };
         for i in 0..key.fifths.min(7) as usize {
-            let sx = x + i as f64 * KEY_SIG_SPACE;
+            let sx = x + i as f64 * KEY_SIG_SHARP_SPACE;
             let sy = staff_y + positions[i];
-            svg.sharp_sign(sx, sy);
+            svg.sharp_glyph(sx, sy);
         }
     } else {
-        // Flats: B E A D G C F
-        let flat_positions_treble: &[f64] = &[20.0, 5.0, 25.0, 10.0, 30.0, 15.0, 35.0];
-        let positions = if is_treble { flat_positions_treble } else {
-            &[30.0, 15.0, 35.0, 20.0, 40.0, 25.0, 45.0] // bass clef
-        };
+        // Flats: B E A D G C F — line positions matching OSMD
+        // Treble: [2, 0.5, 2.5, 1, 3, 1.5, 3.5] * STAFF_LINE_SPACING
+        let positions_treble: &[f64] = &[20.0, 5.0, 25.0, 10.0, 30.0, 15.0, 35.0];
+        let positions_bass: &[f64]   = &[30.0, 15.0, 35.0, 20.0, 40.0, 25.0, 45.0];
+        let positions = if is_treble { positions_treble } else { positions_bass };
         for i in 0..key.fifths.unsigned_abs().min(7) as usize {
-            let sx = x + i as f64 * KEY_SIG_SPACE;
+            let sx = x + i as f64 * KEY_SIG_FLAT_SPACE;
             let sy = staff_y + positions[i];
-            svg.flat_sign(sx, sy);
+            svg.flat_glyph(sx, sy);
         }
     }
 }
@@ -1090,20 +1105,9 @@ fn flat_positions(clef: Option<&Clef>) -> Vec<i32> {
     }
 }
 
-/// Render a natural sign (♮) at the given position.
+/// Render a natural sign at the given position using VexFlow glyph.
 fn render_natural_sign(svg: &mut SvgBuilder, x: f64, y: f64) {
-    // Natural sign: two vertical bars with two horizontal bars
-    let cx = x + 2.0;
-    let top = y - 5.0;
-    let bot = y + 5.0;
-    // Left vertical bar (shorter)
-    svg.line(cx - 1.5, top + 2.0, cx - 1.5, bot, NOTE_COLOR, 0.8);
-    // Right vertical bar (shorter)
-    svg.line(cx + 1.5, top, cx + 1.5, bot - 2.0, NOTE_COLOR, 0.8);
-    // Top horizontal bar (slightly slanted)
-    svg.line(cx - 1.5, top + 4.0, cx + 1.5, top + 2.5, NOTE_COLOR, 1.6);
-    // Bottom horizontal bar (slightly slanted)
-    svg.line(cx - 1.5, bot - 2.5, cx + 1.5, bot - 4.0, NOTE_COLOR, 1.6);
+    svg.natural_glyph(x, y);
 }
 
 /// Render a tempo/metronome marking above the staff.
@@ -1868,15 +1872,14 @@ fn render_rest(svg: &mut SvgBuilder, x: f64, staff_y: f64, note_type: Option<&st
 // ═══════════════════════════════════════════════════════════════════════
 
 fn render_accidental(svg: &mut SvgBuilder, x: f64, y: f64, accidental: &str) {
-    let symbol = match accidental {
-        "sharp" => "♯",
-        "flat" => "♭",
-        "natural" => "♮",
-        "double-sharp" => "𝄪",
-        "flat-flat" => "𝄫",
-        _ => return,
-    };
-    svg.text(x, y + 4.0, symbol, 14.0, "normal", NOTE_COLOR, "middle");
+    match accidental {
+        "sharp" => svg.sharp_glyph(x - 4.5, y),
+        "flat" => svg.flat_glyph(x - 3.5, y),
+        "natural" => svg.natural_glyph(x - 3.5, y),
+        "double-sharp" => svg.double_sharp_glyph(x - 5.0, y),
+        "flat-flat" => svg.double_flat_glyph(x - 6.5, y),
+        _ => {}
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1910,6 +1913,29 @@ const FLAG_32ND_DOWN: &str = "m 276 1378 b 284 1379 279 1379 281 1379 b 306 1360
 // ── 64th note flags ─────────────────────────────────────────────────
 const FLAG_64TH_UP: &str = "m -24 -145 l -24 -5 l -20 -5 b 0 -23 -9 -5 -2 -12 b 27 -87 4 -38 14 -66 b 138 -220 53 -136 88 -177 b 235 -328 179 -255 208 -288 b 314 -592 287 -409 314 -501 b 292 -732 314 -639 307 -687 l 289 -742 l 294 -756 b 314 -896 307 -802 314 -849 b 292 -1035 314 -943 307 -991 l 289 -1045 l 294 -1057 b 314 -1197 307 -1104 314 -1152 b 292 -1338 314 -1246 307 -1292 l 289 -1347 l 294 -1360 b 314 -1500 307 -1407 314 -1454 b 273 -1689 314 -1565 300 -1628 b 250 -1712 265 -1710 261 -1712 b 228 -1691 236 -1712 228 -1704 l 228 -1685 l 234 -1675 b 270 -1507 258 -1621 270 -1564 b 98 -1193 270 -1381 209 -1261 b 40 -1174 76 -1179 58 -1174 b -10 -1189 24 -1174 8 -1178 b -20 -1192 -14 -1192 -16 -1192 l -24 -1192 l -24 -1052 l -24 -913 l -20 -913 b 0 -931 -9 -913 -2 -920 b 27 -995 4 -946 14 -974 b 138 -1128 53 -1043 88 -1085 b 257 -1275 190 -1172 228 -1220 b 262 -1283 259 -1279 262 -1283 l 262 -1283 b 269 -1249 264 -1282 268 -1260 b 270 -1206 270 -1233 270 -1220 b 98 -891 270 -1075 206 -957 b 40 -871 76 -877 58 -871 b -10 -886 24 -871 8 -875 b -20 -889 -14 -889 -16 -889 l -24 -889 l -24 -749 l -24 -610 l -20 -610 b 0 -628 -9 -610 -2 -617 b 27 -692 4 -644 14 -671 b 138 -825 53 -741 88 -782 b 257 -973 190 -870 228 -917 b 262 -981 259 -977 262 -981 l 262 -981 b 269 -946 264 -979 268 -957 b 270 -903 270 -931 270 -917 b 98 -588 270 -774 206 -655 b 40 -569 76 -574 58 -569 b -10 -584 24 -569 8 -574 b -20 -587 -14 -587 -16 -587 l -24 -587 l -24 -448 l -24 -308 l -20 -308 b 0 -326 -9 -308 -2 -315 b 27 -390 4 -341 14 -369 b 138 -523 53 -438 88 -480 b 257 -670 190 -567 228 -614 b 262 -678 259 -674 262 -678 b 262 -678 262 -678 262 -678 b 269 -644 264 -677 268 -656 b 270 -601 270 -628 270 -614 b 98 -285 270 -471 206 -352 b 40 -266 76 -273 58 -266 b -10 -281 24 -266 8 -272 b -20 -284 -14 -284 -16 -284 l -24 -284 l -24 -145";
 const FLAG_64TH_DOWN: &str = "m 259 1553 b 265 1553 261 1553 264 1553 b 288 1540 272 1553 277 1550 b 367 1351 340 1493 367 1424 b 336 1221 367 1308 357 1263 l 332 1211 l 333 1208 b 367 1077 356 1170 367 1124 b 336 945 367 1032 357 986 l 332 935 l 333 932 b 367 800 356 893 367 848 b 336 669 367 756 357 710 l 332 659 l 333 656 b 367 523 356 617 367 571 b 345 412 367 485 360 446 b 231 273 322 356 284 310 b -1 19 121 195 27 93 b -17 4 -4 11 -10 5 l -21 4 l -21 134 l -21 265 l -17 265 b 133 291 20 265 96 278 b 318 537 245 328 318 433 b 307 603 318 559 315 582 b 303 614 304 612 304 614 b 298 609 302 614 300 613 b 231 549 281 589 258 567 b -1 295 121 471 27 369 b -17 280 -4 287 -10 281 l -21 280 l -21 410 l -21 541 l -17 541 b 133 567 20 541 96 555 b 318 813 245 605 318 709 b 307 880 318 835 315 859 b 303 891 304 888 304 891 b 298 885 302 891 300 888 b 231 825 281 866 258 843 b -1 571 121 748 27 645 b -17 556 -4 563 -10 557 l -21 556 l -21 687 l -21 817 l -17 817 b 133 843 20 817 96 830 b 318 1089 245 881 318 985 b 307 1156 318 1111 315 1134 b 303 1167 304 1164 304 1167 b 298 1161 302 1167 300 1164 b 231 1102 281 1140 258 1120 b -1 848 121 1024 27 921 b -17 832 -4 839 -10 834 l -21 832 l -21 963 l -21 1093 l -17 1093 b 114 1113 12 1093 78 1103 b 313 1314 215 1142 289 1218 b 318 1364 317 1331 318 1347 b 255 1511 318 1422 295 1478 b 243 1532 247 1519 243 1525 b 259 1553 243 1540 250 1550";
+
+// ═══════════════════════════════════════════════════════════════════════
+// Accidental glyphs — VexFlow font (from OSMD's vexflow_font.js)
+// ═══════════════════════════════════════════════════════════════════════
+// Scale: VexFlow uses point=38, resolution=1000 → 38*72/(1000*100) = 0.02736
+// At this scale with 10px staff line spacing, glyphs match OSMD's rendering.
+
+const ACCIDENTAL_GLYPH_SCALE: f64 = 0.02736;
+
+// Sharp (v18) — two vertical + two slanted horizontal bars
+const SHARP_GLYPH: &str = "m 217 535 b 225 537 220 537 221 537 b 245 524 235 537 242 533 l 246 521 l 247 390 l 247 258 l 273 265 b 306 270 288 269 299 270 b 322 259 315 270 319 267 b 323 208 323 256 323 233 b 322 158 323 184 323 159 b 288 140 318 148 315 147 b 247 130 254 131 247 130 b 247 65 247 130 247 104 b 247 20 247 51 247 36 l 247 -88 l 273 -81 b 306 -76 289 -77 299 -76 b 318 -81 311 -76 315 -77 b 323 -123 323 -87 323 -86 l 323 -138 l 323 -154 b 318 -195 323 -191 323 -190 b 269 -210 314 -199 315 -199 b 249 -216 259 -213 250 -216 l 247 -216 l 247 -349 l 246 -483 l 245 -487 b 225 -499 242 -495 234 -499 b 206 -487 219 -499 210 -495 l 205 -483 l 205 -355 l 205 -227 l 204 -227 l 181 -233 l 138 -244 b 117 -249 127 -247 117 -249 b 115 -385 115 -249 115 -256 l 115 -523 l 114 -526 b 95 -538 110 -534 102 -538 b 74 -526 87 -538 78 -534 l 73 -523 l 73 -391 b 72 -260 73 -269 73 -260 b 72 -260 72 -260 72 -260 b 19 -273 61 -263 23 -273 b 0 -260 10 -273 4 -267 b 0 -209 0 -256 0 -256 l 0 -162 l 1 -158 b 61 -134 5 -148 5 -148 l 73 -131 l 73 -22 b 72 86 73 79 73 86 b 72 86 72 86 72 86 b 19 74 61 83 23 74 b 0 86 10 74 4 79 b 0 137 0 90 0 90 l 0 184 l 1 188 b 61 212 5 198 5 198 l 73 215 l 73 348 l 73 481 l 74 485 b 95 498 78 492 87 498 b 103 495 98 498 100 496 b 114 485 107 494 111 489 l 115 481 l 115 353 l 115 226 l 121 226 b 159 235 123 227 141 231 l 198 247 l 205 248 l 205 384 l 205 521 l 206 524 b 217 535 209 528 212 533 m 205 9 b 205 119 205 70 205 119 l 205 119 b 182 113 204 119 194 116 l 138 102 b 117 97 127 99 117 97 b 115 -12 115 97 115 91 l 115 -122 l 121 -120 b 159 -111 123 -119 141 -115 l 198 -101 l 205 -98 l 205 9";
+
+// Flat (v44) — vertical stem + curved bump
+const FLAT_GLYPH: &str = "m -8 631 b -1 632 -6 632 -4 632 b 19 620 8 632 16 628 b 20 383 20 616 20 616 l 20 148 l 21 151 b 137 199 59 183 99 199 b 182 191 152 199 167 197 b 251 84 227 176 251 134 b 228 0 251 58 243 29 b 100 -142 206 -40 178 -72 l 23 -215 b 0 -229 9 -229 6 -229 b -20 -216 -9 -229 -17 -224 l -21 -212 l -21 201 l -21 616 l -20 620 b -8 631 -17 624 -13 630 m 110 131 b 96 133 106 133 100 133 b 89 133 93 133 91 133 b 24 87 63 129 40 113 l 20 80 l 20 -37 l 20 -156 l 23 -152 b 144 81 96 -72 144 20 l 144 83 b 110 131 144 113 134 126";
+
+// Natural (v4e) — offset vertical bars + horizontal bars
+const NATURAL_GLYPH: &str = "m 10 460 b 20 462 13 462 14 462 b 39 449 28 462 35 458 l 40 446 l 40 326 b 40 205 40 259 40 205 b 127 227 40 205 80 215 b 220 249 196 244 213 249 b 227 247 224 249 225 248 b 238 237 231 245 235 241 l 239 233 l 239 -106 l 239 -448 l 238 -451 b 219 -463 234 -459 225 -463 b 198 -451 210 -463 202 -459 l 197 -448 l 197 -324 b 197 -201 197 -248 197 -201 b 110 -223 196 -201 157 -210 b 17 -245 42 -240 24 -245 b 10 -242 13 -245 13 -244 b 0 -233 6 -241 2 -237 l 0 -230 l 0 108 l 0 446 l 0 449 b 10 460 2 453 6 458 m 197 22 b 197 70 197 41 197 58 b 196 116 197 113 197 116 l 196 116 b 118 97 196 116 160 106 l 40 77 l 40 -18 b 40 -112 40 -69 40 -112 l 119 -93 l 197 -73 l 197 22";
+
+// Double sharp (v7f) — X-shaped cross
+const DOUBLE_SHARP_GLYPH: &str = "m 0 124 l 0 187 l 61 187 l 122 187 l 122 138 l 122 91 l 153 61 l 183 30 l 213 61 l 243 91 l 243 138 l 243 187 l 306 187 l 367 187 l 367 124 l 367 61 l 321 61 l 274 61 l 243 30 l 213 0 l 243 -31 l 274 -62 l 321 -62 l 367 -62 l 367 -124 l 367 -188 l 306 -188 l 243 -188 l 243 -140 l 243 -93 l 213 -62 l 183 -31 l 153 -62 l 122 -93 l 122 -140 l 122 -188 l 61 -188 l 0 -188 l 0 -124 l 0 -62 l 46 -62 l 92 -62 l 123 -31 l 153 0 l 123 30 l 92 61 l 46 61 l 0 61 l 0 124";
+
+// Double flat (v26) — two adjacent flat symbols
+const DOUBLE_FLAT_GLYPH: &str = "m -8 631 b -1 632 -6 632 -4 632 b 19 620 8 632 16 628 b 20 383 20 616 20 616 l 20 148 l 21 151 b 140 199 59 183 102 199 b 206 179 164 199 187 192 l 210 176 l 210 396 l 210 617 l 212 621 b 231 632 216 628 223 632 b 250 620 239 632 247 628 b 251 383 251 616 251 616 l 251 148 l 254 151 b 370 199 291 183 332 199 b 415 191 385 199 400 197 b 483 84 458 176 483 134 b 461 0 483 58 476 29 b 332 -142 439 -40 411 -72 l 255 -215 b 231 -229 240 -229 239 -229 b 216 -223 224 -229 220 -227 b 210 -158 210 -217 210 -223 b 210 -120 210 -148 210 -136 l 210 -29 l 205 -34 b 100 -142 182 -65 159 -88 l 23 -215 b -1 -229 9 -229 6 -229 b -20 -216 -9 -229 -17 -224 l -21 -212 l -21 201 l -21 616 l -20 620 b -8 631 -17 624 -13 630 m 110 131 b 96 133 106 133 100 133 b 89 133 93 133 91 133 b 24 87 63 129 40 113 l 20 80 l 20 -37 l 20 -156 l 23 -152 b 144 81 96 -72 144 20 l 144 83 b 110 131 144 113 134 126 m 341 131 b 328 133 337 133 332 133 b 322 133 326 133 323 133 b 257 87 296 129 273 113 l 251 80 l 251 -37 l 251 -156 l 255 -152 b 375 81 328 -72 375 20 l 375 83 b 341 131 375 113 367 126";
 
 /// Convert a VexFlow glyph outline string to an SVG path `d` attribute.
 ///
@@ -2600,45 +2626,53 @@ C496.768,229.887,478.256,211.365,455.486,211.365z";
         self.rect(x + 4.0, y - 20.0, 1.5, 80.0, NOTE_COLOR, "none", 0.0);
     }
 
-    fn sharp_sign(&mut self, x: f64, y: f64) {
-        // ♯ drawn with two vertical and two horizontal lines
-        svg_sharp(&mut self.elements, x, y);
+    /// Render a sharp accidental glyph using VexFlow font outline.
+    fn sharp_glyph(&mut self, x: f64, y: f64) {
+        let s = ACCIDENTAL_GLYPH_SCALE;
+        let path = vexflow_outline_to_svg(SHARP_GLYPH, s, x, y);
+        self.elements.push(format!(
+            r#"<path d="{}" fill="{}" stroke="none"/>"#,
+            path, NOTE_COLOR
+        ));
     }
 
-    fn flat_sign(&mut self, x: f64, y: f64) {
-        svg_flat(&mut self.elements, x, y);
+    /// Render a flat accidental glyph using VexFlow font outline.
+    fn flat_glyph(&mut self, x: f64, y: f64) {
+        let s = ACCIDENTAL_GLYPH_SCALE;
+        let path = vexflow_outline_to_svg(FLAT_GLYPH, s, x, y);
+        self.elements.push(format!(
+            r#"<path d="{}" fill="{}" stroke="none"/>"#,
+            path, NOTE_COLOR
+        ));
     }
-}
 
-fn svg_sharp(elements: &mut Vec<String>, x: f64, y: f64) {
-    // Two vertical lines (narrower spacing)
-    elements.push(format!(
-        r#"<line x1="{:.1}" y1="{:.1}" x2="{:.1}" y2="{:.1}" stroke="{}" stroke-width="1.0"/>"#,
-        x - 1.0, y - 6.0, x - 1.0, y + 6.0, NOTE_COLOR
-    ));
-    elements.push(format!(
-        r#"<line x1="{:.1}" y1="{:.1}" x2="{:.1}" y2="{:.1}" stroke="{}" stroke-width="1.0"/>"#,
-        x + 1.0, y - 6.0, x + 1.0, y + 6.0, NOTE_COLOR
-    ));
-    // Two slanted horizontal lines (squeezed inward)
-    elements.push(format!(
-        r#"<line x1="{:.1}" y1="{:.1}" x2="{:.1}" y2="{:.1}" stroke="{}" stroke-width="1.6"/>"#,
-        x - 2.8, y - 1.5, x + 2.8, y - 3.0, NOTE_COLOR
-    ));
-    elements.push(format!(
-        r#"<line x1="{:.1}" y1="{:.1}" x2="{:.1}" y2="{:.1}" stroke="{}" stroke-width="1.6"/>"#,
-        x - 2.8, y + 3.0, x + 2.8, y + 1.5, NOTE_COLOR
-    ));
-}
+    /// Render a natural accidental glyph using VexFlow font outline.
+    fn natural_glyph(&mut self, x: f64, y: f64) {
+        let s = ACCIDENTAL_GLYPH_SCALE;
+        let path = vexflow_outline_to_svg(NATURAL_GLYPH, s, x, y);
+        self.elements.push(format!(
+            r#"<path d="{}" fill="{}" stroke="none"/>"#,
+            path, NOTE_COLOR
+        ));
+    }
 
-fn svg_flat(elements: &mut Vec<String>, x: f64, y: f64) {
-    // Vertical line + curved bump (narrower)
-    elements.push(format!(
-        r#"<line x1="{:.1}" y1="{:.1}" x2="{:.1}" y2="{:.1}" stroke="{}" stroke-width="1.0"/>"#,
-        x, y - 10.0, x, y + 3.0, NOTE_COLOR
-    ));
-    elements.push(format!(
-        r#"<path d="M{:.1},{:.1} c2.8,-2.5 5.5,-1.5 4.2,1.5 c-1.4,3.2 -4.2,3.2 -4.2,0.8" fill="none" stroke="{}" stroke-width="1.0"/>"#,
-        x, y - 1.0, NOTE_COLOR
-    ));
+    /// Render a double-sharp accidental glyph using VexFlow font outline.
+    fn double_sharp_glyph(&mut self, x: f64, y: f64) {
+        let s = ACCIDENTAL_GLYPH_SCALE;
+        let path = vexflow_outline_to_svg(DOUBLE_SHARP_GLYPH, s, x, y);
+        self.elements.push(format!(
+            r#"<path d="{}" fill="{}" stroke="none"/>"#,
+            path, NOTE_COLOR
+        ));
+    }
+
+    /// Render a double-flat accidental glyph using VexFlow font outline.
+    fn double_flat_glyph(&mut self, x: f64, y: f64) {
+        let s = ACCIDENTAL_GLYPH_SCALE;
+        let path = vexflow_outline_to_svg(DOUBLE_FLAT_GLYPH, s, x, y);
+        self.elements.push(format!(
+            r#"<path d="{}" fill="{}" stroke="none"/>"#,
+            path, NOTE_COLOR
+        ));
+    }
 }
