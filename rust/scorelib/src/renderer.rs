@@ -248,6 +248,22 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
             );
         }
 
+        // ── Measure number at the start of each system line ──
+        // Placed before the clef, above the top staff.  Measure 1 is omitted
+        // (standard engraving convention — the first measure is self-evident).
+        if let Some(first_ml) = system.measures.first() {
+            let measure_num = first_ml.measure_idx + 1; // 1-based display
+            if measure_num > 1 {
+                let first_part = system.parts.first().unwrap();
+                let top_staff_y = system_y + first_part.y_offset;
+                let color = "#555555";
+                svg.elements.push(format!(
+                    "<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"15\" font-style=\"italic\" fill=\"{}\" text-anchor=\"start\">{}</text>",
+                    PAGE_MARGIN_LEFT - 10.0, top_staff_y - 8.0, color, measure_num
+                ));
+            }
+        }
+
         // ── Render measures ──
         for ml in &system.measures {
             let mx = ml.x;
