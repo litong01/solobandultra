@@ -188,6 +188,10 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
         })
         .collect();
 
+    // Open slurs that carry across systems, keyed by (part_idx, staff_num, slur_number)
+    let mut global_open_slurs: std::collections::HashMap<(usize, usize, i32), SlurStart> =
+        std::collections::HashMap::new();
+
     // Render each system
     for system in &layout.systems {
         let system_y = system.y;
@@ -341,6 +345,37 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
         let lyrics_base_y = (system_lowest_y + LYRICS_PAD_BELOW)
             .max(system_y + LYRICS_MIN_Y_BELOW_STAFF);
 
+        // ── Initialise per-part/staff open slurs from global carry-over ──
+        let mut system_open_slurs: std::collections::HashMap<(usize, usize), std::collections::HashMap<i32, SlurStart>> =
+            std::collections::HashMap::new();
+        for part_info in &system.parts {
+            let pidx = part_info.part_idx;
+            for staff_num in 1..=part_info.num_staves {
+                let mut staff_slurs = std::collections::HashMap::new();
+                // Carry over slurs from the previous system
+                let keys_to_remove: Vec<(usize, usize, i32)> = global_open_slurs.keys()
+                    .filter(|&&(p, s, _)| p == pidx && s == staff_num)
+                    .cloned()
+                    .collect();
+                for key in keys_to_remove {
+                    if let Some(start) = global_open_slurs.remove(&key) {
+                        let staff_y = system_y
+                            + part_info.y_offset
+                            + (staff_num as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP);
+                        let y_offset = start.y - start.staff_y;
+                        staff_slurs.insert(key.2, SlurStart {
+                            x: PAGE_MARGIN_LEFT + CLEF_SPACE,
+                            y: staff_y + y_offset,
+                            stem_up: start.stem_up,
+                            placement: start.placement.clone(),
+                            staff_y,
+                        });
+                    }
+                }
+                system_open_slurs.insert((pidx, staff_num), staff_slurs);
+            }
+        }
+
         // ── Render measures ──
         for ml in &system.measures {
             let mx = ml.x;
@@ -468,6 +503,24 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                         mx, mw,
                     );
 
+                    // Slurs — collect and render for this measure/staff
+                    {
+                        let staff_slurs = system_open_slurs
+                            .entry((pidx, staff_num))
+                            .or_insert_with(std::collections::HashMap::new);
+                        collect_and_render_slurs_for_measure(
+                            &mut svg,
+                            measure,
+                            staff_y,
+                            ps.clefs[staff_num].as_ref(),
+                            ps.divisions,
+                            ps.transpose_octave,
+                            staff_filter,
+                            &ml.beat_x_map,
+                            staff_slurs,
+                        );
+                    }
+
                     // Barlines (per-staff)
                     if staff_num == 1 {
                         render_barlines(&mut svg, measure, mx, mw, staff_y);
@@ -511,6 +564,21 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                     + (last_part.num_staves as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP)
                     + STAFF_HEIGHT;
                 svg.line(mx + mw, top_y, mx + mw, bottom_y, BARLINE_COLOR, BARLINE_WIDTH);
+            }
+        }
+
+        // ── End-of-system slur handling ──
+        // Draw continuation arcs for slurs that are still open (started in
+        // this system but end in a later system), then carry them over to
+        // the global map so the next system can pick them up.
+        for ((pidx, staff_num), staff_slurs) in &system_open_slurs {
+            if !staff_slurs.is_empty() {
+                // Draw continuations to the right edge
+                render_open_slur_continuations(&mut svg, staff_slurs, system.x_end);
+                // Save to global for next-system carry-over
+                for (&slur_num, start) in staff_slurs {
+                    global_open_slurs.insert((*pidx, *staff_num, slur_num), start.clone());
+                }
             }
         }
     }
@@ -1247,6 +1315,19 @@ fn render_timesig_number(svg: &mut SvgBuilder, mut x: f64, y: f64, n: i32, scale
 // Note rendering
 // ═══════════════════════════════════════════════════════════════════════
 
+// ── Grace note constants ─────────────────────────────────────────────
+/// Scale factor for grace notes relative to normal notes (~66%).
+const GRACE_SCALE: f64 = 0.66;
+/// Grace notehead radii (scaled from normal).
+const GRACE_NOTEHEAD_RX: f64 = NOTEHEAD_RX * GRACE_SCALE;
+const GRACE_NOTEHEAD_RY: f64 = NOTEHEAD_RY * GRACE_SCALE;
+/// Grace stem length (scaled).
+const GRACE_STEM_LENGTH: f64 = STEM_LENGTH * GRACE_SCALE;
+/// Grace stem width.
+const GRACE_STEM_WIDTH: f64 = STEM_WIDTH * 0.85;
+/// Grace flag glyph scale.
+const GRACE_FLAG_GLYPH_SCALE: f64 = FLAG_GLYPH_SCALE * GRACE_SCALE;
+
 fn render_notes(
     svg: &mut SvgBuilder,
     measure: &Measure,
@@ -1269,7 +1350,7 @@ fn render_notes(
     // Pre-compute the centre of this measure for whole-measure rests
     let measure_center_x = measure_x + measure_w / 2.0;
 
-    // Collect beam groups for eighth notes and shorter
+    // Collect beam groups for eighth notes and shorter (only non-grace notes)
     let beam_groups = find_beam_groups(measure, staff_filter);
 
     for (i, note) in measure.notes.iter().enumerate() {
@@ -1289,6 +1370,15 @@ fn render_notes(
                 nx
             };
             render_rest(svg, rest_x, staff_y, note.note_type.as_deref(), note.measure_rest);
+            continue;
+        }
+
+        // Grace notes get their own scaled rendering path
+        if note.grace {
+            if let Some(ref pitch) = note.pitch {
+                let note_y = staff_y + pitch_to_staff_y(pitch, clef, transpose_octave);
+                render_grace_note(svg, note, nx, note_y, staff_y);
+            }
             continue;
         }
 
@@ -1361,9 +1451,291 @@ fn render_notes(
         }
     }
 
-    // Render beams
+    // Render beams (for non-grace notes only)
     for group in &beam_groups {
         render_beam_group(svg, measure, &note_positions, staff_y, clef, transpose_octave, group);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Grace note rendering
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Render a single grace note at ~66% scale with smaller notehead, shorter
+/// stem, scaled flag, and optional acciaccatura slash.
+fn render_grace_note(
+    svg: &mut SvgBuilder,
+    note: &Note,
+    nx: f64,
+    note_y: f64,
+    staff_y: f64,
+) {
+    let rx = GRACE_NOTEHEAD_RX;
+    let ry = GRACE_NOTEHEAD_RY;
+
+    // Grace noteheads are always filled
+    svg.elements.push(format!(
+        r#"<ellipse cx="{:.1}" cy="{:.1}" rx="{:.1}" ry="{:.1}" fill="{}" stroke="none" stroke-width="0" transform="rotate(-15,{:.1},{:.1})"/>"#,
+        nx, note_y, rx, ry, NOTE_COLOR, nx, note_y
+    ));
+
+    // Accidental (scaled position)
+    if let Some(ref acc) = note.accidental {
+        render_accidental(svg, nx - rx - 3.0, note_y, acc);
+    }
+
+    // Stem — grace notes always have a stem (they're never whole notes)
+    let stem_up = match note.stem.as_deref() {
+        Some("up") => true,
+        Some("down") => false,
+        _ => note_y >= staff_y + 20.0,
+    };
+
+    let flag_count = note.note_type.as_deref().map_or(1, |nt| match nt {
+        "eighth" => 1,
+        "16th" => 2,
+        "32nd" => 3,
+        "64th" => 4,
+        _ => 1,
+    });
+
+    let stem_extra = match flag_count {
+        2 => 3.0,
+        3 => 6.0,
+        4 => 9.0,
+        _ => 0.0,
+    };
+    let stem_len = GRACE_STEM_LENGTH + stem_extra;
+
+    let (sx, sy1, sy2) = if stem_up {
+        (nx + rx - 0.5, note_y, note_y - stem_len)
+    } else {
+        (nx - rx + 0.5, note_y, note_y + stem_len)
+    };
+    svg.line(sx, sy1, sx, sy2, NOTE_COLOR, GRACE_STEM_WIDTH);
+
+    // Flag (scaled)
+    if flag_count > 0 {
+        render_grace_flags(svg, sx, sy2, flag_count, stem_up);
+    }
+
+    // Acciaccatura slash: a short diagonal line through the stem
+    if note.grace_slash {
+        let slash_len = 7.0;
+        let slash_mid_y = if stem_up {
+            note_y - stem_len * 0.4  // 40% up the stem
+        } else {
+            note_y + stem_len * 0.4
+        };
+        // Slash goes from lower-left to upper-right
+        let (x1, y1) = (sx - slash_len * 0.5, slash_mid_y + slash_len * 0.4);
+        let (x2, y2) = (sx + slash_len * 0.5, slash_mid_y - slash_len * 0.4);
+        svg.line(x1, y1, x2, y2, NOTE_COLOR, 1.0);
+    }
+}
+
+/// Render flags for a grace note at reduced scale.
+fn render_grace_flags(svg: &mut SvgBuilder, stem_x: f64, stem_end_y: f64, count: usize, stem_up: bool) {
+    let outline = match (count, stem_up) {
+        (1, true)  => FLAG_8TH_UP,
+        (1, false) => FLAG_8TH_DOWN,
+        (2, true)  => FLAG_16TH_UP,
+        (2, false) => FLAG_16TH_DOWN,
+        (3, true)  => FLAG_32ND_UP,
+        (3, false) => FLAG_32ND_DOWN,
+        (4, true)  => FLAG_64TH_UP,
+        (4, false) => FLAG_64TH_DOWN,
+        _ => return,
+    };
+
+    let s = GRACE_FLAG_GLYPH_SCALE;
+    let path = vexflow_outline_to_svg(outline, s, stem_x, stem_end_y);
+    svg.path(&path, NOTE_COLOR, NOTE_COLOR, 0.2);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Slur rendering (OSMD-style double-bezier filled shape)
+// ═══════════════════════════════════════════════════════════════════════
+
+const SLUR_COLOR: &str = "#1a1a1a";
+/// Y offset from notehead centre to slur endpoint
+const SLUR_NOTEHEAD_Y_OFFSET: f64 = 3.0;
+/// Slur thickness at endpoints (px)
+const SLUR_ENDPOINT_THICKNESS: f64 = 0.5;
+/// Slur thickness at control points / middle (px)
+const SLUR_MID_THICKNESS: f64 = 1.5;
+/// Factor of horizontal distance used for slur height
+const SLUR_HEIGHT_FACTOR: f64 = 0.15;
+/// Minimum slur arch height (px)
+const SLUR_MIN_HEIGHT: f64 = 5.0;
+/// Maximum slur arch height (px)
+const SLUR_MAX_HEIGHT: f64 = 25.0;
+
+/// Recorded position of a slur start event.
+#[derive(Clone, Debug)]
+struct SlurStart {
+    x: f64,
+    y: f64,
+    stem_up: bool,
+    placement: Option<String>, // from XML
+    staff_y: f64,
+}
+
+/// Collect slur positions for all notes in a single measure/staff and
+/// process start/stop events. When a stop is encountered and a matching
+/// start is found, draw the slur. Open slurs carry across measures via
+/// the `open_slurs` map.
+fn collect_and_render_slurs_for_measure(
+    svg: &mut SvgBuilder,
+    measure: &Measure,
+    staff_y: f64,
+    clef: Option<&Clef>,
+    divisions: i32,
+    transpose_octave: i32,
+    staff_filter: Option<i32>,
+    beat_x_map: &[(f64, f64)],
+    open_slurs: &mut std::collections::HashMap<i32, SlurStart>,
+) {
+    if measure.notes.is_empty() {
+        return;
+    }
+
+    let note_positions = note_x_positions_from_beat_map(&measure.notes, divisions, beat_x_map);
+
+    for (i, note) in measure.notes.iter().enumerate() {
+        // Filter by staff
+        if let Some(sf) = staff_filter {
+            if note.staff.unwrap_or(1) != sf { continue; }
+        }
+
+        if note.slurs.is_empty() || note.rest { continue; }
+
+        let nx = note_positions[i];
+
+        let (note_y, stem_up) = if let Some(ref pitch) = note.pitch {
+            let ny = staff_y + pitch_to_staff_y(pitch, clef, transpose_octave);
+            let su = match note.stem.as_deref() {
+                Some("up") => true,
+                Some("down") => false,
+                _ => ny >= staff_y + 20.0,
+            };
+            (ny, su)
+        } else {
+            (staff_y + 20.0, true)
+        };
+
+        // Process slur events on this note. Process stops first so
+        // a note that is both a stop and a start (chained slurs) closes
+        // the old slur before opening the new one.
+        let mut sorted_events: Vec<&crate::model::SlurEvent> = note.slurs.iter().collect();
+        sorted_events.sort_by(|a, b| {
+            let order = |t: &str| if t == "stop" { 0 } else { 1 };
+            order(&a.slur_type).cmp(&order(&b.slur_type))
+        });
+
+        for ev in &sorted_events {
+            match ev.slur_type.as_str() {
+                "start" => {
+                    open_slurs.insert(ev.number, SlurStart {
+                        x: nx,
+                        y: note_y,
+                        stem_up,
+                        placement: ev.placement.clone(),
+                        staff_y,
+                    });
+                }
+                "stop" => {
+                    if let Some(start) = open_slurs.remove(&ev.number) {
+                        render_slur(svg, &start, nx, note_y, stem_up);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+/// Draw a slur between two note positions using the OSMD double-bezier
+/// filled shape technique.
+fn render_slur(
+    svg: &mut SvgBuilder,
+    start: &SlurStart,
+    end_x: f64,
+    end_y: f64,
+    _end_stem_up: bool,
+) {
+    // Determine placement: honour XML if present, else opposite of stem direction.
+    let above = match start.placement.as_deref() {
+        Some("above") => true,
+        Some("below") => false,
+        _ => {
+            // Opposite of stem: stems up → slur below, stems down → slur above
+            // If start/end disagree, use the start note's stem direction
+            !start.stem_up
+        }
+    };
+
+    let y_dir = if above { -1.0 } else { 1.0 };
+
+    // Start and end points, offset from notehead centre
+    let sx = start.x;
+    let sy = start.y + y_dir * SLUR_NOTEHEAD_Y_OFFSET;
+    let ex = end_x;
+    let ey = end_y + y_dir * SLUR_NOTEHEAD_Y_OFFSET;
+
+    // Horizontal distance
+    let dx = (ex - sx).abs().max(1.0);
+
+    // Arch height — proportional to distance, clamped
+    let height = (dx * SLUR_HEIGHT_FACTOR).clamp(SLUR_MIN_HEIGHT, SLUR_MAX_HEIGHT);
+
+    // Midpoint of the start-end line
+    let mid_y = (sy + ey) / 2.0;
+
+    // Control points at 1/3 and 2/3 of the way, arched in the slur direction
+    let cp1x = sx + dx * 0.25;
+    let cp1y = mid_y + y_dir * height;
+    let cp2x = sx + dx * 0.75;
+    let cp2y = mid_y + y_dir * height;
+
+    // Inner curve (thinner side)
+    // Outer curve = inner offset by thickness in the slur direction
+    let ep_off = SLUR_ENDPOINT_THICKNESS * y_dir;
+    let cp_off = SLUR_MID_THICKNESS * y_dir;
+
+    // Build the filled shape: inner bezier → outer bezier (reversed)
+    let path = format!(
+        "M{:.1},{:.1} C{:.1},{:.1} {:.1},{:.1} {:.1},{:.1} L{:.1},{:.1} C{:.1},{:.1} {:.1},{:.1} {:.1},{:.1} Z",
+        // Inner curve: start → end
+        sx, sy,
+        cp1x, cp1y,
+        cp2x, cp2y,
+        ex, ey,
+        // Outer curve endpoint (shifted)
+        ex, ey + ep_off,
+        // Outer curve control points (reversed, shifted)
+        cp2x, cp2y + cp_off,
+        cp1x, cp1y + cp_off,
+        // Back to outer start
+        sx, sy + ep_off,
+    );
+
+    svg.path(&path, SLUR_COLOR, "none", 0.0);
+}
+
+/// Draw continuation slurs for any still-open slurs at the end of a system.
+/// These are slurs that started but haven't stopped — draw from the start
+/// position to the right edge of the system.
+fn render_open_slur_continuations(
+    svg: &mut SvgBuilder,
+    open_slurs: &std::collections::HashMap<i32, SlurStart>,
+    system_x_end: f64,
+) {
+    for (_number, start) in open_slurs.iter() {
+        // Draw from start to right edge of system, using the start note's
+        // staff_y midline as the end Y (flat continuation to edge)
+        let end_y = start.y; // Keep same Y for a gentle continuation
+        render_slur(svg, start, system_x_end, end_y, start.stem_up);
     }
 }
 
@@ -1602,7 +1974,11 @@ fn compute_note_beat_times(notes: &[Note], divisions: i32) -> Vec<f64> {
         let voice = note.voice.unwrap_or(1);
         let current = voice_times.entry(voice).or_insert(0.0);
 
-        if note.chord {
+        if note.grace {
+            // Grace notes share the beat time of the principal note that follows.
+            // They have duration 0 and do not advance the time cursor.
+            beat_times.push(*current);
+        } else if note.chord {
             // Chord notes share the same time as the previous note in this voice
             beat_times.push(*current);
         } else {
@@ -1729,17 +2105,51 @@ fn lookup_beat_x(beat_x_map: &[(f64, f64)], beat_time: f64) -> f64 {
     best_x
 }
 
+/// Width allocated per grace note (px) — roughly 66% of a normal notehead.
+const GRACE_NOTE_WIDTH: f64 = 8.0;
+
 /// Build a Vec<f64> of x positions for each note in a measure, using the beat map.
+/// Grace notes are offset to the left of their principal note.
 fn note_x_positions_from_beat_map(
     notes: &[Note],
     divisions: i32,
     beat_x_map: &[(f64, f64)],
 ) -> Vec<f64> {
     let beat_times = compute_note_beat_times(notes, divisions);
-    beat_times
+    let mut positions: Vec<f64> = beat_times
         .iter()
         .map(|&bt| lookup_beat_x(beat_x_map, bt))
-        .collect()
+        .collect();
+
+    // Offset grace notes to the left of their principal note.
+    // Walk backwards from each principal note, counting consecutive grace notes
+    // and shifting each leftward by GRACE_NOTE_WIDTH increments.
+    let n = notes.len();
+    let mut i = 0;
+    while i < n {
+        if notes[i].grace {
+            // Count the run of consecutive grace notes starting at i
+            let grace_start = i;
+            while i < n && notes[i].grace {
+                i += 1;
+            }
+            let grace_count = i - grace_start;
+            // The principal note is at index i (or end of measure)
+            let principal_x = if i < n { positions[i] } else {
+                // Grace notes at end with no principal — place at last position
+                positions[grace_start]
+            };
+            // Position each grace note to the left of the principal
+            for (j, gi) in (grace_start..grace_start + grace_count).enumerate() {
+                let offset = (grace_count - j) as f64 * GRACE_NOTE_WIDTH;
+                positions[gi] = principal_x - offset;
+            }
+        } else {
+            i += 1;
+        }
+    }
+
+    positions
 }
 
 fn pitch_to_staff_y(pitch: &Pitch, clef: Option<&Clef>, transpose_octave: i32) -> f64 {
@@ -2120,7 +2530,7 @@ fn find_beam_groups(measure: &Measure, staff_filter: Option<i32>) -> Vec<Vec<usi
     let mut current_group: Vec<usize> = Vec::new();
 
     for (i, note) in measure.notes.iter().enumerate() {
-        if note.chord || note.rest {
+        if note.chord || note.rest || note.grace {
             continue;
         }
         // Skip notes not on the filtered staff

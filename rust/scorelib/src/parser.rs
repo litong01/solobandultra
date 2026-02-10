@@ -424,6 +424,9 @@ fn parse_note(node: &Node) -> Note {
             .attribute("default-y")
             .and_then(|v| v.parse().ok()),
         lyrics: Vec::new(),
+        grace: false,
+        grace_slash: false,
+        slurs: Vec::new(),
     };
 
     for child in node.children().filter(|n| n.is_element()) {
@@ -452,6 +455,12 @@ fn parse_note(node: &Node) -> Note {
                     note.measure_rest = true;
                 }
             }
+            "grace" => {
+                note.grace = true;
+                if child.attribute("slash") == Some("yes") {
+                    note.grace_slash = true;
+                }
+            }
             "chord" => note.chord = true,
             "dot" => note.dot = true,
             "accidental" => {
@@ -459,6 +468,18 @@ fn parse_note(node: &Node) -> Note {
             }
             "tie" => {
                 note.tie = child.attribute("type").map(String::from);
+            }
+            "notations" => {
+                for nc in child.children().filter(|n| n.is_element()) {
+                    if nc.tag_name().name() == "slur" {
+                        let slur_type = nc.attribute("type").unwrap_or("").to_string();
+                        let number = nc.attribute("number")
+                            .and_then(|n| n.parse().ok())
+                            .unwrap_or(1);
+                        let placement = nc.attribute("placement").map(String::from);
+                        note.slurs.push(SlurEvent { slur_type, number, placement });
+                    }
+                }
             }
             "lyric" => {
                 let number = child

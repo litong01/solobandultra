@@ -177,6 +177,23 @@ pub struct Note {
     pub default_y: Option<f64>,
     /// Lyrics attached to this note
     pub lyrics: Vec<Lyric>,
+    /// Whether this is a grace note
+    pub grace: bool,
+    /// Whether this grace note has a slash (acciaccatura vs appoggiatura)
+    pub grace_slash: bool,
+    /// Slur events on this note (start/stop)
+    pub slurs: Vec<SlurEvent>,
+}
+
+/// A slur start or stop event on a note.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SlurEvent {
+    /// "start" or "stop"
+    pub slur_type: String,
+    /// Slur ID for matching pairs (1, 2, 3…)
+    pub number: i32,
+    /// Placement hint from MusicXML: "above" or "below"
+    pub placement: Option<String>,
 }
 
 /// A lyric syllable attached to a note.
