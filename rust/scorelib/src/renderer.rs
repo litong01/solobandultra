@@ -1304,17 +1304,17 @@ fn render_notes(
                         "eighth" => 1,
                         "16th" => 2,
                         "32nd" => 3,
+                        "64th" => 4,
                         _ => 0,
                     });
 
-                    // Extend stem for notes with multiple flags so flags don't overlap notehead.
-                    // Each flag drops ~18 units with 8-unit spacing between origins, so:
-                    //   1 flag → tip at 18 below stem tip (12 above notehead on 30-unit stem) ✓
-                    //   2 flags → tip at 26 below stem tip (need +7 to keep 11 above notehead)
-                    //   3 flags → tip at 34 below stem tip (need +14 to keep 10 above notehead)
+                    // Extend stem for notes with multiple flags so the
+                    // parallel flag lines don't crowd the notehead.
+                    // Each extra flag adds 5 px along the stem.
                     let stem_extra = match flag_count {
-                        2 => 7.0,   // 16th notes
-                        3 => 14.0,  // 32nd notes
+                        2 => 5.0,   // 16th notes
+                        3 => 10.0,  // 32nd notes
+                        4 => 15.0,  // 64th notes
                         _ => 0.0,
                     };
                     let stem_len = STEM_LENGTH + stem_extra;
@@ -1883,53 +1883,28 @@ fn render_accidental(svg: &mut SvgBuilder, x: f64, y: f64, accidental: &str) {
 // ═══════════════════════════════════════════════════════════════════════
 // Flag rendering
 // ═══════════════════════════════════════════════════════════════════════
+// Simple straight-line flags.  Each flag is a short diagonal stroke
+// from the stem tip going outward (right and away from the notehead).
+// For multi-flag notes (16th, 32nd, 64th), parallel strokes are stacked
+// with vertical spacing along the stem.
 
+/// Render note flags (1 = 8th, 2 = 16th, 3 = 32nd, 4 = 64th).
+/// Each flag is a short diagonal line from the stem.
 fn render_flags(svg: &mut SvgBuilder, stem_x: f64, stem_end_y: f64, count: usize, stem_up: bool) {
-    // Flags modelled after standard engraving (see reference images 8th/16th note).
-    // Each flag is a bold, flowing calligraphic swoosh with a distinctive CURL
-    // at the tip — the outer edge bulges right, then the bottom hooks back inward
-    // toward the stem like a breaking wave.
-    //
-    // Shape geometry (stem-up, flag drops down from stem tip):
-    //   - Total drop: ~18 units per flag  (≈60 % of a 30-unit stem)
-    //   - Max horizontal reach: ~9 units right of stem
-    //   - Outer edge: S-curve — first right+down, then curls back left at the tip
-    //   - Inner edge: tighter return curve close to stem
-    //   - Thick near attachment, tapering to thin curled tip
-    let flag_gap = 8.0; // vertical spacing between successive flag origins
+    let flag_dx = 9.0;   // horizontal extent of each flag
+    let flag_dy = 3.5;   // vertical extent (toward notehead)
+    let flag_gap = 5.0;  // spacing between parallel flags along stem
+    let stroke_w = 2.4;  // flag line thickness
+
+    let dir = if stem_up { 1.0 } else { -1.0 };
 
     for i in 0..count {
-        let offset = i as f64 * flag_gap;
-
-        if stem_up {
-            // Flag swoops right+down from stem tip, curling at bottom.
-            let y0 = stem_end_y + offset;
-            // Segment 1: outer edge curves right and down  → (sx+7, y0+10)
-            // Segment 2: curls — pushes right then hooks left → (sx+6, y0+18)
-            // Segment 3: inner edge returns left+up          → (sx+1.5, y0+10)
-            // Segment 4: back to origin                       → (sx, y0)
-            let path = format!(
-                "M{sx:.1},{y0:.1} \
-                 c 1,2  4,5  7,10 \
-                 c 2,3  2,6  -1,8 \
-                 c -1,-1.5  -2.5,-4  -4.5,-8 \
-                 c -0.5,-2  -1,-6  -1.5,-10 Z",
-                sx = stem_x, y0 = y0
-            );
-            svg.path(&path, NOTE_COLOR, "none", 0.0);
-        } else {
-            // Mirror: flag swoops right+up from stem tip, curling at top.
-            let y0 = stem_end_y - offset;
-            let path = format!(
-                "M{sx:.1},{y0:.1} \
-                 c 1,-2  4,-5  7,-10 \
-                 c 2,-3  2,-6  -1,-8 \
-                 c -1,1.5  -2.5,4  -4.5,8 \
-                 c -0.5,2  -1,6  -1.5,10 Z",
-                sx = stem_x, y0 = y0
-            );
-            svg.path(&path, NOTE_COLOR, "none", 0.0);
-        }
+        let offset = i as f64 * flag_gap * dir;
+        let x1 = stem_x;
+        let y1 = stem_end_y + offset;
+        let x2 = stem_x + flag_dx;
+        let y2 = y1 + flag_dy * dir;
+        svg.line(x1, y1, x2, y2, NOTE_COLOR, stroke_w);
     }
 }
 
