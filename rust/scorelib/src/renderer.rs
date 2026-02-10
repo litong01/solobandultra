@@ -26,7 +26,7 @@ const HEADER_HEIGHT: f64 = 70.0; // space for title + composer
 const FIRST_SYSTEM_TOP: f64 = PAGE_MARGIN_TOP + HEADER_HEIGHT;
 
 const CLEF_SPACE: f64 = 32.0; // horizontal space for clef at system start
-const KEY_SIG_SPACE: f64 = 12.0; // per accidental in key signature
+const KEY_SIG_SPACE: f64 = 6.5; // per accidental in key signature
 const TIME_SIG_SPACE: f64 = 24.0; // horizontal space for time signature
 
 const NOTEHEAD_RX: f64 = 5.5; // notehead ellipse x-radius
@@ -1631,34 +1631,34 @@ C496.768,229.887,478.256,211.365,455.486,211.365z";
 }
 
 fn svg_sharp(elements: &mut Vec<String>, x: f64, y: f64) {
-    // Two vertical lines
+    // Two vertical lines (narrower spacing)
     elements.push(format!(
-        r#"<line x1="{:.1}" y1="{:.1}" x2="{:.1}" y2="{:.1}" stroke="{}" stroke-width="1.2"/>"#,
-        x - 1.5, y - 6.0, x - 1.5, y + 6.0, NOTE_COLOR
+        r#"<line x1="{:.1}" y1="{:.1}" x2="{:.1}" y2="{:.1}" stroke="{}" stroke-width="1.0"/>"#,
+        x - 1.0, y - 6.0, x - 1.0, y + 6.0, NOTE_COLOR
     ));
     elements.push(format!(
-        r#"<line x1="{:.1}" y1="{:.1}" x2="{:.1}" y2="{:.1}" stroke="{}" stroke-width="1.2"/>"#,
-        x + 1.5, y - 6.0, x + 1.5, y + 6.0, NOTE_COLOR
+        r#"<line x1="{:.1}" y1="{:.1}" x2="{:.1}" y2="{:.1}" stroke="{}" stroke-width="1.0"/>"#,
+        x + 1.0, y - 6.0, x + 1.0, y + 6.0, NOTE_COLOR
     ));
-    // Two slanted horizontal lines
+    // Two slanted horizontal lines (squeezed inward)
     elements.push(format!(
-        r#"<line x1="{:.1}" y1="{:.1}" x2="{:.1}" y2="{:.1}" stroke="{}" stroke-width="1.8"/>"#,
-        x - 4.0, y - 1.5, x + 4.0, y - 3.5, NOTE_COLOR
+        r#"<line x1="{:.1}" y1="{:.1}" x2="{:.1}" y2="{:.1}" stroke="{}" stroke-width="1.6"/>"#,
+        x - 2.8, y - 1.5, x + 2.8, y - 3.0, NOTE_COLOR
     ));
     elements.push(format!(
-        r#"<line x1="{:.1}" y1="{:.1}" x2="{:.1}" y2="{:.1}" stroke="{}" stroke-width="1.8"/>"#,
-        x - 4.0, y + 3.5, x + 4.0, y + 1.5, NOTE_COLOR
+        r#"<line x1="{:.1}" y1="{:.1}" x2="{:.1}" y2="{:.1}" stroke="{}" stroke-width="1.6"/>"#,
+        x - 2.8, y + 3.0, x + 2.8, y + 1.5, NOTE_COLOR
     ));
 }
 
 fn svg_flat(elements: &mut Vec<String>, x: f64, y: f64) {
-    // Vertical line + curved bump
+    // Vertical line + curved bump (narrower)
     elements.push(format!(
-        r#"<line x1="{:.1}" y1="{:.1}" x2="{:.1}" y2="{:.1}" stroke="{}" stroke-width="1.2"/>"#,
+        r#"<line x1="{:.1}" y1="{:.1}" x2="{:.1}" y2="{:.1}" stroke="{}" stroke-width="1.0"/>"#,
         x, y - 10.0, x, y + 3.0, NOTE_COLOR
     ));
     elements.push(format!(
-        r#"<path d="M{:.1},{:.1} c4,-3 8,-2 6,2 c-2,4 -6,4 -6,1" fill="none" stroke="{}" stroke-width="1.2"/>"#,
+        r#"<path d="M{:.1},{:.1} c2.8,-2.5 5.5,-1.5 4.2,1.5 c-1.4,3.2 -4.2,3.2 -4.2,0.8" fill="none" stroke="{}" stroke-width="1.0"/>"#,
         x, y - 1.0, NOTE_COLOR
     ));
 }
