@@ -2166,18 +2166,18 @@ fn render_harmonies(
             "minor-seventh" => "m7",
             "diminished" => "dim",
             "augmented" => "aug",
-            "half-diminished" => "m7♭5",
+            "half-diminished" => "m7b5",
             other => other,
         };
 
         let alter_str = match harmony.root.alter {
-            Some(a) if a > 0.0 => "♯",
-            Some(a) if a < 0.0 => "♭",
+            Some(a) if a > 0.0 => "#",
+            Some(a) if a < 0.0 => "b",
             _ => "",
         };
 
         let label = format!("{}{}{}", harmony.root.step, alter_str, kind_str);
-        svg.text(x, y, &label, 12.0, "bold", CHORD_COLOR, "start");
+        svg.chord_text(x, y, &label, 12.0, CHORD_COLOR);
     }
 }
 
@@ -2406,6 +2406,29 @@ impl SvgBuilder {
         self.elements.push(format!(
             r#"<text x="{:.1}" y="{:.1}" font-size="{:.0}" font-weight="{}" fill="{}" text-anchor="{}">{}</text>"#,
             x, y, size, weight, fill, anchor, escaped
+        ));
+    }
+
+    fn text_with_spacing(&mut self, x: f64, y: f64, content: &str, size: f64, weight: &str, fill: &str, anchor: &str, letter_spacing: f64) {
+        let escaped = content
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;");
+        self.elements.push(format!(
+            r#"<text x="{:.1}" y="{:.1}" font-size="{:.0}" font-weight="{}" fill="{}" text-anchor="{}" letter-spacing="{:.1}">{}</text>"#,
+            x, y, size, weight, fill, anchor, letter_spacing, escaped
+        ));
+    }
+
+    /// Render chord symbols matching OSMD style: Times New Roman, normal weight, no letter-spacing
+    fn chord_text(&mut self, x: f64, y: f64, content: &str, size: f64, fill: &str) {
+        let escaped = content
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;");
+        self.elements.push(format!(
+            r#"<text x="{:.1}" y="{:.1}" font-family="Times New Roman, serif" font-size="{:.0}" font-weight="normal" fill="{}" text-anchor="start">{}</text>"#,
+            x, y, size, fill, escaped
         ));
     }
 
