@@ -10,7 +10,7 @@ use crate::model::*;
 // Constants (all in SVG user units)
 // ═══════════════════════════════════════════════════════════════════════
 
-const PAGE_WIDTH: f64 = 820.0;
+const DEFAULT_PAGE_WIDTH: f64 = 820.0;
 const PAGE_MARGIN_LEFT: f64 = 50.0;
 const PAGE_MARGIN_RIGHT: f64 = 30.0;
 const PAGE_MARGIN_TOP: f64 = 30.0;
@@ -39,8 +39,8 @@ const STAFF_LINE_WIDTH: f64 = 0.8;
 const LEDGER_LINE_WIDTH: f64 = 0.8;
 const LEDGER_LINE_EXTEND: f64 = 5.0; // how far ledger lines extend past notehead
 
-const MIN_NOTE_SPACING: f64 = 18.0;
-const MIN_MEASURE_WIDTH: f64 = 50.0;
+const MIN_MEASURE_WIDTH: f64 = 38.0;
+const PER_BEAT_MIN_WIDTH: f64 = 55.0; // minimum width per quarter-note beat for packing
 const CHORD_SYMBOL_OFFSET_Y: f64 = -18.0; // above staff
 
 const NOTE_COLOR: &str = "#1a1a1a";
@@ -90,7 +90,16 @@ struct MeasureLayout {
 // ═══════════════════════════════════════════════════════════════════════
 
 /// Render a parsed Score into a complete SVG string.
-pub fn render_score_to_svg(score: &Score) -> String {
+///
+/// `page_width` sets the SVG width in user units. Pass `None` (or 0.0 from FFI)
+/// to use the default (820). On phones, pass the screen width in points so the
+/// renderer fits fewer measures per system and keeps notes readable.
+pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
+    let page_width = match page_width {
+        Some(w) if w > 0.0 => w,
+        _ => DEFAULT_PAGE_WIDTH,
+    };
+
     if score.parts.is_empty() {
         return empty_svg("No parts in score");
     }
@@ -103,15 +112,15 @@ pub fn render_score_to_svg(score: &Score) -> String {
         .map(|(i, part)| (i, detect_staves(part)))
         .collect();
 
-    let layout = compute_layout(score, &parts_staves);
+    let layout = compute_layout(score, &parts_staves, page_width);
 
-    let mut svg = SvgBuilder::new(PAGE_WIDTH, layout.total_height);
+    let mut svg = SvgBuilder::new(page_width, layout.total_height);
 
     // Background
-    svg.rect(0.0, 0.0, PAGE_WIDTH, layout.total_height, "white", "none", 0.0);
+    svg.rect(0.0, 0.0, page_width, layout.total_height, "white", "none", 0.0);
 
     // Title and composer
-    render_header(&mut svg, score);
+    render_header(&mut svg, score, page_width);
 
     // Running attributes per part — (clefs vec indexed 1-based, key, time, divisions, transpose)
     struct PartState {
@@ -352,44 +361,74 @@ fn detect_staves(part: &Part) -> usize {
 // Layout computation
 // ═══════════════════════════════════════════════════════════════════════
 
-fn compute_layout(score: &Score, parts_staves: &[(usize, usize)]) -> ScoreLayout {
+fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], page_width: f64) -> ScoreLayout {
     // parts_staves: Vec of (part_idx, num_staves) for each part
 
-    let content_width = PAGE_WIDTH - PAGE_MARGIN_LEFT - PAGE_MARGIN_RIGHT;
+    let content_width = page_width - PAGE_MARGIN_LEFT - PAGE_MARGIN_RIGHT;
     let mut systems: Vec<SystemLayout> = Vec::new();
     let mut current_y = FIRST_SYSTEM_TOP;
 
     // Use the first part for system grouping (measure count should be same across parts)
     let ref_part = &score.parts[parts_staves[0].0];
 
-    // Group measures into systems based on new-system hints
+    // OSMD-inspired layout: use musical time (beats from time signature) to
+    // determine measure widths. Measures with the same time signature get
+    // equal width. This is standard in professional engraving.
+
+    // Scan for time signatures to compute beat duration per measure
+    // (in quarter-note equivalents: e.g. 2/4 → 2.0, 3/4 → 3.0, 6/8 → 3.0)
+    let mut measure_beats: Vec<f64> = Vec::with_capacity(ref_part.measures.len());
+    let mut current_beats = 4.0; // default 4/4
+    for measure in &ref_part.measures {
+        if let Some(ref attrs) = measure.attributes {
+            if let Some(ref ts) = attrs.time {
+                current_beats = ts.beats as f64 * 4.0 / ts.beat_type as f64;
+            }
+        }
+        // Implicit (pickup) measures: scale by actual content vs full bar
+        if measure.implicit {
+            // Use half the normal beat count as a reasonable estimate for pickups
+            measure_beats.push((current_beats * 0.5).max(1.0));
+        } else {
+            measure_beats.push(current_beats);
+        }
+    }
+
+    // Compute the minimum packing width for each measure based on beat duration
+    let measure_min_widths: Vec<f64> = measure_beats
+        .iter()
+        .map(|&beats| (beats * PER_BEAT_MIN_WIDTH).max(MIN_MEASURE_WIDTH))
+        .collect();
+
+    // Pre-compute prefix widths
+    let initial_key = score.parts.iter()
+        .flat_map(|p| p.measures.iter())
+        .find_map(|m| m.attributes.as_ref().and_then(|a| a.key.as_ref()));
+    let first_prefix = CLEF_SPACE + key_sig_width(initial_key) + TIME_SIG_SPACE;
+    let available_first = content_width - first_prefix;
+    let later_prefix = CLEF_SPACE + key_sig_width(initial_key);
+    let available_later = content_width - later_prefix;
+
     let mut system_groups: Vec<Vec<usize>> = Vec::new();
     let mut current_group: Vec<usize> = Vec::new();
+    let mut current_width = 0.0;
+    let mut is_first_system = true;
 
-    for (i, measure) in ref_part.measures.iter().enumerate() {
-        if measure.new_system && !current_group.is_empty() {
+    for (mi, &min_w) in measure_min_widths.iter().enumerate() {
+        let available = if is_first_system { available_first } else { available_later };
+
+        if !current_group.is_empty() && current_width + min_w > available {
             system_groups.push(current_group);
             current_group = Vec::new();
+            current_width = 0.0;
+            is_first_system = false;
         }
-        current_group.push(i);
+        current_group.push(mi);
+        current_width += min_w;
     }
     if !current_group.is_empty() {
         system_groups.push(current_group);
     }
-
-    // If no system breaks were found, auto-layout with ~4 measures per system
-    if system_groups.len() <= 1 && ref_part.measures.len() > 4 {
-        system_groups.clear();
-        let measures_per_system = 4;
-        for chunk in (0..ref_part.measures.len()).collect::<Vec<_>>().chunks(measures_per_system) {
-            system_groups.push(chunk.to_vec());
-        }
-    }
-
-    // Get initial key signature for width calculation (from any part)
-    let initial_key = score.parts.iter()
-        .flat_map(|p| p.measures.iter())
-        .find_map(|m| m.attributes.as_ref().and_then(|a| a.key.as_ref()));
 
     // Total staves across all parts
     let total_staves: usize = parts_staves.iter().map(|&(_, ns)| ns).sum();
@@ -407,24 +446,12 @@ fn compute_layout(score: &Score, parts_staves: &[(usize, usize)]) -> ScoreLayout
         let x_end = PAGE_MARGIN_LEFT + content_width;
         let available = x_end - x_start;
 
-        // Distribute measure widths proportionally — take max weight across all parts
+        // Distribute measure widths proportionally by beat duration (from
+        // time signature). Measures with the same time signature get equal
+        // width — standard in professional music engraving (OSMD approach).
         let measure_weights: Vec<f64> = group
             .iter()
-            .map(|&mi| {
-                parts_staves
-                    .iter()
-                    .map(|&(pidx, _)| {
-                        let part = &score.parts[pidx];
-                        if mi < part.measures.len() {
-                            let m = &part.measures[mi];
-                            let note_count = m.notes.len().max(1) as f64;
-                            (note_count * MIN_NOTE_SPACING).max(MIN_MEASURE_WIDTH)
-                        } else {
-                            MIN_MEASURE_WIDTH
-                        }
-                    })
-                    .fold(0.0f64, f64::max)
-            })
+            .map(|&mi| measure_beats[mi])
             .collect();
 
         let total_weight: f64 = measure_weights.iter().sum();
@@ -527,8 +554,8 @@ fn key_sig_width(key: Option<&Key>) -> f64 {
 // Header rendering
 // ═══════════════════════════════════════════════════════════════════════
 
-fn render_header(svg: &mut SvgBuilder, score: &Score) {
-    let center_x = PAGE_WIDTH / 2.0;
+fn render_header(svg: &mut SvgBuilder, score: &Score, page_width: f64) {
+    let center_x = page_width / 2.0;
 
     // Title
     if let Some(ref title) = score.title {
@@ -549,7 +576,7 @@ fn render_header(svg: &mut SvgBuilder, score: &Score) {
         } else {
             composer.clone()
         };
-        svg.text(PAGE_WIDTH - PAGE_MARGIN_RIGHT, PAGE_MARGIN_TOP + 55.0,
+        svg.text(page_width - PAGE_MARGIN_RIGHT, PAGE_MARGIN_TOP + 55.0,
                  &label, 11.0, "normal", HEADER_COLOR, "end");
     }
 }
@@ -807,7 +834,7 @@ fn compute_beat_x_map(
     mx: f64,
     mw: f64,
 ) -> Vec<(f64, f64)> {
-    let padding = 8.0;
+    let padding = 14.0;
     let usable_width = mw - padding * 2.0;
 
     // Collect all unique beat times across all parts

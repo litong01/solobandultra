@@ -14,21 +14,23 @@ object ScoreLib {
 
     /**
      * Render a MusicXML file at the given path to SVG.
+     * @param pageWidth SVG width in user-units (pass 0f for the default 820).
      */
-    external fun renderFile(path: String): String?
+    external fun renderFile(path: String, pageWidth: Float): String?
 
     /**
      * Render MusicXML bytes to SVG.
+     * @param pageWidth SVG width in user-units (pass 0f for the default 820).
      */
-    external fun renderBytes(data: ByteArray, extension: String?): String?
+    external fun renderBytes(data: ByteArray, extension: String?, pageWidth: Float): String?
 
     /**
      * Render a MusicXML asset file to SVG.
-     * Copies the asset to a temp file and renders it.
+     * @param pageWidth SVG width in user-units (pass 0f for the default 820).
      */
-    fun renderAsset(context: Context, assetPath: String): String? {
+    fun renderAsset(context: Context, assetPath: String, pageWidth: Float = 0f): String? {
         val extension = assetPath.substringAfterLast('.', "")
         val bytes = context.assets.open(assetPath).use { it.readBytes() }
-        return renderBytes(bytes, extension.ifEmpty { null })
+        return renderBytes(bytes, extension.ifEmpty { null }, pageWidth)
     }
 }

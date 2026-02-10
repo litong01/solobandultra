@@ -16,7 +16,7 @@ fn output_dir() -> PathBuf {
 #[test]
 fn render_asa_branca_svg() {
     let path = sheetmusic_dir().join("asa-branca.musicxml");
-    let svg = render_file_to_svg(&path).expect("Failed to render asa-branca");
+    let svg = render_file_to_svg(&path, None).expect("Failed to render asa-branca");
 
     // Basic SVG structure checks
     assert!(svg.starts_with("<svg"), "Output should be SVG");
@@ -40,7 +40,7 @@ fn render_asa_branca_svg() {
 #[test]
 fn render_tongnian_svg() {
     let path = sheetmusic_dir().join("童年.mxl");
-    let svg = render_file_to_svg(&path).expect("Failed to render 童年");
+    let svg = render_file_to_svg(&path, None).expect("Failed to render 童年");
 
     assert!(svg.starts_with("<svg"));
     assert!(svg.contains("童年"), "SVG should contain Chinese title");
@@ -56,7 +56,7 @@ fn render_tongnian_svg() {
 #[test]
 fn render_chopin_trois_valses_svg() {
     let path = sheetmusic_dir().join("chopin-trois-valses.mxl");
-    let svg = render_file_to_svg(&path).expect("Failed to render chopin-trois-valses");
+    let svg = render_file_to_svg(&path, None).expect("Failed to render chopin-trois-valses");
 
     assert!(svg.starts_with("<svg"));
     assert!(svg.contains("</svg>"));
@@ -72,10 +72,51 @@ fn render_chopin_trois_valses_svg() {
 fn render_produces_valid_svg_dimensions() {
     let path = sheetmusic_dir().join("asa-branca.musicxml");
     let score = parse_file(&path).unwrap();
-    let svg = render_score_to_svg(&score);
+    let svg = render_score_to_svg(&score, None);
 
     // Check viewBox is present
     assert!(svg.contains("viewBox="), "SVG should have viewBox");
     assert!(svg.contains("width="), "SVG should have width");
     assert!(svg.contains("height="), "SVG should have height");
+}
+
+#[test]
+fn render_narrow_phone_width() {
+    // Simulate a phone screen (390pt wide)
+    let phone_width = Some(390.0);
+
+    let path = sheetmusic_dir().join("asa-branca.musicxml");
+    let score = parse_file(&path).unwrap();
+
+    let svg_wide = render_score_to_svg(&score, None);
+    let svg_narrow = render_score_to_svg(&score, phone_width);
+
+    // Narrow SVG should be taller (more systems) since fewer measures fit per line
+    assert!(svg_narrow.contains("viewBox=\"0 0 390"));
+    assert!(svg_wide.contains("viewBox=\"0 0 820"));
+
+    // Narrow SVG should have more systems → taller total height
+    let height_wide = extract_height(&svg_wide);
+    let height_narrow = extract_height(&svg_narrow);
+    assert!(
+        height_narrow > height_wide,
+        "Narrow layout ({}) should be taller than wide layout ({})",
+        height_narrow, height_wide
+    );
+
+    // Write both for visual comparison
+    let out_wide = output_dir().join("asa-branca-wide.svg");
+    let out_narrow = output_dir().join("asa-branca-phone.svg");
+    std::fs::write(&out_wide, &svg_wide).ok();
+    std::fs::write(&out_narrow, &svg_narrow).ok();
+    println!("✓ Wide (820): height={}, Narrow (390): height={}", height_wide, height_narrow);
+}
+
+fn extract_height(svg: &str) -> f64 {
+    // Extract height from: height="1234"
+    svg.split("height=\"")
+        .nth(1)
+        .and_then(|s| s.split('"').next())
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or(0.0)
 }

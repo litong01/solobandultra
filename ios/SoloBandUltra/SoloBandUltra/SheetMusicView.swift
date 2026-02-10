@@ -7,6 +7,7 @@ struct SheetMusicView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var selectedFile: String = "asa-branca.musicxml"
+    @State private var lastRenderedWidth: CGFloat = 0
 
     private let availableFiles = [
         "asa-branca.musicxml",
@@ -15,55 +16,66 @@ struct SheetMusicView: View {
     ]
 
     var body: some View {
-        VStack(spacing: 0) {
-            // File picker
-            Picker("Score", selection: $selectedFile) {
-                ForEach(availableFiles, id: \.self) { file in
-                    Text(file).tag(file)
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                // File picker
+                Picker("Score", selection: $selectedFile) {
+                    ForEach(availableFiles, id: \.self) { file in
+                        Text(file).tag(file)
+                    }
                 }
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .onChange(of: selectedFile) { _ in
-                loadScore()
-            }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .onChange(of: selectedFile) { _ in
+                    loadScore(width: geometry.size.width)
+                }
 
-            // Score display
-            if isLoading {
-                ProgressView("Rendering score...")
+                // Score display
+                if isLoading {
+                    ProgressView("Rendering score...")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let error = errorMessage {
+                    VStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 40))
+                            .foregroundStyle(.secondary)
+                        Text(error)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let error = errorMessage {
-                VStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.system(size: 40))
+                } else if let svg = svgContent {
+                    SVGWebView(svgString: svg)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    Text("No score loaded")
                         .foregroundStyle(.secondary)
-                    Text(error)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .padding()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let svg = svgContent {
-                SVGWebView(svgString: svg)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                Text("No score loaded")
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-        }
-        .background(Color(.systemBackground))
-        .onAppear {
-            loadScore()
+            .background(Color(.systemBackground))
+            .onAppear {
+                loadScore(width: geometry.size.width)
+            }
+            .onChange(of: geometry.size.width) { newWidth in
+                // Re-render when width changes (e.g. device rotation)
+                if abs(newWidth - lastRenderedWidth) > 10 {
+                    loadScore(width: newWidth)
+                }
+            }
         }
     }
 
-    private func loadScore() {
+    private func loadScore(width: CGFloat) {
         isLoading = true
         errorMessage = nil
         svgContent = nil
+        lastRenderedWidth = width
+
+        let pageWidth = Double(width)
 
         DispatchQueue.global(qos: .userInitiated).async {
             // Find the file in the app bundle
@@ -79,8 +91,8 @@ struct SheetMusicView: View {
                 return
             }
 
-            // Render using the Rust library
-            let svg = ScoreLib.renderFile(at: url.path)
+            // Render using the Rust library, passing actual view width for responsive layout
+            let svg = ScoreLib.renderFile(at: url.path, pageWidth: pageWidth)
 
             DispatchQueue.main.async {
                 isLoading = false

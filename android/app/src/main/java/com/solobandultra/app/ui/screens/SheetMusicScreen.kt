@@ -13,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -44,15 +45,16 @@ fun SheetMusicScreen(
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp.toFloat()
 
-    fun loadScore(fileIndex: Int) {
+    fun loadScore(fileIndex: Int, pageWidth: Float) {
         isLoading = true
         errorMessage = null
         svgContent = null
         scope.launch {
             val svg = withContext(Dispatchers.IO) {
                 try {
-                    ScoreLib.renderAsset(context, availableFiles[fileIndex])
+                    ScoreLib.renderAsset(context, availableFiles[fileIndex], pageWidth)
                 } catch (e: Exception) {
                     null
                 }
@@ -66,8 +68,9 @@ fun SheetMusicScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
-        loadScore(selectedIndex)
+    // Re-render when screen width changes (e.g. device rotation)
+    LaunchedEffect(screenWidthDp, selectedIndex) {
+        loadScore(selectedIndex, screenWidthDp)
     }
 
     Scaffold(
@@ -120,7 +123,6 @@ fun SheetMusicScreen(
                         selected = selectedIndex == index,
                         onClick = {
                             selectedIndex = index
-                            loadScore(index)
                         },
                         text = {
                             Text(file.substringAfterLast('/'))

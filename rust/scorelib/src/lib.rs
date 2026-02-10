@@ -70,15 +70,29 @@ pub fn score_to_json(score: &Score) -> Result<String, String> {
 
 /// Parse a MusicXML file and render it directly to SVG.
 /// Convenience function combining parsing and rendering.
-pub fn render_file_to_svg<P: AsRef<std::path::Path>>(path: P) -> Result<String, String> {
+///
+/// `page_width` sets the SVG width in user units. Pass `None` to use the
+/// default (820). On phones, pass the screen width in points so the renderer
+/// fits fewer measures per system and keeps notes readable.
+pub fn render_file_to_svg<P: AsRef<std::path::Path>>(
+    path: P,
+    page_width: Option<f64>,
+) -> Result<String, String> {
     let score = parse_file(path)?;
-    Ok(render_score_to_svg(&score))
+    Ok(render_score_to_svg(&score, page_width))
 }
 
 /// Parse MusicXML bytes and render to SVG.
-pub fn render_bytes_to_svg(data: &[u8], extension: Option<&str>) -> Result<String, String> {
+///
+/// `page_width` sets the SVG width in user units. Pass `None` to use the
+/// default (820).
+pub fn render_bytes_to_svg(
+    data: &[u8],
+    extension: Option<&str>,
+    page_width: Option<f64>,
+) -> Result<String, String> {
     let score = parse_bytes(data, extension)?;
-    Ok(render_score_to_svg(&score))
+    Ok(render_score_to_svg(&score, page_width))
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -91,10 +105,15 @@ use std::os::raw::c_char;
 /// Parse a MusicXML file and return SVG as a C string.
 /// The caller must free the returned string with `scorelib_free_string`.
 ///
+/// `page_width` sets the SVG width in user units. Pass 0.0 to use the default.
+///
 /// # Safety
 /// `path` must be a valid null-terminated UTF-8 C string.
 #[no_mangle]
-pub unsafe extern "C" fn scorelib_render_file(path: *const c_char) -> *mut c_char {
+pub unsafe extern "C" fn scorelib_render_file(
+    path: *const c_char,
+    page_width: f64,
+) -> *mut c_char {
     if path.is_null() {
         return std::ptr::null_mut();
     }
@@ -104,7 +123,9 @@ pub unsafe extern "C" fn scorelib_render_file(path: *const c_char) -> *mut c_cha
         Err(_) => return std::ptr::null_mut(),
     };
 
-    match render_file_to_svg(path_str) {
+    let pw = if page_width > 0.0 { Some(page_width) } else { None };
+
+    match render_file_to_svg(path_str, pw) {
         Ok(svg) => CString::new(svg).unwrap_or_default().into_raw(),
         Err(_) => std::ptr::null_mut(),
     }
@@ -113,6 +134,8 @@ pub unsafe extern "C" fn scorelib_render_file(path: *const c_char) -> *mut c_cha
 /// Parse MusicXML bytes and return SVG as a C string.
 /// The caller must free the returned string with `scorelib_free_string`.
 ///
+/// `page_width` sets the SVG width in user units. Pass 0.0 to use the default.
+///
 /// # Safety
 /// `data` must point to `len` valid bytes. `extension` may be null.
 #[no_mangle]
@@ -120,6 +143,7 @@ pub unsafe extern "C" fn scorelib_render_bytes(
     data: *const u8,
     len: usize,
     extension: *const c_char,
+    page_width: f64,
 ) -> *mut c_char {
     if data.is_null() || len == 0 {
         return std::ptr::null_mut();
@@ -131,7 +155,9 @@ pub unsafe extern "C" fn scorelib_render_bytes(
         unsafe { CStr::from_ptr(extension) }.to_str().ok()
     };
 
-    match render_bytes_to_svg(bytes, ext) {
+    let pw = if page_width > 0.0 { Some(page_width) } else { None };
+
+    match render_bytes_to_svg(bytes, ext, pw) {
         Ok(svg) => CString::new(svg).unwrap_or_default().into_raw(),
         Err(_) => std::ptr::null_mut(),
     }
