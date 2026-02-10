@@ -1468,16 +1468,25 @@ impl SvgBuilder {
         ));
     }
 
-    fn notehead(&mut self, cx: f64, cy: f64, filled: bool, is_whole: bool) {
-        let rx = if is_whole { NOTEHEAD_RX + 1.5 } else { NOTEHEAD_RX };
+    fn notehead(&mut self, cx: f64, cy: f64, filled: bool, _is_whole: bool) {
+        // All noteheads share the same oval shape and size.
+        // The only difference: filled (quarter, eighth, etc.) vs unfilled (half, whole).
+        let rx = NOTEHEAD_RX;
         let ry = NOTEHEAD_RY;
-        let fill = if filled { NOTE_COLOR } else { "none" };
-        let stroke = if filled { "none" } else { NOTE_COLOR };
-        let sw = if filled { 0.0 } else { 1.5 };
-        self.elements.push(format!(
-            r#"<ellipse cx="{:.1}" cy="{:.1}" rx="{:.1}" ry="{:.1}" fill="{}" stroke="{}" stroke-width="{:.1}" transform="rotate(-15,{:.1},{:.1})"/>"#,
-            cx, cy, rx, ry, fill, stroke, sw, cx, cy
-        ));
+        if filled {
+            self.elements.push(format!(
+                r#"<ellipse cx="{:.1}" cy="{:.1}" rx="{:.1}" ry="{:.1}" fill="{}" stroke="none" stroke-width="0" transform="rotate(-15,{:.1},{:.1})"/>"#,
+                cx, cy, rx, ry, NOTE_COLOR, cx, cy
+            ));
+        } else {
+            // Unfilled: draw the same oval outline with a thicker inward stroke
+            // so the outer boundary matches the filled noteheads exactly.
+            let sw = 2.0;
+            self.elements.push(format!(
+                r#"<ellipse cx="{:.1}" cy="{:.1}" rx="{:.1}" ry="{:.1}" fill="none" stroke="{}" stroke-width="{:.1}" transform="rotate(-15,{:.1},{:.1})"/>"#,
+                cx, cy, rx - sw / 2.0, ry - sw / 2.0, NOTE_COLOR, sw, cx, cy
+            ));
+        }
     }
 
     fn beam_line(&mut self, x1: f64, y1: f64, x2: f64, y2: f64, thickness: f64) {
