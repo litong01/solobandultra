@@ -76,6 +76,8 @@ pub struct Measure {
     pub harmonies: Vec<Harmony>,
     /// Barlines (repeat signs, double bars, etc.)
     pub barlines: Vec<Barline>,
+    /// Direction elements (tempo, dynamics, text expressions)
+    pub directions: Vec<Direction>,
     /// Whether this measure starts a new system (line break)
     pub new_system: bool,
     /// Whether this measure starts a new page
@@ -244,6 +246,30 @@ pub struct Ending {
     pub ending_type: String,
     /// Display text
     pub text: Option<String>,
+}
+
+/// A direction element (tempo, dynamics, text expressions, etc.).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Direction {
+    /// Placement: "above" or "below" the staff
+    pub placement: Option<String>,
+    /// Tempo from <sound tempo="..."> (in BPM)
+    pub sound_tempo: Option<f64>,
+    /// Metronome marking from <direction-type>/<metronome>
+    pub metronome: Option<MetronomeMark>,
+    /// Text words from <direction-type>/<words> (e.g., "Allegro", "rit.")
+    pub words: Option<String>,
+}
+
+/// A metronome marking (e.g., quarter = 120).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetronomeMark {
+    /// Beat unit: "whole", "half", "quarter", "eighth", etc.
+    pub beat_unit: String,
+    /// Beats per minute
+    pub per_minute: i32,
+    /// Whether the beat unit is dotted
+    pub dotted: bool,
 }
 
 impl Score {

@@ -112,6 +112,32 @@ fn render_narrow_phone_width() {
     println!("✓ Wide (820): height={}, Narrow (390): height={}", height_wide, height_narrow);
 }
 
+#[test]
+fn render_blue_bag_folly_svg() {
+    let path = sheetmusic_dir().join("blue-bag-folly.musicxml");
+    let svg = render_file_to_svg(&path, None).expect("Failed to render blue-bag-folly");
+
+    // Basic SVG structure checks
+    assert!(svg.starts_with("<svg"), "Output should be SVG");
+    assert!(svg.contains("</svg>"), "SVG should be closed");
+    assert!(svg.contains("Blue Bag Folly"), "SVG should contain title");
+
+    // Should have staff lines
+    assert!(svg.contains("<line"), "SVG should contain lines (staff lines)");
+
+    // Should have noteheads
+    assert!(svg.contains("<ellipse"), "SVG should contain ellipses (noteheads)");
+
+    // Non-trivial output
+    assert!(svg.len() > 10000, "SVG should be substantial (got {} bytes)", svg.len());
+
+    // Write to file for visual inspection
+    let out = output_dir().join("blue-bag-folly.svg");
+    std::fs::write(&out, &svg).expect("Failed to write SVG");
+    println!("✓ Rendered blue-bag-folly.svg ({} bytes)", svg.len());
+    println!("  Output: {}", out.display());
+}
+
 fn extract_height(svg: &str) -> f64 {
     // Extract height from: height="1234"
     svg.split("height=\"")

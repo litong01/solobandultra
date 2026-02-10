@@ -78,11 +78,17 @@ struct SystemLayout {
     total_staves: usize, // total staves across all parts
 }
 
+#[allow(dead_code)]
 struct MeasureLayout {
     measure_idx: usize,
     x: f64,
     width: f64,
     beat_x_map: Vec<(f64, f64)>, // (beat_time, x_position)
+    has_key_change: bool,
+    has_time_change: bool,
+    prev_key_fifths: Option<i32>,  // previous key (for cancellation naturals)
+    left_inset: f64,  // extra left padding for inline key/time changes
+    right_inset: f64, // extra right padding for repeat barlines
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -183,6 +189,40 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
     // Render each system
     for system in &layout.systems {
         let system_y = system.y;
+
+        // Pre-update part states from the first measure of this system so the
+        // system prefix (clef, key, time) reflects changes that occur at the
+        // system boundary rather than lagging one system behind.
+        if let Some(first_ml) = system.measures.first() {
+            for part_info in &system.parts {
+                let pidx = part_info.part_idx;
+                let part = &score.parts[pidx];
+                if first_ml.measure_idx < part.measures.len() {
+                    let measure = &part.measures[first_ml.measure_idx];
+                    if let Some(ref attrs) = measure.attributes {
+                        let ps = &mut part_states[pidx];
+                        for clef in &attrs.clefs {
+                            let idx = clef.number as usize;
+                            if idx < ps.clefs.len() {
+                                ps.clefs[idx] = Some(clef.clone());
+                            }
+                        }
+                        if let Some(ref k) = attrs.key {
+                            ps.key = Some(k.clone());
+                        }
+                        if let Some(ref t) = attrs.time {
+                            ps.time = Some(t.clone());
+                        }
+                        if let Some(d) = attrs.divisions {
+                            ps.divisions = d;
+                        }
+                        if let Some(ref t) = attrs.transpose {
+                            ps.transpose_octave = t.octave_change.unwrap_or(0);
+                        }
+                    }
+                }
+            }
+        }
 
         // ── Staff lines, clefs, key/time signatures per part ──
         for part_info in &system.parts {
@@ -306,6 +346,67 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                         + part_info.y_offset
                         + (staff_num as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP);
 
+                    // ── Inline key/time signature changes ──
+                    // Render at the start of the measure (after barline) when a
+                    // mid-system change occurs (system-start changes are handled
+                    // by the system prefix rendering above).
+                    // Start inline_x after any left-side barline decorations
+                    // (forward repeats extend ~12px from mx).
+                    let mut inline_x = mx + 10.0;
+                    for barline in &measure.barlines {
+                        if barline.location == "left" {
+                            let is_repeat = barline.repeat.is_some();
+                            let is_heavy = barline.bar_style.as_deref() == Some("heavy-light")
+                                || barline.bar_style.as_deref() == Some("light-heavy");
+                            if is_repeat || is_heavy {
+                                // Forward repeat: heavy bar + thin bar + dots at mx+10 (r=2)
+                                inline_x = inline_x.max(mx + 14.0);
+                            }
+                        }
+                    }
+                    if ml.has_key_change {
+                        // Cancellation naturals for the old key (only when needed)
+                        if let Some(prev_fifths) = ml.prev_key_fifths {
+                            let new_fifths = ps.key.as_ref().map_or(0, |k| k.fifths);
+                            let num_naturals = cancellation_natural_count(prev_fifths, new_fifths) as usize;
+                            if num_naturals > 0 {
+                                let positions = if prev_fifths > 0 {
+                                    sharp_positions(ps.clefs[staff_num].as_ref())
+                                } else {
+                                    flat_positions(ps.clefs[staff_num].as_ref())
+                                };
+                                for i in 0..num_naturals.min(positions.len()) {
+                                    let ny = staff_y + positions[i] as f64 * 5.0;
+                                    render_natural_sign(&mut svg, inline_x, ny);
+                                    inline_x += KEY_SIG_SPACE;
+                                }
+                                inline_x += 2.0; // small gap before new key
+                            }
+                        }
+                        // New key signature
+                        if let Some(ref key) = ps.key {
+                            render_key_signature(
+                                &mut svg, inline_x, staff_y, key,
+                                ps.clefs[staff_num].as_ref(),
+                            );
+                            inline_x += key_sig_width(Some(key)) + 4.0;
+                        }
+                    }
+                    if ml.has_time_change {
+                        if let Some(ref time) = ps.time {
+                            render_time_signature(&mut svg, inline_x, staff_y, time);
+                        }
+                    }
+
+                    // ── Tempo / metronome markings (only on top staff of first part) ──
+                    if staff_num == 1 && pidx == parts_staves[0].0 {
+                        for dir in &measure.directions {
+                            if dir.sound_tempo.is_some() || dir.metronome.is_some() {
+                                render_tempo_marking(&mut svg, mx + 4.0, staff_y, dir);
+                            }
+                        }
+                    }
+
                     // Chord symbols (only on top staff of first part)
                     if staff_num == 1 && pidx == parts_staves[0].0 {
                         render_harmonies(&mut svg, measure, mx, mw, staff_y);
@@ -337,15 +438,32 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                 }
             }
 
-            // Right barline spanning all staves across all parts
-            let first_part = system.parts.first().unwrap();
-            let last_part = system.parts.last().unwrap();
-            let top_y = system_y + first_part.y_offset;
-            let bottom_y = system_y
-                + last_part.y_offset
-                + (last_part.num_staves as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP)
-                + STAFF_HEIGHT;
-            svg.line(mx + mw, top_y, mx + mw, bottom_y, BARLINE_COLOR, BARLINE_WIDTH);
+            // Right barline spanning all staves across all parts.
+            // Skip the default thin barline if the measure already has a
+            // special right-side barline (light-light, light-heavy, etc.)
+            // rendered by render_barlines().
+            let has_special_right_barline = system.parts.first().map_or(false, |pi| {
+                let pidx = pi.part_idx;
+                if ml.measure_idx < score.parts[pidx].measures.len() {
+                    score.parts[pidx].measures[ml.measure_idx].barlines.iter().any(|b| {
+                        let is_right = b.location == "right" || b.location.is_empty();
+                        is_right && b.bar_style.is_some()
+                    })
+                } else {
+                    false
+                }
+            });
+
+            if !has_special_right_barline {
+                let first_part = system.parts.first().unwrap();
+                let last_part = system.parts.last().unwrap();
+                let top_y = system_y + first_part.y_offset;
+                let bottom_y = system_y
+                    + last_part.y_offset
+                    + (last_part.num_staves as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP)
+                    + STAFF_HEIGHT;
+                svg.line(mx + mw, top_y, mx + mw, bottom_y, BARLINE_COLOR, BARLINE_WIDTH);
+            }
         }
     }
 
@@ -394,37 +512,87 @@ fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], page_width: f6
 
     // Scan for time signatures to compute beat duration per measure
     // (in quarter-note equivalents: e.g. 2/4 → 2.0, 3/4 → 3.0, 6/8 → 3.0)
+    // Also track running key and time per measure for change detection.
     let mut measure_beats: Vec<f64> = Vec::with_capacity(ref_part.measures.len());
+    let mut running_keys: Vec<Option<Key>> = Vec::with_capacity(ref_part.measures.len());
+    let mut running_times: Vec<Option<TimeSignature>> = Vec::with_capacity(ref_part.measures.len());
+    let mut has_key_change: Vec<bool> = Vec::with_capacity(ref_part.measures.len());
+    let mut has_time_change: Vec<bool> = Vec::with_capacity(ref_part.measures.len());
+
     let mut current_beats = 4.0; // default 4/4
+    let mut current_key: Option<Key> = None;
+    let mut current_time: Option<TimeSignature> = None;
+
     for measure in &ref_part.measures {
+        let mut key_changed = false;
+        let mut time_changed = false;
+
         if let Some(ref attrs) = measure.attributes {
             if let Some(ref ts) = attrs.time {
-                current_beats = ts.beats as f64 * 4.0 / ts.beat_type as f64;
+                let new_beats = ts.beats as f64 * 4.0 / ts.beat_type as f64;
+                // Detect time signature change (not just first assignment)
+                if current_time.as_ref().map_or(false, |ct| ct.beats != ts.beats || ct.beat_type != ts.beat_type) {
+                    time_changed = true;
+                }
+                current_beats = new_beats;
+                current_time = Some(ts.clone());
+            }
+            if let Some(ref k) = attrs.key {
+                if current_key.as_ref().map_or(false, |ck| ck.fifths != k.fifths) {
+                    key_changed = true;
+                }
+                current_key = Some(k.clone());
             }
         }
+
+        running_keys.push(current_key.clone());
+        running_times.push(current_time.clone());
+        has_key_change.push(key_changed);
+        has_time_change.push(time_changed);
+
         // Implicit (pickup) measures: scale by actual content vs full bar
         if measure.implicit {
-            // Use half the normal beat count as a reasonable estimate for pickups
             measure_beats.push((current_beats * 0.5).max(1.0));
         } else {
             measure_beats.push(current_beats);
         }
     }
 
-    // Compute the minimum packing width for each measure based on beat duration
+    // Compute the minimum packing width for each measure based on beat duration,
+    // plus extra space for mid-piece key/time signature changes.
+    // The extra space is computed dynamically based on the actual number of
+    // accidentals involved (e.g. 6 flats needs much more space than 1 sharp).
     let measure_min_widths: Vec<f64> = measure_beats
         .iter()
-        .map(|&beats| (beats * PER_BEAT_MIN_WIDTH).max(MIN_MEASURE_WIDTH))
+        .enumerate()
+        .map(|(mi, &beats)| {
+            let mut w = (beats * PER_BEAT_MIN_WIDTH).max(MIN_MEASURE_WIDTH);
+            if has_key_change[mi] {
+                // Cancellation naturals (only when direction changes or count decreases)
+                let old_fifths = if mi > 0 {
+                    running_keys[mi - 1].as_ref().map_or(0, |k| k.fifths)
+                } else { 0 };
+                let new_fifths = running_keys[mi].as_ref().map_or(0, |k| k.fifths);
+                let num_cancel = cancellation_natural_count(old_fifths, new_fifths);
+                if num_cancel > 0 {
+                    w += num_cancel as f64 * KEY_SIG_SPACE + 4.0;
+                }
+                // New key signature
+                let new_width = running_keys[mi].as_ref().map_or(0.0, |k| key_sig_width(Some(k))) + 4.0;
+                w += new_width;
+            }
+            if has_time_change[mi] { w += TIME_SIG_SPACE; }
+            w
+        })
         .collect();
 
-    // Pre-compute prefix widths
+    // Pre-compute prefix widths.  Use the current key at each system boundary
+    // rather than the initial key, so systems with more accidentals get more space.
     let initial_key = score.parts.iter()
         .flat_map(|p| p.measures.iter())
         .find_map(|m| m.attributes.as_ref().and_then(|a| a.key.as_ref()));
     let first_prefix = CLEF_SPACE + key_sig_width(initial_key) + TIME_SIG_SPACE;
     let available_first = content_width - first_prefix;
-    let later_prefix = CLEF_SPACE + key_sig_width(initial_key);
-    let available_later = content_width - later_prefix;
 
     let mut system_groups: Vec<Vec<usize>> = Vec::new();
     let mut current_group: Vec<usize> = Vec::new();
@@ -432,6 +600,10 @@ fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], page_width: f6
     let mut is_first_system = true;
 
     for (mi, &min_w) in measure_min_widths.iter().enumerate() {
+        // Compute prefix for current system start based on the key active at this point
+        let key_at_mi = running_keys[mi].as_ref();
+        let later_prefix = CLEF_SPACE + key_sig_width(key_at_mi);
+        let available_later = content_width - later_prefix;
         let available = if is_first_system { available_first } else { available_later };
 
         if !current_group.is_empty() && current_width + min_w > available {
@@ -455,9 +627,14 @@ fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], page_width: f6
 
     for (sys_idx, group) in system_groups.iter().enumerate() {
         let is_first = sys_idx == 0;
+        let first_mi = group[0];
+        let key_at_start = running_keys[first_mi].as_ref();
+        // For the first system always show time; for later systems, show time if
+        // the first measure of the system has a time change
+        let show_time_sig = is_first || has_time_change[first_mi];
         let prefix_width = CLEF_SPACE
-            + key_sig_width(initial_key)
-            + if is_first { TIME_SIG_SPACE } else { 0.0 };
+            + key_sig_width(key_at_start)
+            + if show_time_sig { TIME_SIG_SPACE } else { 0.0 };
 
         let x_start = PAGE_MARGIN_LEFT + prefix_width;
         let x_end = PAGE_MARGIN_LEFT + content_width;
@@ -503,13 +680,77 @@ fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], page_width: f6
                 }
             }
 
-            let beat_x_map = compute_beat_x_map(&all_beat_times, x, w);
+            // Compute previous key fifths for cancellation naturals
+            let prev_key_fifths = if has_key_change[mi] && mi > 0 {
+                running_keys[mi - 1].as_ref().map(|k| k.fifths)
+            } else {
+                None
+            };
+
+            // For measures that aren't at a system start, include their change flags
+            // so the renderer can draw inline key/time signatures.  For the first
+            // measure of a system, the system prefix already handles clef/key/time.
+            let is_system_start = j == 0;
+            let ml_has_key_change = has_key_change[mi] && !is_system_start;
+            let ml_has_time_change = has_time_change[mi] && !is_system_start;
+
+            // Compute left inset: space consumed by inline key/time changes
+            let mut left_inset = 14.0; // default left padding
+            if ml_has_key_change {
+                // Space for cancellation naturals (only when needed)
+                if let Some(pf) = prev_key_fifths {
+                    let new_fifths = running_keys[mi].as_ref().map_or(0, |k| k.fifths);
+                    let num_cancel = cancellation_natural_count(pf, new_fifths);
+                    if num_cancel > 0 {
+                        left_inset += num_cancel as f64 * KEY_SIG_SPACE + 2.0;
+                    }
+                }
+                // Space for new key signature
+                if let Some(ref k) = running_keys[mi] {
+                    left_inset += key_sig_width(Some(k)) + 4.0;
+                }
+            }
+            if ml_has_time_change {
+                left_inset += TIME_SIG_SPACE;
+            }
+
+            // Compute right inset: extra space for repeat barlines.
+            // A backward repeat extends ~12px left of the right edge (dots at
+            // bx-10 with r=2), so we need ≥30 to leave a clear gap from notes.
+            let mut right_inset: f64 = 14.0; // default right padding
+            if mi < ref_part.measures.len() {
+                let measure = &ref_part.measures[mi];
+                for barline in &measure.barlines {
+                    let is_right = barline.location == "right"
+                        || barline.location.is_empty();
+                    let is_left = barline.location == "left";
+                    let has_repeat = barline.repeat.is_some();
+                    let is_heavy = barline.bar_style.as_deref() == Some("light-heavy")
+                        || barline.bar_style.as_deref() == Some("heavy-light");
+
+                    // Right-side backward repeats / double bars
+                    if is_right && (has_repeat || is_heavy) {
+                        right_inset = right_inset.max(30.0);
+                    }
+                    // Left-side forward repeats push notes right
+                    if is_left && (has_repeat || is_heavy) {
+                        left_inset = left_inset.max(28.0);
+                    }
+                }
+            }
+
+            let beat_x_map = compute_beat_x_map(&all_beat_times, x, w, left_inset, right_inset);
 
             measures.push(MeasureLayout {
                 measure_idx: mi,
                 x,
                 width: w,
                 beat_x_map,
+                has_key_change: ml_has_key_change,
+                has_time_change: ml_has_time_change,
+                prev_key_fifths,
+                left_inset,
+                right_inset,
             });
             x += w;
         }
@@ -543,7 +784,7 @@ fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], page_width: f6
             measures,
             parts: parts_info,
             show_clef: true,
-            show_time: is_first,
+            show_time: show_time_sig,
             total_staves,
         });
 
@@ -564,6 +805,38 @@ fn key_sig_width(key: Option<&Key>) -> f64 {
     match key {
         Some(k) => k.fifths.unsigned_abs() as f64 * KEY_SIG_SPACE,
         None => 0.0,
+    }
+}
+
+/// Determine how many cancellation naturals to show when the key changes.
+///
+/// Cancellation naturals are needed when:
+///   - The direction changes (sharps→flats or flats→sharps)
+///   - The key moves to natural (C major / A minor)
+///   - The number of accidentals decreases in the same direction
+///     (e.g. 6 flats → 1 flat: cancel the 5 removed flats)
+///
+/// NOT needed when:
+///   - Same direction and increasing (e.g. 1 flat → 6 flats:
+///     the new key already contains all old accidentals)
+fn cancellation_natural_count(old_fifths: i32, new_fifths: i32) -> u32 {
+    if old_fifths == 0 {
+        return 0; // nothing to cancel
+    }
+    let same_direction = (old_fifths > 0 && new_fifths > 0)
+        || (old_fifths < 0 && new_fifths < 0);
+
+    if same_direction {
+        let old_abs = old_fifths.unsigned_abs();
+        let new_abs = new_fifths.unsigned_abs();
+        if new_abs >= old_abs {
+            0 // increasing in same direction → no cancellation
+        } else {
+            old_abs - new_abs // cancel the removed accidentals
+        }
+    } else {
+        // Direction change or to natural: cancel ALL old accidentals
+        old_fifths.unsigned_abs()
     }
 }
 
@@ -702,16 +975,150 @@ fn render_key_signature(
     }
 }
 
+/// Return staff-line positions (in half-space units) for sharp key signatures.
+fn sharp_positions(clef: Option<&Clef>) -> Vec<i32> {
+    let is_treble = clef.map_or(true, |c| c.sign == "G");
+    if is_treble {
+        vec![0, 3, -1, 2, 5, 1, 4] // F C G D A E B on treble
+    } else {
+        vec![2, 5, 1, 4, 7, 3, 6] // bass clef positions
+    }
+}
+
+/// Return staff-line positions (in half-space units) for flat key signatures.
+fn flat_positions(clef: Option<&Clef>) -> Vec<i32> {
+    let is_treble = clef.map_or(true, |c| c.sign == "G");
+    if is_treble {
+        vec![4, 1, 5, 2, 6, 3, 7] // B E A D G C F on treble
+    } else {
+        vec![6, 3, 7, 4, 8, 5, 9] // bass clef positions
+    }
+}
+
+/// Render a natural sign (♮) at the given position.
+fn render_natural_sign(svg: &mut SvgBuilder, x: f64, y: f64) {
+    // Natural sign: two vertical bars with two horizontal bars
+    let cx = x + 2.0;
+    let top = y - 5.0;
+    let bot = y + 5.0;
+    // Left vertical bar (shorter)
+    svg.line(cx - 1.5, top + 2.0, cx - 1.5, bot, NOTE_COLOR, 0.8);
+    // Right vertical bar (shorter)
+    svg.line(cx + 1.5, top, cx + 1.5, bot - 2.0, NOTE_COLOR, 0.8);
+    // Top horizontal bar (slightly slanted)
+    svg.line(cx - 1.5, top + 4.0, cx + 1.5, top + 2.5, NOTE_COLOR, 1.6);
+    // Bottom horizontal bar (slightly slanted)
+    svg.line(cx - 1.5, bot - 2.5, cx + 1.5, bot - 4.0, NOTE_COLOR, 1.6);
+}
+
+/// Render a tempo/metronome marking above the staff.
+/// Draws the note symbol as an SVG notehead+stem rather than Unicode (which
+/// most fonts lack), followed by " = BPM" as text.
+fn render_tempo_marking(svg: &mut SvgBuilder, x: f64, staff_y: f64, dir: &Direction) {
+    let ty = staff_y - 16.0; // baseline for the "= 120" text
+
+    let (bpm, beat_unit, dotted) = if let Some(ref metro) = dir.metronome {
+        (metro.per_minute as f64, metro.beat_unit.as_str(), metro.dotted)
+    } else if let Some(tempo) = dir.sound_tempo {
+        (tempo, "quarter", false)
+    } else {
+        return;
+    };
+
+    // Draw the beat-unit note symbol
+    #[allow(unused_assignments)]
+    let mut note_end_x = x;
+    match beat_unit {
+        "quarter" => {
+            // Filled notehead
+            svg.elements.push(format!(
+                "<ellipse cx=\"{:.1}\" cy=\"{:.1}\" rx=\"3.8\" ry=\"2.8\" fill=\"{}\" stroke=\"none\" transform=\"rotate(-15,{:.1},{:.1})\"/>",
+                x + 3.8, ty, NOTE_COLOR, x + 3.8, ty
+            ));
+            // Stem
+            svg.line(x + 7.0, ty, x + 7.0, ty - 16.0, NOTE_COLOR, 1.0);
+            note_end_x = x + 10.0;
+        }
+        "half" => {
+            // Open notehead
+            svg.elements.push(format!(
+                "<ellipse cx=\"{:.1}\" cy=\"{:.1}\" rx=\"3.8\" ry=\"2.8\" fill=\"none\" stroke=\"{}\" stroke-width=\"1.2\" transform=\"rotate(-15,{:.1},{:.1})\"/>",
+                x + 3.8, ty, NOTE_COLOR, x + 3.8, ty
+            ));
+            svg.line(x + 7.0, ty, x + 7.0, ty - 16.0, NOTE_COLOR, 1.0);
+            note_end_x = x + 10.0;
+        }
+        "eighth" => {
+            // Filled notehead + stem + flag
+            svg.elements.push(format!(
+                "<ellipse cx=\"{:.1}\" cy=\"{:.1}\" rx=\"3.8\" ry=\"2.8\" fill=\"{}\" stroke=\"none\" transform=\"rotate(-15,{:.1},{:.1})\"/>",
+                x + 3.8, ty, NOTE_COLOR, x + 3.8, ty
+            ));
+            svg.line(x + 7.0, ty, x + 7.0, ty - 16.0, NOTE_COLOR, 1.0);
+            // Small flag
+            svg.elements.push(format!(
+                "<path d=\"M{:.1},{:.1} c 0.7,1.4 2.8,3.5 5,7 c 1.4,2.1 1.4,4.2 -0.7,5.6\" fill=\"none\" stroke=\"{}\" stroke-width=\"1.0\"/>",
+                x + 7.0, ty - 16.0, NOTE_COLOR
+            ));
+            note_end_x = x + 14.0;
+        }
+        "whole" => {
+            svg.elements.push(format!(
+                "<ellipse cx=\"{:.1}\" cy=\"{:.1}\" rx=\"4.5\" ry=\"3.0\" fill=\"none\" stroke=\"{}\" stroke-width=\"1.5\" transform=\"rotate(-15,{:.1},{:.1})\"/>",
+                x + 4.5, ty, NOTE_COLOR, x + 4.5, ty
+            ));
+            note_end_x = x + 11.0;
+        }
+        _ => {
+            // Fallback: quarter note
+            svg.elements.push(format!(
+                "<ellipse cx=\"{:.1}\" cy=\"{:.1}\" rx=\"3.8\" ry=\"2.8\" fill=\"{}\" stroke=\"none\" transform=\"rotate(-15,{:.1},{:.1})\"/>",
+                x + 3.8, ty, NOTE_COLOR, x + 3.8, ty
+            ));
+            svg.line(x + 7.0, ty, x + 7.0, ty - 16.0, NOTE_COLOR, 1.0);
+            note_end_x = x + 10.0;
+        }
+    }
+
+    // Dot (for dotted beat units)
+    if dotted {
+        svg.elements.push(format!(
+            "<circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"1.2\" fill=\"{}\"/>",
+            note_end_x, ty - 1.0, NOTE_COLOR
+        ));
+        note_end_x += 3.0;
+    }
+
+    // " = 120" text
+    let text = format!(" = {}", bpm as i32);
+    svg.text(note_end_x, ty + 4.0, &text, 12.0, "bold", NOTE_COLOR, "start");
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Time signature rendering
 // ═══════════════════════════════════════════════════════════════════════
 
 fn render_time_signature(svg: &mut SvgBuilder, x: f64, staff_y: f64, time: &TimeSignature) {
+    // Each number fills one half of the staff (2 spaces = 20px).
+    // Top number occupies line 1 → line 3 (staff_y to staff_y+20).
+    // Bottom number occupies line 3 → line 5 (staff_y+20 to staff_y+40).
+    // Using dominant-baseline="central" to vertically center each digit
+    // at the midpoint of its half, so the two numbers meet at the middle
+    // staff line with no gap.
     let cx = x + 8.0;
-    svg.text(cx, staff_y + 15.0, &time.beats.to_string(),
-             16.0, "bold", NOTE_COLOR, "middle");
-    svg.text(cx, staff_y + 35.0, &time.beat_type.to_string(),
-             16.0, "bold", NOTE_COLOR, "middle");
+    let font_size = 24;
+    // dominant-baseline="central" centers on full font metrics including
+    // descender space, so nudge up ~3px to visually center the digits.
+    let top_center = staff_y + 7.0;  // center of top half (line 1 → line 3)
+    let bot_center = staff_y + 27.0; // center of bottom half (line 3 → line 5)
+    svg.elements.push(format!(
+        r#"<text x="{cx:.1}" y="{y:.1}" font-size="{fs}" font-weight="bold" fill="{fill}" text-anchor="middle" dominant-baseline="central">{t}</text>"#,
+        cx = cx, y = top_center, fs = font_size, fill = NOTE_COLOR, t = time.beats,
+    ));
+    svg.elements.push(format!(
+        r#"<text x="{cx:.1}" y="{y:.1}" font-size="{fs}" font-weight="bold" fill="{fill}" text-anchor="middle" dominant-baseline="central">{t}</text>"#,
+        cx = cx, y = bot_center, fs = font_size, fill = NOTE_COLOR, t = time.beat_type,
+    ));
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -873,9 +1280,10 @@ fn compute_beat_x_map(
     all_beat_times: &[Vec<f64>],
     mx: f64,
     mw: f64,
+    left_pad: f64,
+    right_pad: f64,
 ) -> Vec<(f64, f64)> {
-    let padding = 14.0;
-    let usable_width = mw - padding * 2.0;
+    let usable_width = mw - left_pad - right_pad;
 
     // Collect all unique beat times across all parts
     let mut unique_beats: Vec<f64> = Vec::new();
@@ -898,7 +1306,7 @@ fn compute_beat_x_map(
     unique_beats
         .iter()
         .map(|&bt| {
-            let x = mx + padding + (bt / max_beat) * usable_width;
+            let x = mx + left_pad + (bt / max_beat) * usable_width;
             (bt, x)
         })
         .collect()

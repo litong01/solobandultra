@@ -265,6 +265,76 @@ fn auto_detect_format() {
     assert_eq!(score.title.as_deref(), Some("童年"));
 }
 
+// ─── Blue Bag Folly (mid-piece changes) ─────────────────────────────
+
+#[test]
+fn parse_blue_bag_folly_musicxml() {
+    let path = sheetmusic_dir().join("blue-bag-folly.musicxml");
+    let score = parse_file(&path).expect("Failed to parse blue-bag-folly.musicxml");
+
+    println!("✓ blue-bag-folly.musicxml parsed successfully");
+    println!("  Title: {:?}", score.title);
+    println!("  Parts: {}", score.parts.len());
+
+    assert_eq!(score.parts.len(), 1);
+    let part = &score.parts[0];
+    assert!(!part.measures.is_empty());
+    println!("  Measures: {}", part.measures.len());
+
+    // ── Verify key signature changes ──
+    // The file has 3 different key signatures: -1, -6, +1 fifths
+    let key_values: Vec<i32> = part.measures.iter()
+        .filter_map(|m| m.attributes.as_ref().and_then(|a| a.key.as_ref()).map(|k| k.fifths))
+        .collect();
+    println!("  Key changes: {:?}", key_values);
+    assert!(key_values.len() >= 3, "Should have at least 3 key signature declarations");
+    assert!(key_values.contains(&-1), "Should have -1 flats");
+    assert!(key_values.contains(&-6), "Should have -6 flats");
+    assert!(key_values.contains(&1), "Should have +1 sharps");
+
+    // ── Verify time signature changes ──
+    // The file has 3 different time signatures: 4/4, 5/4, 3/4
+    let time_values: Vec<(i32, i32)> = part.measures.iter()
+        .filter_map(|m| m.attributes.as_ref().and_then(|a| a.time.as_ref()).map(|t| (t.beats, t.beat_type)))
+        .collect();
+    println!("  Time signature changes: {:?}", time_values);
+    assert!(time_values.len() >= 3, "Should have at least 3 time signature declarations");
+    assert!(time_values.contains(&(4, 4)), "Should have 4/4");
+    assert!(time_values.contains(&(5, 4)), "Should have 5/4");
+    assert!(time_values.contains(&(3, 4)), "Should have 3/4");
+
+    // ── Verify direction/tempo parsing ──
+    // The file has 2 tempo markings: 120 BPM and 90 BPM
+    let tempo_directions: Vec<&scorelib::Direction> = part.measures.iter()
+        .flat_map(|m| m.directions.iter())
+        .filter(|d| d.sound_tempo.is_some() || d.metronome.is_some())
+        .collect();
+    println!("  Tempo directions: {}", tempo_directions.len());
+    assert!(tempo_directions.len() >= 2, "Should have at least 2 tempo markings");
+
+    // Verify specific BPM values
+    let bpm_values: Vec<f64> = tempo_directions.iter()
+        .filter_map(|d| d.sound_tempo)
+        .collect();
+    println!("  BPM values: {:?}", bpm_values);
+    assert!(bpm_values.iter().any(|&b| (b - 120.0).abs() < 1.0), "Should have tempo 120");
+    assert!(bpm_values.iter().any(|&b| (b - 90.0).abs() < 1.0), "Should have tempo 90");
+
+    // Verify metronome marks
+    let metronome_count = tempo_directions.iter()
+        .filter(|d| d.metronome.is_some())
+        .count();
+    println!("  Metronome marks: {}", metronome_count);
+    assert!(metronome_count >= 2, "Should have at least 2 metronome marks");
+
+    // Verify quarter-note beat unit
+    for dir in &tempo_directions {
+        if let Some(ref m) = dir.metronome {
+            assert_eq!(m.beat_unit, "quarter", "Beat unit should be quarter note");
+        }
+    }
+}
+
 // ─── JSON serialization ─────────────────────────────────────────────
 
 #[test]

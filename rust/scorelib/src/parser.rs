@@ -254,6 +254,7 @@ fn parse_measure(node: &Node) -> Measure {
         notes: Vec::new(),
         harmonies: Vec::new(),
         barlines: Vec::new(),
+        directions: Vec::new(),
         new_system: false,
         new_page: false,
     };
@@ -264,6 +265,22 @@ fn parse_measure(node: &Node) -> Measure {
             "note" => measure.notes.push(parse_note(&child)),
             "harmony" => measure.harmonies.push(parse_harmony(&child)),
             "barline" => measure.barlines.push(parse_barline(&child)),
+            "direction" => {
+                if let Some(dir) = parse_direction(&child) {
+                    measure.directions.push(dir);
+                }
+            }
+            "sound" => {
+                // <sound> can appear directly in <measure> (not inside <direction>)
+                if let Some(tempo) = child.attribute("tempo").and_then(|t| t.parse::<f64>().ok()) {
+                    measure.directions.push(Direction {
+                        placement: Some("above".to_string()),
+                        sound_tempo: Some(tempo),
+                        metronome: None,
+                        words: None,
+                    });
+                }
+            }
             "print" => {
                 if child.attribute("new-system") == Some("yes") {
                     measure.new_system = true;
@@ -558,6 +575,83 @@ fn parse_barline(node: &Node) -> Barline {
     }
 
     barline
+}
+
+// ─── Direction ───────────────────────────────────────────────────────
+
+fn parse_direction(node: &Node) -> Option<Direction> {
+    let placement = node.attribute("placement").map(String::from);
+
+    let mut sound_tempo = None;
+    let mut metronome = None;
+    let mut words = None;
+
+    for child in node.children().filter(|n| n.is_element()) {
+        match child.tag_name().name() {
+            "direction-type" => {
+                for dt_child in child.children().filter(|n| n.is_element()) {
+                    match dt_child.tag_name().name() {
+                        "metronome" => {
+                            metronome = Some(parse_metronome(&dt_child));
+                        }
+                        "words" => {
+                            words = dt_child.text().map(|t| t.trim().to_string());
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            "sound" => {
+                if let Some(tempo) = child.attribute("tempo").and_then(|t| t.parse::<f64>().ok()) {
+                    sound_tempo = Some(tempo);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Only return a Direction if it has useful content
+    if sound_tempo.is_some() || metronome.is_some() || words.is_some() {
+        Some(Direction {
+            placement,
+            sound_tempo,
+            metronome,
+            words,
+        })
+    } else {
+        None
+    }
+}
+
+fn parse_metronome(node: &Node) -> MetronomeMark {
+    let mut beat_unit = "quarter".to_string();
+    let mut per_minute = 120;
+    let mut dotted = false;
+
+    for child in node.children().filter(|n| n.is_element()) {
+        match child.tag_name().name() {
+            "beat-unit" => {
+                beat_unit = child.text().unwrap_or("quarter").trim().to_string();
+            }
+            "beat-unit-dot" => {
+                dotted = true;
+            }
+            "per-minute" => {
+                per_minute = child
+                    .text()
+                    .and_then(|t| t.trim().parse::<f64>().ok())
+                    .map(|v| v as i32)
+                    .unwrap_or(120);
+            }
+            _ => {}
+        }
+    }
+
+    MetronomeMark {
+        beat_unit,
+        per_minute,
+        dotted,
+    }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────
