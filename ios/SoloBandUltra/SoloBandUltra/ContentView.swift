@@ -102,23 +102,82 @@ struct SettingsSheet: View {
     @ObservedObject var midiSettings: MidiSettings
     @Environment(\.dismiss) private var dismiss
 
+    /// Available music sources (currently just bundled files).
+    private var musicSources: [MusicSource] {
+        [MusicSource(id: "bundled", name: "Bundled Sheet Music", items: Self.discoverBundledFiles())]
+    }
+
+    private var selectedSource: MusicSource? {
+        musicSources.first { $0.id == midiSettings.selectedSourceId }
+    }
+
+    /// Scan the app bundle's SheetMusic folder for .musicxml and .mxl files.
+    private static func discoverBundledFiles() -> [MusicItem] {
+        guard let resourcesURL = Bundle.main.url(forResource: "SheetMusic", withExtension: nil) else {
+            return []
+        }
+        let contents = (try? FileManager.default.contentsOfDirectory(at: resourcesURL,
+                            includingPropertiesForKeys: nil)) ?? []
+        return contents
+            .map { $0.lastPathComponent }
+            .filter {
+                let lower = $0.lowercased()
+                return lower.hasSuffix(".musicxml") || lower.hasSuffix(".mxl")
+            }
+            .sorted()
+            .map { file in
+                MusicItem(
+                    name: (file as NSString).deletingPathExtension,
+                    url: "file://SheetMusic/\(file)"
+                )
+            }
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
                     // ── 1. Music Source ───────────────────────────
                     SettingsSection("Music Source") {
+                        // Playlist dropdown
                         HStack {
-                            Image(systemName: "music.note.list")
-                                .foregroundStyle(.secondary)
-                            Text("Bundled sheet music")
+                            Text("Playlist")
+                                .font(.subheadline)
                                 .foregroundStyle(.secondary)
                             Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
+                            Picker("", selection: $midiSettings.selectedSourceId) {
+                                ForEach(musicSources) { source in
+                                    Text(source.name).tag(source.id)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .tint(.primary)
                         }
-                        .padding(.vertical, 8)
+
+                        // File picker (shown when a source is selected)
+                        if let source = selectedSource, !source.items.isEmpty {
+                            Divider()
+                                .padding(.vertical, 4)
+
+                            HStack {
+                                Text("Music")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Picker("", selection: $midiSettings.selectedFileUrl) {
+                                    ForEach(source.items) { item in
+                                        Text(item.name).tag(item.url)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .tint(.primary)
+                            }
+                        }
+                    }
+                    .onAppear {
+                        if midiSettings.selectedFileUrl.isEmpty, let firstItem = musicSources.first?.items.first {
+                            midiSettings.selectedFileUrl = firstItem.url
+                        }
                     }
 
                     // ── 2. Accompaniment ──────────────────────────
@@ -170,7 +229,19 @@ struct SettingsSheet: View {
                             Spacer()
 
                             // Mute
-                            CheckboxToggle("Mute", isOn: $midiSettings.muteMusic)
+                            Button {
+                                midiSettings.muteMusic.toggle()
+                            } label: {
+                                HStack(spacing: 3) {
+                                    Text("Mute")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.primary)
+                                    Image(systemName: midiSettings.muteMusic ? "checkmark.square.fill" : "square")
+                                        .foregroundStyle(midiSettings.muteMusic ? Color.accentColor : .secondary)
+                                        .font(.callout)
+                                }
+                            }
+                            .buttonStyle(.plain)
 
                             Spacer()
 

@@ -46,6 +46,13 @@ import kotlinx.coroutines.withContext
 // MIDI Settings state
 // ═══════════════════════════════════════════════════════════════════════
 
+// ── Music Source model ───────────────────────────────────────────────
+
+data class MusicItem(val name: String, val url: String)
+data class MusicSourceData(val id: String, val name: String, val items: List<MusicItem>)
+
+// ── MIDI Settings ───────────────────────────────────────────────────
+
 enum class EnergyLevel(val key: String, val displayName: String) {
     Soft("soft", "Soft"),
     Medium("medium", "Medium"),
@@ -100,14 +107,42 @@ fun SheetMusicScreen(
     var repeatCount by remember { mutableIntStateOf(1) }
     var transpose by remember { mutableIntStateOf(0) }
 
+    // Music source selection
+    var selectedSourceId by remember { mutableStateOf("bundled") }
+    var selectedFileUrl by remember { mutableStateOf("") }
+
     val context = LocalContext.current
 
     // Dynamically discover all .musicxml and .mxl files in the assets/sheetmusic folder
     val availableFiles = remember {
         val files = context.assets.list("sheetmusic") ?: emptyArray()
-        files.filter { it.endsWith(".musicxml") || it.endsWith(".mxl") }
+        files.filter {
+                 val lower = it.lowercase()
+                 lower.endsWith(".musicxml") || lower.endsWith(".mxl")
+             }
              .sorted()
              .map { "sheetmusic/$it" }
+    }
+
+    // Build music sources from available files
+    val musicSources = remember(availableFiles) {
+        val items = availableFiles.map { path ->
+            val fileName = path.substringAfterLast('/')
+            MusicItem(
+                name = fileName.substringBeforeLast('.'),
+                url = "file://$path"
+            )
+        }
+        listOf(MusicSourceData(id = "bundled", name = "Bundled Sheet Music", items = items))
+    }
+
+    // Auto-select the first file if none is selected
+    LaunchedEffect(musicSources) {
+        if (selectedFileUrl.isEmpty()) {
+            musicSources.firstOrNull()?.items?.firstOrNull()?.let {
+                selectedFileUrl = it.url
+            }
+        }
     }
     var selectedIndex by remember { mutableIntStateOf(0) }
     var svgContent by remember { mutableStateOf<String?>(null) }
@@ -293,6 +328,11 @@ fun SheetMusicScreen(
             sheetState = sheetState
         ) {
             SettingsSheetContent(
+                musicSources = musicSources,
+                selectedSourceId = selectedSourceId,
+                onSourceIdChange = { selectedSourceId = it },
+                selectedFileUrl = selectedFileUrl,
+                onFileUrlChange = { selectedFileUrl = it },
                 includeMelody = includeMelody,
                 onMelodyChange = { includeMelody = it },
                 includePiano = includePiano,
@@ -324,8 +364,14 @@ fun SheetMusicScreen(
 // Settings sheet content
 // ═══════════════════════════════════════════════════════════════════════
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsSheetContent(
+    musicSources: List<MusicSourceData>,
+    selectedSourceId: String,
+    onSourceIdChange: (String) -> Unit,
+    selectedFileUrl: String,
+    onFileUrlChange: (String) -> Unit,
     includeMelody: Boolean,
     onMelodyChange: (Boolean) -> Unit,
     includePiano: Boolean,
@@ -364,31 +410,78 @@ private fun SettingsSheetContent(
 
         // ── 1. Music Source ──────────────────────────────────────
         SettingsCard("Music Source") {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
+            // Source dropdown
+            var sourceExpanded by remember { mutableStateOf(false) }
+            val selectedSource = musicSources.firstOrNull { it.id == selectedSourceId }
+
+            ExposedDropdownMenuBox(
+                expanded = sourceExpanded,
+                onExpandedChange = { sourceExpanded = it }
             ) {
-                Icon(
-                    imageVector = Icons.Default.MusicNote,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp)
+                OutlinedTextField(
+                    value = selectedSource?.name ?: "",
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Playlist") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = sourceExpanded) },
+                    modifier = Modifier
+                        .menuAnchor()
+                        .fillMaxWidth(),
+                    textStyle = MaterialTheme.typography.bodyMedium
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Bundled sheet music",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f)
-                )
-                Icon(
-                    imageVector = Icons.Default.ChevronRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                    modifier = Modifier.size(18.dp)
-                )
+                ExposedDropdownMenu(
+                    expanded = sourceExpanded,
+                    onDismissRequest = { sourceExpanded = false }
+                ) {
+                    musicSources.forEach { source ->
+                        DropdownMenuItem(
+                            text = { Text(source.name) },
+                            onClick = {
+                                onSourceIdChange(source.id)
+                                sourceExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            // File picker (shown when a source with items is selected)
+            if (selectedSource != null && selectedSource.items.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+
+                var fileExpanded by remember { mutableStateOf(false) }
+                val selectedFile = selectedSource.items.firstOrNull { it.url == selectedFileUrl }
+
+                ExposedDropdownMenuBox(
+                    expanded = fileExpanded,
+                    onExpandedChange = { fileExpanded = it }
+                ) {
+                    OutlinedTextField(
+                        value = selectedFile?.name ?: "",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Music") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = fileExpanded) },
+                        modifier = Modifier
+                            .menuAnchor()
+                            .fillMaxWidth(),
+                        textStyle = MaterialTheme.typography.bodyMedium
+                    )
+                    ExposedDropdownMenu(
+                        expanded = fileExpanded,
+                        onDismissRequest = { fileExpanded = false }
+                    ) {
+                        selectedSource.items.forEach { item ->
+                            DropdownMenuItem(
+                                text = { Text(item.name) },
+                                onClick = {
+                                    onFileUrlChange(item.url)
+                                    fileExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
             }
         }
 
@@ -486,8 +579,25 @@ private fun SettingsSheetContent(
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                // Mute checkbox
-                CompactCheckbox("Mute", muteMusic, onMuteMusicChange)
+                // Mute checkbox (text before checkbox)
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable { onMuteMusicChange(!muteMusic) }
+                        .padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Mute",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Checkbox(
+                        checked = muteMusic,
+                        onCheckedChange = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
 
                 Spacer(modifier = Modifier.weight(1f))
 

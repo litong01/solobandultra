@@ -1,5 +1,24 @@
 import Foundation
 
+// MARK: - Music Source Model
+
+/// A single music file with a display name and source URL.
+struct MusicItem: Identifiable, Hashable {
+    let name: String
+    let url: String
+
+    var id: String { url }
+}
+
+/// A collection of music files from a single source.
+struct MusicSource: Identifiable {
+    let id: String
+    let name: String
+    let items: [MusicItem]
+}
+
+// MARK: - MIDI Settings
+
 /// Observable model for MIDI generation options and playback settings.
 ///
 /// Mirrors the Rust `MidiOptions` struct plus additional UI settings.
@@ -23,6 +42,10 @@ class MidiSettings: ObservableObject {
 
     // ── Transpose (semitones) ──
     @Published var transpose: Int = 0
+
+    // ── Music source selection ──
+    @Published var selectedSourceId: String = "bundled"
+    @Published var selectedFileUrl: String = ""
 
     enum Energy: String, CaseIterable, Identifiable {
         case soft = "soft"
