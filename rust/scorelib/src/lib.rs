@@ -20,6 +20,7 @@ pub mod unroller;
 pub mod timemap;
 pub mod midi;
 pub mod accompaniment;
+pub mod playback;
 
 #[cfg(target_os = "android")]
 pub mod android;
@@ -33,6 +34,7 @@ pub use renderer::render_score_to_svg;
 pub use midi::{generate_midi, MidiOptions, Energy};
 pub use unroller::unroll;
 pub use timemap::generate_timemap;
+pub use playback::{generate_playback_map, PlaybackMap};
 
 /// Parse a MusicXML file from a file path.
 /// Automatically detects format based on file extension:
@@ -131,6 +133,25 @@ pub fn generate_midi_from_bytes(
 ) -> Result<Vec<u8>, String> {
     let score = parse_bytes(data, extension)?;
     Ok(generate_midi_from_score(&score, options))
+}
+
+/// Generate a playback map from a parsed score (JSON string).
+///
+/// The playback map contains measure positions, system positions and the
+/// timemap — everything the WebView needs to animate a playback cursor.
+pub fn playback_map_from_score(score: &Score, page_width: Option<f64>) -> String {
+    let map = generate_playback_map(score, page_width);
+    playback::playback_map_to_json(&map)
+}
+
+/// Parse MusicXML bytes and return a playback map JSON string.
+pub fn playback_map_from_bytes(
+    data: &[u8],
+    extension: Option<&str>,
+    page_width: Option<f64>,
+) -> Result<String, String> {
+    let score = parse_bytes(data, extension)?;
+    Ok(playback_map_from_score(&score, page_width))
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -271,6 +292,82 @@ pub unsafe extern "C" fn scorelib_free_midi(ptr: *mut u8, len: usize) {
         unsafe {
             let _ = Vec::from_raw_parts(ptr, len, len);
         }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Playback map FFI
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Generate a playback map JSON string from MusicXML bytes.
+///
+/// The caller must free the returned string with `scorelib_free_string`.
+///
+/// `page_width` sets the SVG width in user units. Pass 0.0 to use the default.
+///
+/// # Safety
+/// `data` must point to `len` valid bytes. `extension` may be null.
+#[no_mangle]
+pub unsafe extern "C" fn scorelib_playback_map(
+    data: *const u8,
+    len: usize,
+    extension: *const c_char,
+    page_width: f64,
+) -> *mut c_char {
+    if data.is_null() || len == 0 {
+        return std::ptr::null_mut();
+    }
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    let ext = if extension.is_null() {
+        None
+    } else {
+        unsafe { CStr::from_ptr(extension) }.to_str().ok()
+    };
+
+    let pw = if page_width > 0.0 { Some(page_width) } else { None };
+
+    match playback_map_from_bytes(bytes, ext, pw) {
+        Ok(json) => CString::new(json).unwrap_or_default().into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Generate MIDI bytes from MusicXML bytes.
+///
+/// Returns a pointer to the MIDI data and writes the length to `out_len`.
+/// The caller must free the returned buffer with `scorelib_free_midi`.
+///
+/// # Safety
+/// `data` must point to `len` valid bytes. `extension` may be null.
+/// `out_len` must point to valid writable memory.
+#[no_mangle]
+pub unsafe extern "C" fn scorelib_generate_midi_from_bytes(
+    data: *const u8,
+    len: usize,
+    extension: *const c_char,
+    options_json: *const c_char,
+    out_len: *mut usize,
+) -> *mut u8 {
+    if data.is_null() || len == 0 || out_len.is_null() {
+        return std::ptr::null_mut();
+    }
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    let ext = if extension.is_null() {
+        None
+    } else {
+        unsafe { CStr::from_ptr(extension) }.to_str().ok()
+    };
+
+    let options = parse_midi_options_json(options_json);
+
+    match generate_midi_from_bytes(bytes, ext, &options) {
+        Ok(midi_bytes) => {
+            let len = midi_bytes.len();
+            let ptr = midi_bytes.leak().as_mut_ptr();
+            unsafe { *out_len = len; }
+            ptr
+        }
+        Err(_) => std::ptr::null_mut(),
     }
 }
 

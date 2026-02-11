@@ -679,6 +679,65 @@ fn detect_staves(part: &Part) -> usize {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// Playback map helpers — extract measure/system positions for cursor sync
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Compute the visual position of each measure and system in the SVG.
+///
+/// Returns two vectors:
+/// - Measures: `(measure_idx, x, width, system_idx)` for each measure in the score
+/// - Systems: `(y, height)` for each system (line of music)
+///
+/// This is used by the playback module to build the playback map for cursor
+/// synchronisation without generating any SVG.
+pub fn compute_measure_positions(
+    score: &Score,
+    page_width: Option<f64>,
+) -> (Vec<(usize, f64, f64, usize)>, Vec<(f64, f64)>) {
+    let page_width = match page_width {
+        Some(w) if w > 0.0 => w,
+        _ => DEFAULT_PAGE_WIDTH,
+    };
+
+    if score.parts.is_empty() {
+        return (Vec::new(), Vec::new());
+    }
+
+    let parts_staves: Vec<(usize, usize)> = score
+        .parts
+        .iter()
+        .enumerate()
+        .map(|(i, part)| (i, detect_staves(part)))
+        .collect();
+
+    let layout = compute_layout(score, &parts_staves, page_width);
+
+    let mut measure_positions = Vec::new();
+    let mut system_positions = Vec::new();
+
+    for (sys_idx, system) in layout.systems.iter().enumerate() {
+        // Compute system height from parts layout
+        let mut y_offset = 0.0;
+        for (i, pi) in system.parts.iter().enumerate() {
+            let part_height = STAFF_HEIGHT
+                + (pi.num_staves as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP);
+            y_offset += part_height;
+            if i < system.parts.len() - 1 {
+                y_offset += PART_GAP;
+            }
+        }
+
+        system_positions.push((system.y, y_offset));
+
+        for ml in &system.measures {
+            measure_positions.push((ml.measure_idx, ml.x, ml.width, sys_idx));
+        }
+    }
+
+    (measure_positions, system_positions)
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // Layout computation
 // ═══════════════════════════════════════════════════════════════════════
 

@@ -1,7 +1,5 @@
 package com.solobandultra.app
 
-import android.media.AudioAttributes
-import android.media.AudioManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -11,12 +9,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.solobandultra.app.audio.AudioSessionManager
+import com.solobandultra.app.audio.PlaybackManager
 import com.solobandultra.app.ui.screens.SheetMusicScreen
 import com.solobandultra.app.ui.theme.SoloBandUltraTheme
 
 class MainActivity : ComponentActivity() {
 
     private lateinit var audioSessionManager: AudioSessionManager
+    private lateinit var playbackManager: PlaybackManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -26,6 +26,9 @@ class MainActivity : ComponentActivity() {
         audioSessionManager = AudioSessionManager(this)
         audioSessionManager.configureAudioSession()
 
+        // Initialize playback manager
+        playbackManager = PlaybackManager(this, audioSessionManager)
+
         setContent {
             SoloBandUltraTheme {
                 Surface(
@@ -33,16 +36,7 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     SheetMusicScreen(
-                        onPlayPause = { isPlaying ->
-                            if (isPlaying) {
-                                audioSessionManager.requestAudioFocus()
-                            } else {
-                                audioSessionManager.abandonAudioFocus()
-                            }
-                        },
-                        onStop = {
-                            audioSessionManager.abandonAudioFocus()
-                        }
+                        playbackManager = playbackManager
                     )
                 }
             }
@@ -51,6 +45,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        audioSessionManager.release()
+        playbackManager.release()
     }
 }

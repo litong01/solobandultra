@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var audioSessionManager: AudioSessionManager
-    @State private var isPlaying = false
+    @EnvironmentObject var playbackManager: PlaybackManager
 
     var body: some View {
         NavigationStack {
@@ -14,10 +14,12 @@ struct ContentView: View {
                 Divider()
 
                 // Playback controls
-                PlaybackControlBar(isPlaying: $isPlaying) {
-                    togglePlayback()
+                PlaybackControlBar(
+                    isPlaying: $playbackManager.isPlaying
+                ) {
+                    playbackManager.togglePlayPause()
                 } onStop: {
-                    stopPlayback()
+                    playbackManager.stop()
                 }
                 .padding(.horizontal)
                 .padding(.vertical, 12)
@@ -40,22 +42,6 @@ struct ContentView: View {
                 }
             }
         }
-    }
-
-    private func togglePlayback() {
-        isPlaying.toggle()
-        if isPlaying {
-            audioSessionManager.ensureSessionActive()
-            // Playback will be implemented with Rust audio engine
-            print("[Playback] Started")
-        } else {
-            print("[Playback] Paused")
-        }
-    }
-
-    private func stopPlayback() {
-        isPlaying = false
-        print("[Playback] Stopped")
     }
 }
 
@@ -99,4 +85,5 @@ struct PlaybackControlBar: View {
 #Preview {
     ContentView()
         .environmentObject(AudioSessionManager())
+        .environmentObject(PlaybackManager(audioSessionManager: AudioSessionManager()))
 }

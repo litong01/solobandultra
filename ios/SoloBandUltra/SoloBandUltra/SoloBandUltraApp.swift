@@ -3,22 +3,30 @@ import AVFoundation
 
 @main
 struct SoloBandUltraApp: App {
-    @StateObject private var audioSessionManager = AudioSessionManager()
+    @StateObject private var audioSessionManager: AudioSessionManager
+    @StateObject private var playbackManager: PlaybackManager
 
     init() {
-        configureAudioSession()
+        // Initialize shared AudioSessionManager
+        let asm = AudioSessionManager()
+        _audioSessionManager = StateObject(wrappedValue: asm)
+        _playbackManager = StateObject(wrappedValue: PlaybackManager(audioSessionManager: asm))
+
+        // Configure audio session after all stored properties are initialized
+        Self.configureAudioSession()
     }
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(audioSessionManager)
+                .environmentObject(playbackManager)
         }
     }
 
     /// Configure AVAudioSession for playback category.
     /// This ensures audio plays even when the device silent/mute switch is on.
-    private func configureAudioSession() {
+    private static func configureAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playback, mode: .default, options: [])
