@@ -16,6 +16,10 @@ pub mod model;
 pub mod mxl;
 pub mod parser;
 pub mod renderer;
+pub mod unroller;
+pub mod timemap;
+pub mod midi;
+pub mod accompaniment;
 
 #[cfg(target_os = "android")]
 pub mod android;
@@ -26,6 +30,9 @@ pub use model::*;
 pub use parser::parse_musicxml;
 pub use mxl::parse_mxl;
 pub use renderer::render_score_to_svg;
+pub use midi::{generate_midi, MidiOptions, Energy};
+pub use unroller::unroll;
+pub use timemap::generate_timemap;
 
 /// Parse a MusicXML file from a file path.
 /// Automatically detects format based on file extension:
@@ -93,6 +100,37 @@ pub fn render_bytes_to_svg(
 ) -> Result<String, String> {
     let score = parse_bytes(data, extension)?;
     Ok(render_score_to_svg(&score, page_width))
+}
+
+/// Generate MIDI bytes from a parsed score.
+///
+/// Unrolls repeats/jumps, computes the timemap, extracts melody and
+/// optionally generates accompaniment tracks.  Returns a Standard MIDI
+/// File (SMF Type 1) as raw bytes.
+pub fn generate_midi_from_score(score: &Score, options: &MidiOptions) -> Vec<u8> {
+    let part_idx = 0; // melody from first part
+    let unrolled = unroll(score, part_idx);
+    let tmap = generate_timemap(score, part_idx, &unrolled);
+    generate_midi(score, part_idx, &unrolled, &tmap, options)
+}
+
+/// Parse a MusicXML file and generate MIDI bytes.
+pub fn generate_midi_from_file<P: AsRef<Path>>(
+    path: P,
+    options: &MidiOptions,
+) -> Result<Vec<u8>, String> {
+    let score = parse_file(path)?;
+    Ok(generate_midi_from_score(&score, options))
+}
+
+/// Parse MusicXML bytes and generate MIDI bytes.
+pub fn generate_midi_from_bytes(
+    data: &[u8],
+    extension: Option<&str>,
+    options: &MidiOptions,
+) -> Result<Vec<u8>, String> {
+    let score = parse_bytes(data, extension)?;
+    Ok(generate_midi_from_score(&score, options))
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -174,4 +212,105 @@ pub unsafe extern "C" fn scorelib_free_string(ptr: *mut c_char) {
             let _ = CString::from_raw(ptr);
         }
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// MIDI generation FFI
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Generate MIDI bytes from a MusicXML file.
+///
+/// Returns a pointer to the MIDI data and writes the length to `out_len`.
+/// The caller must free the returned buffer with `scorelib_free_midi`.
+/// Returns null on error.
+///
+/// `options_json` is a JSON string with fields:
+///   `include_melody`, `include_piano`, `include_bass`, `include_strings`,
+///   `include_drums`, `include_metronome`, `energy` ("soft"/"medium"/"strong").
+/// Pass null to use defaults.
+///
+/// # Safety
+/// `path` must be a valid null-terminated UTF-8 C string.
+/// `out_len` must point to valid writable memory.
+#[no_mangle]
+pub unsafe extern "C" fn scorelib_generate_midi(
+    path: *const c_char,
+    options_json: *const c_char,
+    out_len: *mut usize,
+) -> *mut u8 {
+    if path.is_null() || out_len.is_null() {
+        return std::ptr::null_mut();
+    }
+    let c_str = unsafe { CStr::from_ptr(path) };
+    let path_str = match c_str.to_str() {
+        Ok(s) => s,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    let options = parse_midi_options_json(options_json);
+
+    match generate_midi_from_file(path_str, &options) {
+        Ok(midi_bytes) => {
+            let len = midi_bytes.len();
+            let ptr = midi_bytes.leak().as_mut_ptr();
+            unsafe { *out_len = len; }
+            ptr
+        }
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Free MIDI bytes previously returned by `scorelib_generate_midi`.
+///
+/// # Safety
+/// `ptr` must be a buffer previously returned by a scorelib MIDI function,
+/// or null. `len` must be the length returned via `out_len`.
+#[no_mangle]
+pub unsafe extern "C" fn scorelib_free_midi(ptr: *mut u8, len: usize) {
+    if !ptr.is_null() && len > 0 {
+        unsafe {
+            let _ = Vec::from_raw_parts(ptr, len, len);
+        }
+    }
+}
+
+/// Parse MidiOptions from a JSON C string (internal helper).
+unsafe fn parse_midi_options_json(json_ptr: *const c_char) -> MidiOptions {
+    if json_ptr.is_null() {
+        return MidiOptions::default();
+    }
+    let c_str = unsafe { CStr::from_ptr(json_ptr) };
+    let json_str = match c_str.to_str() {
+        Ok(s) => s,
+        Err(_) => return MidiOptions::default(),
+    };
+
+    // Simple JSON parsing without serde_json::Value dependency overhead.
+    // We look for known keys with simple string matching.
+    let mut opts = MidiOptions::default();
+    if json_str.contains("\"include_melody\":false") || json_str.contains("\"include_melody\": false") {
+        opts.include_melody = false;
+    }
+    if json_str.contains("\"include_piano\":true") || json_str.contains("\"include_piano\": true") {
+        opts.include_piano = true;
+    }
+    if json_str.contains("\"include_bass\":true") || json_str.contains("\"include_bass\": true") {
+        opts.include_bass = true;
+    }
+    if json_str.contains("\"include_strings\":true") || json_str.contains("\"include_strings\": true") {
+        opts.include_strings = true;
+    }
+    if json_str.contains("\"include_drums\":true") || json_str.contains("\"include_drums\": true") {
+        opts.include_drums = true;
+    }
+    if json_str.contains("\"include_metronome\":false") || json_str.contains("\"include_metronome\": false") {
+        opts.include_metronome = false;
+    }
+    if json_str.contains("\"energy\":\"soft\"") || json_str.contains("\"energy\": \"soft\"") {
+        opts.energy = Energy::Soft;
+    }
+    if json_str.contains("\"energy\":\"strong\"") || json_str.contains("\"energy\": \"strong\"") {
+        opts.energy = Energy::Strong;
+    }
+    opts
 }

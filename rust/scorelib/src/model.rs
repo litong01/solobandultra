@@ -167,8 +167,10 @@ pub struct Note {
     pub dot: bool,
     /// Accidental: "sharp", "flat", "natural", "double-sharp", "flat-flat"
     pub accidental: Option<String>,
-    /// Tie: "start", "stop"
-    pub tie: Option<String>,
+    /// Whether this note starts a tie (held into the next note)
+    pub tie_start: bool,
+    /// Whether this note stops a tie (continuation from a previous note)
+    pub tie_stop: bool,
     /// Staff number (1-based; for multi-staff parts like piano)
     pub staff: Option<i32>,
     /// Default X position in tenths (for layout)

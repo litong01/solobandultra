@@ -48,6 +48,7 @@ android/app/*.iml
 
 # Ignore OpenSheetMusicDisplay
 opensheetmusicdisplay
+mysoloband
 # Local configuration (contains SDK path specific to your machine)
 android/local.properties
 

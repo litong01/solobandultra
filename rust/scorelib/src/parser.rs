@@ -423,7 +423,8 @@ fn parse_note(node: &Node) -> Note {
         chord: false,
         dot: false,
         accidental: None,
-        tie: None,
+        tie_start: false,
+        tie_stop: false,
         staff: None,
         default_x: node
             .attribute("default-x")
@@ -475,7 +476,11 @@ fn parse_note(node: &Node) -> Note {
                 note.accidental = child.text().map(|t| t.trim().to_string());
             }
             "tie" => {
-                note.tie = child.attribute("type").map(String::from);
+                match child.attribute("type") {
+                    Some("start") => note.tie_start = true,
+                    Some("stop") => note.tie_stop = true,
+                    _ => {}
+                }
             }
             "notations" => {
                 for nc in child.children().filter(|n| n.is_element()) {
