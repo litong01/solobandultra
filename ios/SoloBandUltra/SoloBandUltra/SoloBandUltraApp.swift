@@ -5,6 +5,7 @@ import AVFoundation
 struct SoloBandUltraApp: App {
     @StateObject private var audioSessionManager: AudioSessionManager
     @StateObject private var playbackManager: PlaybackManager
+    @StateObject private var midiSettings = MidiSettings()
 
     init() {
         // Initialize shared AudioSessionManager
@@ -21,6 +22,7 @@ struct SoloBandUltraApp: App {
             ContentView()
                 .environmentObject(audioSessionManager)
                 .environmentObject(playbackManager)
+                .environmentObject(midiSettings)
         }
     }
 

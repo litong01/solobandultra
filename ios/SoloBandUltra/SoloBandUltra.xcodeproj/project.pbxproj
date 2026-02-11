@@ -13,9 +13,10 @@
 		AA00000000000000000004B1 /* AudioSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000004A1 /* AudioSessionManager.swift */; };
 		AA00000000000000000005B1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000005A1 /* Assets.xcassets */; };
 		BB00000000000000000001B1 /* ScoreLibBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000000000000000001A1 /* ScoreLibBridge.swift */; };
-		DD00000000000000000001B1 /* PlaybackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD00000000000000000001A1 /* PlaybackManager.swift */; };
-		BB00000000000000000003B1 /* libscorelib.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BB00000000000000000003A1 /* libscorelib.a */; };
+		BB00000000000000000003B1 /* libscorelib.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = BB00000000000000000003A1 /* libscorelib.xcframework */; };
 		CC00000000000000000001B1 /* SheetMusic in Resources */ = {isa = PBXBuildFile; fileRef = CC00000000000000000001A1 /* SheetMusic */; };
+		DD00000000000000000001B1 /* PlaybackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD00000000000000000001A1 /* PlaybackManager.swift */; };
+		EE00000000000000000001B1 /* MidiSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE00000000000000000001A1 /* MidiSettings.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,10 +28,11 @@
 		AA00000000000000000006A1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AA00000000000000000007A1 /* SoloBandUltra.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SoloBandUltra.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB00000000000000000001A1 /* ScoreLibBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreLibBridge.swift; sourceTree = "<group>"; };
-		DD00000000000000000001A1 /* PlaybackManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackManager.swift; sourceTree = "<group>"; };
 		BB00000000000000000002A1 /* SoloBandUltra-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "SoloBandUltra-Bridging-Header.h"; sourceTree = "<group>"; };
-		BB00000000000000000003A1 /* libscorelib.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libscorelib.a; path = lib/libscorelib.a; sourceTree = "<group>"; };
+		BB00000000000000000003A1 /* libscorelib.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = libscorelib.xcframework; path = lib/libscorelib.xcframework; sourceTree = "<group>"; };
 		CC00000000000000000001A1 /* SheetMusic */ = {isa = PBXFileReference; lastKnownFileType = folder; path = SheetMusic; sourceTree = "<group>"; };
+		DD00000000000000000001A1 /* PlaybackManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackManager.swift; sourceTree = "<group>"; };
+		EE00000000000000000001A1 /* MidiSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MidiSettings.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -38,7 +40,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				BB00000000000000000003B1 /* libscorelib.a in Frameworks */,
+				BB00000000000000000003B1 /* libscorelib.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -49,7 +51,7 @@
 			isa = PBXGroup;
 			children = (
 				AA0000000000000000000D02 /* SoloBandUltra */,
-				BB00000000000000000003A1 /* libscorelib.a */,
+				BB00000000000000000003A1 /* libscorelib.xcframework */,
 				AA0000000000000000000D03 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -63,6 +65,7 @@
 				AA00000000000000000004A1 /* AudioSessionManager.swift */,
 				BB00000000000000000001A1 /* ScoreLibBridge.swift */,
 				DD00000000000000000001A1 /* PlaybackManager.swift */,
+				EE00000000000000000001A1 /* MidiSettings.swift */,
 				BB00000000000000000002A1 /* SoloBandUltra-Bridging-Header.h */,
 				CC00000000000000000001A1 /* SheetMusic */,
 				AA00000000000000000005A1 /* Assets.xcassets */,
@@ -138,7 +141,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA00000000000000000005B1 /* Assets.xcassets in Resources */,
-				CC00000000000000000001B1 /* Resources in Resources */,
+				CC00000000000000000001B1 /* SheetMusic in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -155,6 +158,7 @@
 				AA00000000000000000004B1 /* AudioSessionManager.swift in Sources */,
 				BB00000000000000000001B1 /* ScoreLibBridge.swift in Sources */,
 				DD00000000000000000001B1 /* PlaybackManager.swift in Sources */,
+				EE00000000000000000001B1 /* MidiSettings.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -286,6 +290,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = CJN4XW3728;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/include";
@@ -294,7 +299,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/lib";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.solobandultra.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -312,6 +316,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = CJN4XW3728;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/include";
@@ -320,7 +325,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/lib";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.solobandultra.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";

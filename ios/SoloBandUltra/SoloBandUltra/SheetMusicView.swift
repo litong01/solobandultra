@@ -4,12 +4,14 @@ import WebKit
 /// Displays rendered sheet music SVG using a WKWebView with playback cursor support.
 struct SheetMusicView: View {
     @EnvironmentObject var playbackManager: PlaybackManager
+    @EnvironmentObject var midiSettings: MidiSettings
     @State private var svgContent: String?
     @State private var playbackMapJson: String?
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var selectedFile: String = ""
     @State private var lastRenderedWidth: CGFloat = 0
+    @State private var lastOptionsJson: String = ""
 
     /// Dynamically discover all .musicxml and .mxl files in the bundled SheetMusic folder.
     private var availableFiles: [String] {
@@ -83,6 +85,13 @@ struct SheetMusicView: View {
                     loadScore(width: newWidth)
                 }
             }
+            .onReceive(midiSettings.objectWillChange) { _ in
+                // When MIDI settings change, regenerate MIDI with new options.
+                // Use a small delay so the published value has landed.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    regenerateMidi()
+                }
+            }
         }
     }
 
@@ -94,6 +103,8 @@ struct SheetMusicView: View {
         lastRenderedWidth = width
 
         let pageWidth = Double(width)
+        let optionsJson = midiSettings.toJson()
+        lastOptionsJson = optionsJson
 
         DispatchQueue.global(qos: .userInitiated).async {
             // Find the file in the app bundle
@@ -131,8 +142,8 @@ struct SheetMusicView: View {
             // Generate playback map
             let pmap = ScoreLib.playbackMap(data, extension: ext, pageWidth: pageWidth)
 
-            // Generate MIDI data for playback
-            let midi = ScoreLib.generateMidi(data, extension: ext)
+            // Generate MIDI data for playback with current settings
+            let midi = ScoreLib.generateMidi(data, extension: ext, optionsJson: optionsJson)
 
             DispatchQueue.main.async {
                 isLoading = false
@@ -146,6 +157,39 @@ struct SheetMusicView: View {
                     }
                 } else {
                     errorMessage = "Failed to render '\(filename)'"
+                }
+            }
+        }
+    }
+
+    /// Regenerate only the MIDI data when settings change (no need to re-render SVG).
+    private func regenerateMidi() {
+        let optionsJson = midiSettings.toJson()
+        guard optionsJson != lastOptionsJson else { return }
+        lastOptionsJson = optionsJson
+
+        let filename = selectedFile
+        guard !filename.isEmpty else { return }
+
+        let ext = (filename as NSString).pathExtension
+        let name = (filename as NSString).deletingPathExtension
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let url: URL
+            if let folderURL = Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "SheetMusic") {
+                url = folderURL
+            } else if let rootURL = Bundle.main.url(forResource: name, withExtension: ext) {
+                url = rootURL
+            } else {
+                return
+            }
+
+            guard let data = try? Data(contentsOf: url) else { return }
+            let midi = ScoreLib.generateMidi(data, extension: ext, optionsJson: optionsJson)
+
+            DispatchQueue.main.async {
+                if let midiData = midi {
+                    playbackManager.prepareMidi(midiData)
                 }
             }
         }
@@ -475,4 +519,5 @@ struct SVGWebView: UIViewRepresentable {
 #Preview {
     SheetMusicView()
         .environmentObject(PlaybackManager(audioSessionManager: AudioSessionManager()))
+        .environmentObject(MidiSettings())
 }

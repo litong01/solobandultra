@@ -124,16 +124,38 @@ build_ios() {
     '
 
     # Create universal (fat) simulator library using macOS lipo.
-    # lipo ships with Xcode Command Line Tools — no Rust needed.
+    # We can't put device arm64 and simulator arm64 in the same fat binary —
+    # they share the architecture but have different platform markers.
+    # XCFramework solves this by bundling separate slices per platform.
     echo "→ Creating universal simulator library (lipo on host)..."
     mkdir -p "$IOS_LIB_DIR"
+    local SIM_FAT="$RUST_SRC/target/libscorelib-sim.a"
     lipo -create \
         "$RUST_SRC/target/aarch64-apple-ios-sim/release/libscorelib.a" \
         "$RUST_SRC/target/x86_64-apple-ios/release/libscorelib.a" \
-        -output "$IOS_LIB_DIR/libscorelib.a"
+        -output "$SIM_FAT"
 
-    echo "✓ iOS: $IOS_LIB_DIR/libscorelib.a"
-    lipo -info "$IOS_LIB_DIR/libscorelib.a"
+    echo "→ Creating XCFramework..."
+    local XCFW="$IOS_LIB_DIR/libscorelib.xcframework"
+    local INCLUDE_DIR="ios/SoloBandUltra/include"
+
+    # Remove any previous XCFramework (xcodebuild refuses to overwrite)
+    rm -rf "$XCFW"
+    # Also remove the old flat .a if present (no longer used)
+    rm -f "$IOS_LIB_DIR/libscorelib.a"
+
+    xcodebuild -create-xcframework \
+        -library "$RUST_SRC/target/aarch64-apple-ios/release/libscorelib.a" \
+        -headers "$INCLUDE_DIR" \
+        -library "$SIM_FAT" \
+        -headers "$INCLUDE_DIR" \
+        -output "$XCFW"
+
+    rm -f "$SIM_FAT"
+
+    echo "✓ iOS: $XCFW"
+    echo "  Device:    $(lipo -info "$XCFW/ios-arm64/libscorelib.a" 2>/dev/null || echo 'see xcframework')"
+    echo "  Simulator: $(lipo -info "$XCFW/ios-arm64_x86_64-simulator/libscorelib.a" 2>/dev/null || echo 'see xcframework')"
     echo ""
 }
 
