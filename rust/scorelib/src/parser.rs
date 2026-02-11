@@ -278,6 +278,14 @@ fn parse_measure(node: &Node) -> Measure {
                         sound_tempo: Some(tempo),
                         metronome: None,
                         words: None,
+                        segno: false,
+                        coda: false,
+                        rehearsal: None,
+                        sound_dacapo: false,
+                        sound_dalsegno: false,
+                        sound_fine: false,
+                        sound_tocoda: false,
+                        words_font_style: None,
                     });
                 }
             }
@@ -629,6 +637,14 @@ fn parse_direction(node: &Node) -> Option<Direction> {
     let mut sound_tempo = None;
     let mut metronome = None;
     let mut words = None;
+    let mut words_font_style = None;
+    let mut segno = false;
+    let mut coda = false;
+    let mut rehearsal = None;
+    let mut sound_dacapo = false;
+    let mut sound_dalsegno = false;
+    let mut sound_fine = false;
+    let mut sound_tocoda = false;
 
     for child in node.children().filter(|n| n.is_element()) {
         match child.tag_name().name() {
@@ -640,6 +656,20 @@ fn parse_direction(node: &Node) -> Option<Direction> {
                         }
                         "words" => {
                             words = dt_child.text().map(|t| t.trim().to_string());
+                            // Capture font style attributes
+                            let bold = dt_child.attribute("font-weight") == Some("bold");
+                            let italic = dt_child.attribute("font-style") == Some("italic");
+                            words_font_style = match (bold, italic) {
+                                (true, true) => Some("bold italic".to_string()),
+                                (true, false) => Some("bold".to_string()),
+                                (false, true) => Some("italic".to_string()),
+                                _ => None,
+                            };
+                        }
+                        "segno" => { segno = true; }
+                        "coda" => { coda = true; }
+                        "rehearsal" => {
+                            rehearsal = dt_child.text().map(|t| t.trim().to_string());
                         }
                         _ => {}
                     }
@@ -649,18 +679,49 @@ fn parse_direction(node: &Node) -> Option<Direction> {
                 if let Some(tempo) = child.attribute("tempo").and_then(|t| t.parse::<f64>().ok()) {
                     sound_tempo = Some(tempo);
                 }
+                if child.attribute("dacapo") == Some("yes") {
+                    sound_dacapo = true;
+                }
+                if child.attribute("dalsegno").is_some() {
+                    sound_dalsegno = true;
+                }
+                if child.attribute("fine") == Some("yes") {
+                    sound_fine = true;
+                }
+                if child.attribute("tocoda").is_some() {
+                    sound_tocoda = true;
+                }
             }
             _ => {}
         }
     }
 
-    // Only return a Direction if it has useful content
-    if sound_tempo.is_some() || metronome.is_some() || words.is_some() {
+    // Return a Direction if it has any useful content
+    let has_content = sound_tempo.is_some()
+        || metronome.is_some()
+        || words.is_some()
+        || segno
+        || coda
+        || rehearsal.is_some()
+        || sound_dacapo
+        || sound_dalsegno
+        || sound_fine
+        || sound_tocoda;
+
+    if has_content {
         Some(Direction {
             placement,
             sound_tempo,
             metronome,
             words,
+            segno,
+            coda,
+            rehearsal,
+            sound_dacapo,
+            sound_dalsegno,
+            sound_fine,
+            sound_tocoda,
+            words_font_style,
         })
     } else {
         None

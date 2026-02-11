@@ -342,8 +342,51 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                 }
             }
         }
-        let lyrics_base_y = (system_lowest_y + LYRICS_PAD_BELOW)
+        // Count the max below-staff direction word lines in any measure of
+        // this system so we can stack them and push lyrics down accordingly.
+        let mut max_below_dir_lines: usize = 0;
+        for ml_scan in &system.measures {
+            for part_info in &system.parts {
+                let pidx = part_info.part_idx;
+                if ml_scan.measure_idx < score.parts[pidx].measures.len() {
+                    let count = score.parts[pidx].measures[ml_scan.measure_idx].directions.iter()
+                        .filter(|dir| {
+                            dir.placement.as_deref() == Some("below")
+                                && dir.words.as_ref().map_or(false, |w| !w.is_empty() && !is_jump_text(w))
+                        })
+                        .count();
+                    if count > max_below_dir_lines {
+                        max_below_dir_lines = count;
+                    }
+                }
+            }
+        }
+
+        // Check if this system has any lyrics
+        let system_has_lyrics = system.measures.iter().any(|ml| {
+            system.parts.iter().any(|part_info| {
+                let pidx = part_info.part_idx;
+                if ml.measure_idx < score.parts[pidx].measures.len() {
+                    score.parts[pidx].measures[ml.measure_idx].notes.iter()
+                        .any(|n| !n.lyrics.is_empty())
+                } else {
+                    false
+                }
+            })
+        });
+
+        // Direction words Y: just below the staff at a fixed offset
+        let dir_words_y = (system_lowest_y + LYRICS_PAD_BELOW)
             .max(system_y + LYRICS_MIN_Y_BELOW_STAFF);
+
+        // If there are below-staff direction words AND lyrics, push
+        // lyrics down below all direction word lines.
+        let dir_words_offset = if max_below_dir_lines > 0 && system_has_lyrics {
+            DIRECTION_WORDS_HEIGHT + (max_below_dir_lines as f64 - 1.0) * DIRECTION_WORDS_LINE_HEIGHT
+        } else {
+            0.0
+        };
+        let lyrics_base_y = dir_words_y + dir_words_offset;
 
         // ── Initialise per-part/staff open slurs from global carry-over ──
         let mut system_open_slurs: std::collections::HashMap<(usize, usize), std::collections::HashMap<i32, SlurStart>> =
@@ -470,11 +513,38 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                         }
                     }
 
-                    // ── Tempo / metronome markings (only on top staff of first part) ──
+                    // ── Directions (only on top staff of first part) ──
                     if staff_num == 1 && pidx == parts_staves[0].0 {
+                        let mut below_word_idx: usize = 0; // track stacking of below-placed words
+                        let mut above_word_idx: usize = 0; // track stacking of above-placed words
                         for dir in &measure.directions {
+                            // Tempo / metronome markings
                             if dir.sound_tempo.is_some() || dir.metronome.is_some() {
                                 render_tempo_marking(&mut svg, mx + 4.0, staff_y, dir);
+                            }
+                            // Segno sign — placed at the beginning of the measure
+                            if dir.segno {
+                                render_segno(&mut svg, mx + 6.0, staff_y);
+                            }
+                            // Coda sign — placed at the beginning of the measure
+                            if dir.coda {
+                                render_coda(&mut svg, mx + 6.0, staff_y);
+                            }
+                            // Rehearsal marks are navigational aids for rehearsals
+                            // (e.g. boxed "A", "B") — skipped as they don't affect playback.
+
+                            // Jump/navigation text (D.C., D.S., Fine, etc.)
+                            // and general text words — placed at end of measure
+                            if let Some(ref text) = dir.words {
+                                let is_jump = is_jump_text(text);
+                                let is_below = dir.placement.as_deref() == Some("below");
+                                let line_idx = if is_below { below_word_idx } else { above_word_idx };
+                                if is_jump {
+                                    render_jump_text(&mut svg, mx + mw - 4.0, staff_y, dir_words_y, dir.placement.as_deref(), text, line_idx);
+                                } else {
+                                    render_direction_words(&mut svg, mx, staff_y, dir_words_y, dir, line_idx);
+                                }
+                                if is_below { below_word_idx += 1; } else { above_word_idx += 1; }
                             }
                         }
                     }
@@ -948,8 +1018,36 @@ fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], page_width: f6
                 }
             }
         }
+        // Count the maximum number of below-staff direction word lines in any
+        // single measure of this system.  Each line needs vertical space between
+        // the staff and the lyrics.
+        let mut max_below_dir_lines: usize = 0;
+        for ml_check2 in &measures {
+            for &(pidx, _) in parts_staves {
+                if ml_check2.measure_idx < score.parts[pidx].measures.len() {
+                    let count = score.parts[pidx].measures[ml_check2.measure_idx].directions.iter()
+                        .filter(|dir| {
+                            dir.placement.as_deref() == Some("below")
+                                && dir.words.as_ref().map_or(false, |w| !w.is_empty() && !is_jump_text(w))
+                        })
+                        .count();
+                    if count > max_below_dir_lines {
+                        max_below_dir_lines = count;
+                    }
+                }
+            }
+        }
+
+        let dir_words_extra = if max_below_dir_lines > 0 && max_lyric_verses > 0 {
+            // First line gets DIRECTION_WORDS_HEIGHT, additional lines get LINE_HEIGHT each
+            DIRECTION_WORDS_HEIGHT + (max_below_dir_lines as f64 - 1.0) * DIRECTION_WORDS_LINE_HEIGHT
+        } else {
+            0.0
+        };
+
         let lyrics_extra = if max_lyric_verses > 0 {
             LYRICS_MIN_Y_BELOW_STAFF - STAFF_HEIGHT + max_lyric_verses as f64 * LYRICS_LINE_HEIGHT
+                + dir_words_extra
         } else {
             0.0
         };
@@ -1262,6 +1360,106 @@ fn render_tempo_marking(svg: &mut SvgBuilder, x: f64, staff_y: f64, dir: &Direct
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// Segno, Coda, rehearsal marks, jump text, and direction words
+// ═══════════════════════════════════════════════════════════════════════
+
+/// VexFlow glyph outline for segno sign (glyph code v8c).
+const SEGNO_GLYPH: &str = "m -133 483 b -117 484 -127 484 -122 484 b 31 373 -51 484 9 440 b 35 348 34 365 35 356 b -25 285 35 313 10 285 b -87 331 -55 285 -76 302 b -167 402 -100 376 -133 402 b -191 398 -175 402 -183 401 b -227 341 -215 388 -227 369 b -225 320 -227 334 -227 327 b -13 74 -209 230 -125 133 b 6 65 -4 70 5 66 l 9 63 l 10 65 b 117 231 12 68 40 112 l 189 341 l 242 424 b 268 460 262 456 264 458 b 283 464 273 463 277 464 b 308 438 296 464 308 453 l 308 437 b 287 396 308 430 308 428 l 95 98 l 59 43 l 58 41 l 65 37 b 253 -156 151 -8 217 -77 b 281 -285 272 -199 281 -244 b 148 -481 281 -381 231 -463 b 115 -485 137 -484 126 -485 b -32 -376 51 -485 -9 -442 b -36 -349 -35 -366 -36 -358 b 25 -287 -36 -315 -12 -287 b 85 -333 54 -287 74 -302 b 166 -403 99 -377 133 -403 b 190 -399 174 -403 182 -402 b 225 -342 215 -390 225 -370 b 224 -322 225 -335 225 -328 b 12 -76 208 -231 125 -134 b -8 -66 2 -72 -6 -68 l -10 -65 l -12 -66 b -118 -231 -13 -68 -42 -113 l -190 -342 l -243 -426 b -269 -462 -264 -458 -265 -458 b -284 -466 -274 -464 -279 -466 b -310 -440 -298 -466 -310 -455 l -310 -438 b -288 -398 -310 -430 -308 -430 l -96 -99 l -59 -44 l -59 -43 l -66 -38 b -281 284 -198 33 -281 158 l -281 284 b -133 483 -281 392 -220 474 m 254 177 b 266 179 258 177 262 179 b 319 149 287 179 307 167 b 329 115 326 140 329 127 b 319 79 329 102 326 90 b 268 51 307 61 287 51 b 221 72 250 51 234 58 b 205 115 210 84 205 99 b 254 177 205 142 223 170 m -281 -54 b -269 -52 -277 -52 -273 -52 b -223 -73 -253 -52 -235 -59 b -206 -116 -212 -84 -206 -101 b -216 -151 -206 -129 -209 -141 b -269 -179 -228 -170 -249 -179 b -314 -159 -285 -179 -302 -173 b -330 -116 -325 -147 -330 -131 b -281 -54 -330 -88 -313 -61";
+
+/// VexFlow glyph outline for coda sign (glyph code v4d).
+const CODA_GLYPH: &str = "m -9 388 b -2 390 -8 390 -5 390 b 5 388 1 390 4 390 b 19 378 10 387 16 383 b 23 333 23 371 23 371 b 24 298 23 299 24 298 b 81 276 34 298 65 285 b 213 91 145 240 190 177 b 224 24 217 76 224 36 b 257 24 224 24 235 24 b 299 19 292 24 292 24 b 310 -1 306 15 310 6 b 299 -23 310 -11 306 -19 b 257 -27 292 -27 292 -27 b 224 -29 235 -27 224 -29 b 213 -95 224 -40 217 -80 b 81 -280 190 -181 145 -244 b 24 -301 65 -290 34 -301 b 23 -335 24 -301 23 -303 l 23 -340 b 17 -381 23 -374 23 -374 b -1 -391 13 -388 5 -391 b -21 -381 -9 -391 -17 -388 b -27 -340 -27 -374 -27 -374 l -27 -335 b -28 -301 -27 -303 -27 -301 b -85 -280 -38 -301 -69 -290 b -217 -95 -149 -244 -194 -181 b -228 -29 -221 -80 -228 -40 b -259 -27 -228 -29 -238 -27 b -300 -23 -294 -27 -294 -27 b -311 -2 -307 -19 -311 -11 b -294 23 -311 8 -304 19 b -259 24 -291 23 -284 24 b -228 24 -239 24 -228 24 b -217 91 -228 36 -221 76 b -85 276 -194 177 -149 240 b -28 298 -69 285 -38 298 b -27 333 -27 298 -27 299 b -27 371 -27 362 -27 369 b -9 388 -24 378 -17 385 m -27 136 b -28 247 -27 197 -28 247 b -61 216 -31 247 -53 226 b -123 33 -95 172 -121 98 l -125 24 l -76 24 l -27 24 l -27 136 m 29 242 b 24 247 27 245 24 247 b 23 136 24 247 23 197 l 23 24 l 72 24 l 121 24 l 119 33 b 29 242 115 116 77 206 m -27 -140 l -27 -27 l -76 -27 l -125 -27 l -123 -36 b -61 -220 -121 -102 -95 -176 b -28 -251 -53 -230 -31 -251 b -27 -140 -28 -251 -27 -201 m 119 -36 l 121 -27 l 72 -27 l 23 -27 l 23 -140 b 24 -251 23 -201 24 -251 b 57 -220 27 -251 49 -230 b 119 -36 91 -176 117 -102";
+
+/// Glyph scale for segno (OSMD uses point size 30 → approx 0.023 in our px system).
+const SEGNO_GLYPH_SCALE: f64 = 0.023;
+/// Glyph scale for coda (OSMD uses point size 40 → approx 0.030).
+const CODA_GLYPH_SCALE: f64 = 0.030;
+
+/// Render a segno sign above the staff at the given x position.
+fn render_segno(svg: &mut SvgBuilder, x: f64, staff_y: f64) {
+    let y = staff_y - 14.0; // above the staff
+    let path = vexflow_outline_to_svg(SEGNO_GLYPH, SEGNO_GLYPH_SCALE, x, y);
+    svg.path(&path, NOTE_COLOR, NOTE_COLOR, 0.3);
+}
+
+/// Render a coda sign above the staff at the given x position.
+fn render_coda(svg: &mut SvgBuilder, x: f64, staff_y: f64) {
+    let y = staff_y - 14.0; // above the staff
+    let path = vexflow_outline_to_svg(CODA_GLYPH, CODA_GLYPH_SCALE, x, y);
+    svg.path(&path, NOTE_COLOR, NOTE_COLOR, 0.3);
+}
+
+
+/// Check whether a text string is a jump/navigation instruction.
+fn is_jump_text(text: &str) -> bool {
+    let lower = text.trim().to_lowercase();
+    lower.starts_with("d.c.")
+        || lower.starts_with("d.s.")
+        || lower.starts_with("d. c.")
+        || lower.starts_with("d. s.")
+        || lower == "fine"
+        || lower.starts_with("to coda")
+        || lower.starts_with("tocoda")
+        || lower == "coda"
+        || lower == "segno"
+        || lower.starts_with("da capo")
+        || lower.starts_with("dal segno")
+}
+
+/// Render jump/navigation text (D.C. al Fine, D.S. al Coda, Fine, etc.)
+/// at the end of the measure, above the staff, in bold italic Times.
+fn render_jump_text(svg: &mut SvgBuilder, x: f64, staff_y: f64, dir_words_y: f64, placement: Option<&str>, text: &str, line_idx: usize) {
+    let below = placement == Some("below");
+    let line_offset = line_idx as f64 * DIRECTION_WORDS_LINE_HEIGHT;
+    let y = if below {
+        dir_words_y + line_offset
+    } else {
+        // Above the staff: above chord symbols, below tempo marking
+        staff_y + CHORD_SYMBOL_OFFSET_Y - 14.0 - line_offset
+    };
+    // OSMD: Times, 12pt, bold italic
+    svg.elements.push(format!(
+        r#"<text x="{:.1}" y="{:.1}" font-family="Times New Roman, Times, serif" font-size="13" font-weight="bold" font-style="italic" fill="{}" text-anchor="end">{}</text>"#,
+        x, y, NOTE_COLOR,
+        text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    ));
+}
+
+/// Render general direction words (non-jump text like "Rubato", "Jazz Waltz Feel").
+/// When placed below the staff, words are positioned between the staff and lyrics
+/// (at `dir_words_y`), and lyrics are pushed down to make room.
+/// When placed above (or no placement), words sit above the chord symbol line
+/// and below any tempo marking.
+fn render_direction_words(svg: &mut SvgBuilder, x: f64, staff_y: f64, dir_words_y: f64, dir: &Direction, line_idx: usize) {
+    if let Some(ref text) = dir.words {
+        if text.is_empty() { return; }
+        let below = dir.placement.as_deref() == Some("below");
+        let line_offset = line_idx as f64 * DIRECTION_WORDS_LINE_HEIGHT;
+        let y = if below {
+            // Place between the staff and the lyrics; stack multiple lines downward
+            dir_words_y + line_offset
+        } else {
+            // Above the staff: above chord symbols, below tempo marking;
+            // stack multiple lines upward (subtract offset)
+            staff_y + CHORD_SYMBOL_OFFSET_Y - 14.0 - line_offset
+        };
+
+        // Determine font style from parsed attributes
+        let (weight, style) = match dir.words_font_style.as_deref() {
+            Some("bold italic") => ("bold", "italic"),
+            Some("bold") => ("bold", "normal"),
+            Some("italic") => ("normal", "italic"),
+            _ => ("normal", "normal"),
+        };
+
+        svg.elements.push(format!(
+            r#"<text x="{:.1}" y="{:.1}" font-family="Times New Roman, Times, serif" font-size="12" font-weight="{}" font-style="{}" fill="{}" text-anchor="start">{}</text>"#,
+            x + 4.0, y, weight, style, NOTE_COLOR,
+            text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+        ));
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // Time signature rendering
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -1350,6 +1548,26 @@ fn render_notes(
     // Pre-compute the centre of this measure for whole-measure rests
     let measure_center_x = measure_x + measure_w / 2.0;
 
+    // Count how many non-grace notes/rests belong to this staff.  If the
+    // measure contains only a single rest (regardless of its notated type),
+    // it is effectively a whole-measure rest and should be centred.
+    let staff_note_count = measure.notes.iter().filter(|n| {
+        if n.grace { return false; }
+        if let Some(sf) = staff_filter {
+            n.staff.unwrap_or(1) == sf
+        } else {
+            true
+        }
+    }).count();
+    let is_solo_rest = staff_note_count == 1
+        && measure.notes.iter().any(|n| {
+            if n.grace { return false; }
+            let on_staff = if let Some(sf) = staff_filter {
+                n.staff.unwrap_or(1) == sf
+            } else { true };
+            on_staff && n.rest
+        });
+
     // Collect beam groups for eighth notes and shorter (only non-grace notes)
     let beam_groups = find_beam_groups(measure, staff_filter);
 
@@ -1363,8 +1581,10 @@ fn render_notes(
         let nx = note_positions[i];
 
         if note.rest {
-            // Centre whole-measure rests (and rests with no type) in the measure
-            let rest_x = if note.measure_rest || note.note_type.is_none() {
+            // Centre whole-measure rests, rests with no type, and rests that
+            // are the only event in the measure (e.g. a half rest filling a
+            // 2/4 bar).
+            let rest_x = if note.measure_rest || note.note_type.is_none() || is_solo_rest {
                 measure_center_x
             } else {
                 nx
@@ -1744,6 +1964,8 @@ const LYRICS_FONT_SIZE: f64 = 13.0;
 const LYRICS_PAD_BELOW: f64 = 16.0;  // padding below the lowest note/stem
 const LYRICS_LINE_HEIGHT: f64 = 16.0; // spacing between lyric verse lines
 const LYRICS_MIN_Y_BELOW_STAFF: f64 = 54.0; // minimum offset from staff_y (below bottom line)
+const DIRECTION_WORDS_HEIGHT: f64 = 18.0; // extra space for below-staff direction words above lyrics
+const DIRECTION_WORDS_LINE_HEIGHT: f64 = 15.0; // vertical spacing between stacked direction word lines
 
 // ── OSMD-inspired lyrics spacing constants ──────────────────────────────
 // These mirror the approach of OpenSheetMusicDisplay (see EngravingRules):

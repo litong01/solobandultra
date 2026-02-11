@@ -289,6 +289,19 @@ pub struct Direction {
     pub metronome: Option<MetronomeMark>,
     /// Text words from <direction-type>/<words> (e.g., "Allegro", "rit.")
     pub words: Option<String>,
+    /// Whether this direction contains a segno sign
+    pub segno: bool,
+    /// Whether this direction contains a coda sign
+    pub coda: bool,
+    /// Rehearsal mark text (e.g. "A", "B", "C")
+    pub rehearsal: Option<String>,
+    /// Navigation jump from <sound>: "dacapo", "dalsegno", "fine", "tocoda"
+    pub sound_dacapo: bool,
+    pub sound_dalsegno: bool,
+    pub sound_fine: bool,
+    pub sound_tocoda: bool,
+    /// Font style for <words>: "italic", "bold", "bold italic"
+    pub words_font_style: Option<String>,
 }
 
 /// A metronome marking (e.g., quarter = 120).
