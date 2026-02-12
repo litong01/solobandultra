@@ -9,9 +9,12 @@ import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.res.painterResource
+import com.solobandultra.app.R
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -364,9 +367,21 @@ fun SheetMusicScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("SoloBand Ultra") },
-                actions = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Image(
+                    painter = painterResource(id = R.mipmap.ic_launcher),
+                    contentDescription = "Mysoloband",
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Box {
                     IconButton(onClick = { showMenu = !showMenu }) {
                         Icon(Icons.Default.MoreVert, contentDescription = "Menu")
                     }
@@ -414,7 +429,7 @@ fun SheetMusicScreen(
                         )
                     }
                 }
-            )
+            }
         },
         bottomBar = {
             PlaybackControlBar(

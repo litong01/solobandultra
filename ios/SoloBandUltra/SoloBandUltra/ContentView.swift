@@ -14,100 +14,108 @@ struct ContentView: View {
     @State private var clipboardHasUrl = false
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // Sheet music display area
-                SheetMusicView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+        VStack(spacing: 0) {
+            // Compact top bar: icon left, menu right
+            HStack {
+                Image("AppIconImage")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 28, height: 28)
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .help("Mysoloband")
 
-                Divider()
+                Spacer()
 
-                // Playback controls
-                PlaybackControlBar(
-                    isPlaying: $playbackManager.isPlaying,
-                    onPlayPause: {
-                        playbackManager.togglePlayPause()
-                    },
-                    onStop: {
-                        playbackManager.stop()
-                    },
-                    onSettings: {
-                        showSettings = true
+                Menu {
+                    Button(action: { showFilePicker = true }) {
+                        Label("Open File", systemImage: "doc.badge.plus")
                     }
-                )
-                .padding(.horizontal)
-                .padding(.vertical, 12)
-                .background(.ultraThinMaterial)
-            }
-            .navigationTitle("SoloBand Ultra")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Menu {
-                        Button(action: { showFilePicker = true }) {
-                            Label("Open File", systemImage: "doc.badge.plus")
-                        }
-                        Button(action: { pasteFromClipboard() }) {
-                            Label("Paste Link", systemImage: "doc.on.clipboard")
-                        }
-                        .disabled(!clipboardHasUrl)
-                        Button(action: { showSettings = true }) {
-                            Label("Settings", systemImage: "gear")
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
+                    Button(action: { pasteFromClipboard() }) {
+                        Label("Paste Link", systemImage: "doc.on.clipboard")
                     }
+                    .disabled(!clipboardHasUrl)
+                    Button(action: { showSettings = true }) {
+                        Label("Settings", systemImage: "gear")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.title3)
                 }
             }
-            .overlay {
-                if isDownloading {
-                    ZStack {
-                        Color.black.opacity(0.3).ignoresSafeArea()
-                        VStack(spacing: 12) {
-                            ProgressView()
-                                .scaleEffect(1.5)
-                            Text("Downloading…")
-                                .font(.callout)
-                                .foregroundStyle(.white)
-                        }
-                        .padding(24)
-                        .background(.ultraThinMaterial)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+
+            // Sheet music display area
+            SheetMusicView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            Divider()
+
+            // Playback controls
+            PlaybackControlBar(
+                isPlaying: $playbackManager.isPlaying,
+                onPlayPause: {
+                    playbackManager.togglePlayPause()
+                },
+                onStop: {
+                    playbackManager.stop()
+                },
+                onSettings: {
+                    showSettings = true
+                }
+            )
+            .padding(.horizontal)
+            .padding(.vertical, 12)
+            .background(.ultraThinMaterial)
+        }
+        .overlay {
+            if isDownloading {
+                ZStack {
+                    Color.black.opacity(0.3).ignoresSafeArea()
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .scaleEffect(1.5)
+                        Text("Downloading…")
+                            .font(.callout)
+                            .foregroundStyle(.white)
                     }
+                    .padding(24)
+                    .background(.ultraThinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
             }
-            .alert("Paste Error", isPresented: .init(
-                get: { downloadError != nil },
-                set: { if !$0 { downloadError = nil } }
-            )) {
-                Button("OK") { downloadError = nil }
-            } message: {
-                Text(downloadError ?? "")
-            }
-            .fileImporter(
-                isPresented: $showFilePicker,
-                allowedContentTypes: [.xml, .data],
-                allowsMultipleSelection: false
-            ) { result in
-                switch result {
-                case .success(let urls):
-                    guard let url = urls.first else { return }
-                    guard url.startAccessingSecurityScopedResource() else { return }
-                    defer { url.stopAccessingSecurityScopedResource() }
+        }
+        .alert("Paste Error", isPresented: .init(
+            get: { downloadError != nil },
+            set: { if !$0 { downloadError = nil } }
+        )) {
+            Button("OK") { downloadError = nil }
+        } message: {
+            Text(downloadError ?? "")
+        }
+        .fileImporter(
+            isPresented: $showFilePicker,
+            allowedContentTypes: [.xml, .data],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else { return }
+                guard url.startAccessingSecurityScopedResource() else { return }
+                defer { url.stopAccessingSecurityScopedResource() }
 
-                    guard let data = try? Data(contentsOf: url) else { return }
-                    let filename = url.lastPathComponent
-                    let ext = (filename as NSString).pathExtension.lowercased()
+                guard let data = try? Data(contentsOf: url) else { return }
+                let filename = url.lastPathComponent
+                let ext = (filename as NSString).pathExtension.lowercased()
 
-                    guard ext == "musicxml" || ext == "mxl" || ext == "xml" else { return }
+                guard ext == "musicxml" || ext == "mxl" || ext == "xml" else { return }
 
-                    midiSettings.externalFileData = data
-                    midiSettings.externalFileName = filename
-                    midiSettings.selectedSourceId = "external"
-                    midiSettings.selectedFileUrl = "external://\(filename)"
-                case .failure:
-                    break
-                }
+                midiSettings.externalFileData = data
+                midiSettings.externalFileName = filename
+                midiSettings.selectedSourceId = "external"
+                midiSettings.selectedFileUrl = "external://\(filename)"
+            case .failure:
+                break
             }
         }
         .overlay {
