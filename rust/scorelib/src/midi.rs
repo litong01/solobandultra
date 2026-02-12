@@ -163,8 +163,7 @@ fn extract_melody(
         let measure = &part.measures[um.original_index];
         let entry = &timemap[i];
         let divisions = entry.divisions.max(1) as f64;
-        let quarter_notes_in_measure =
-            (entry.time_sig.0 as f64 / entry.time_sig.1 as f64) * 4.0;
+        let quarter_notes_in_measure = entry.effective_quarters;
 
         let mut position_in_divisions: f64 = 0.0;
 

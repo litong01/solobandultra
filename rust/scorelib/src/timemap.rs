@@ -23,6 +23,10 @@ pub struct TimemapEntry {
     pub time_sig: (i32, i32),
     /// MusicXML divisions (divisions per quarter note)
     pub divisions: i32,
+    /// Effective quarter-note count used for this measure's duration.
+    /// For normal measures this equals `(beats / beat_type) * 4`.
+    /// For pickup / implicit measures it reflects the actual note content.
+    pub effective_quarters: f64,
 }
 
 /// Default tempo if none is specified in the score.
@@ -119,18 +123,23 @@ pub fn generate_timemap(
 
         // ── Compute measure duration ────────────────────────────────
         // quarter_notes = (beats / beat_type) * 4
-        let quarter_notes = (time_sig.0 as f64 / time_sig.1 as f64) * 4.0;
+        let nominal_quarters = (time_sig.0 as f64 / time_sig.1 as f64) * 4.0;
         let ms_per_quarter = 60_000.0 / tempo;
-        let mut duration_ms = quarter_notes * ms_per_quarter;
 
         // Handle pickup measures: if this is an implicit measure (anacrusis),
         // compute duration from actual note content instead.
-        if measure.implicit {
+        let effective_quarters = if measure.implicit {
             let actual_quarters = actual_note_quarters(measure, divisions);
-            if actual_quarters > 0.0 && actual_quarters < quarter_notes {
-                duration_ms = actual_quarters * ms_per_quarter;
+            if actual_quarters > 0.0 && actual_quarters < nominal_quarters {
+                actual_quarters
+            } else {
+                nominal_quarters
             }
-        }
+        } else {
+            nominal_quarters
+        };
+
+        let duration_ms = effective_quarters * ms_per_quarter;
 
         entries.push(TimemapEntry {
             index: i,
@@ -140,6 +149,7 @@ pub fn generate_timemap(
             tempo_bpm: tempo,
             time_sig,
             divisions,
+            effective_quarters,
         });
 
         current_time_ms += duration_ms;

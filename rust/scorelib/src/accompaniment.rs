@@ -397,22 +397,12 @@ pub fn generate_metronome(timemap: &[TimemapEntry]) -> Vec<MidiEvent> {
     let mut events = Vec::new();
     let click_dur_ms = 100.0; // each click lasts 100ms
 
-    for (i, entry) in timemap.iter().enumerate() {
-        let beats = entry.time_sig.0.max(1);
-        let beat_dur_ms = entry.duration_ms / beats as f64;
-
-        // Detect pickup measure: compare duration to next measure
-        let is_pickup = if i == 0 && timemap.len() > 1 {
-            entry.duration_ms / timemap[1].duration_ms < 0.95
-        } else {
-            false
-        };
-
-        let actual_beats = if is_pickup {
-            (entry.duration_ms / beat_dur_ms).round() as i32
-        } else {
-            beats
-        };
+    for entry in timemap.iter() {
+        let beat_type = entry.time_sig.1.max(1) as f64;
+        // Number of beats: effective_quarters scaled by beat type
+        // e.g. 4/4 with 1 quarter note → 1 beat; 6/8 with 1.5 quarters → 3 beats
+        let actual_beats = (entry.effective_quarters * beat_type / 4.0).round().max(1.0) as i32;
+        let beat_dur_ms = entry.duration_ms / actual_beats as f64;
 
         for b in 0..actual_beats {
             let beat_time_ms = entry.timestamp_ms + b as f64 * beat_dur_ms;
