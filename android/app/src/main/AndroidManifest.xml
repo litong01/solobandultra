@@ -17,6 +17,11 @@
         android:theme="@style/Theme.SoloBandUltra"
         tools:targetApi="34">
 
+        <!-- Kinde Authentication SDK configuration -->
+        <!-- Replace these with your Kinde application details -->
+        <meta-data android:name="au.kinde.domain" android:value="tempoaide.kinde.com" />
+        <meta-data android:name="au.kinde.clientId" android:value="fcb05db8b435460bb6e266ad6639e420" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

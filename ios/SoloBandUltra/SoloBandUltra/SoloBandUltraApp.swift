@@ -1,17 +1,23 @@
 import SwiftUI
 import AVFoundation
+import KindeSDK
 
 @main
 struct SoloBandUltraApp: App {
     @StateObject private var audioSessionManager: AudioSessionManager
     @StateObject private var playbackManager: PlaybackManager
     @StateObject private var midiSettings = MidiSettings()
+    @StateObject private var authManager: AuthManager
 
     init() {
+        // Configure the Kinde authentication SDK FIRST — AuthManager.init() checks isAuthenticated.
+        KindeSDKAPI.configure()
+
         // Initialize shared AudioSessionManager
         let asm = AudioSessionManager()
         _audioSessionManager = StateObject(wrappedValue: asm)
         _playbackManager = StateObject(wrappedValue: PlaybackManager(audioSessionManager: asm))
+        _authManager = StateObject(wrappedValue: AuthManager())
 
         // Configure audio session after all stored properties are initialized
         Self.configureAudioSession()
@@ -23,6 +29,7 @@ struct SoloBandUltraApp: App {
                 .environmentObject(audioSessionManager)
                 .environmentObject(playbackManager)
                 .environmentObject(midiSettings)
+                .environmentObject(authManager)
                 .onOpenURL { url in
                     handleIncomingFile(url)
                 }
@@ -41,11 +48,17 @@ struct SoloBandUltraApp: App {
         let ext = (filename as NSString).pathExtension.lowercased()
         guard ext == "musicxml" || ext == "mxl" || ext == "xml" else { return }
 
-        midiSettings.externalFileData = data
-        midiSettings.externalFileName = filename
-        midiSettings.externalFileVersion += 1
-        midiSettings.selectedSourceId = "external"
-        midiSettings.selectedFileUrl = "external://\(filename)"
+        if authManager.isAuthenticated {
+            // User is logged in — load the file immediately.
+            midiSettings.externalFileData = data
+            midiSettings.externalFileName = filename
+            midiSettings.externalFileVersion += 1
+            midiSettings.selectedSourceId = "external"
+            midiSettings.selectedFileUrl = "external://\(filename)"
+        } else {
+            // Not logged in — defer the file load until after login.
+            authManager.login(then: .loadExternal(data, filename))
+        }
     }
 
     /// Configure AVAudioSession for playback category.

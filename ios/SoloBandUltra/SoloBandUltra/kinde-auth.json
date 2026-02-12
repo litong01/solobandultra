@@ -1,0 +1,7 @@
+{
+    "issuer": "https://tempoaide.kinde.com",
+    "clientId": "fcb05db8b435460bb6e266ad6639e420",
+    "redirectUri": "solobandultra://kinde_callback",
+    "postLogoutRedirectUri": "solobandultra://kinde_logoutcallback",
+    "scope": "offline openid email profile"
+}

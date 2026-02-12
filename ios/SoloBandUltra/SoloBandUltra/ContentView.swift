@@ -5,6 +5,7 @@ struct ContentView: View {
     @EnvironmentObject var audioSessionManager: AudioSessionManager
     @EnvironmentObject var playbackManager: PlaybackManager
     @EnvironmentObject var midiSettings: MidiSettings
+    @EnvironmentObject var authManager: AuthManager
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var showSettings = false
@@ -27,15 +28,29 @@ struct ContentView: View {
                 Spacer()
 
                 Menu {
-                    Button(action: { showFilePicker = true }) {
+                    // ── Gated actions ──
+                    Button(action: { requireAuth(for: .openFile) }) {
                         Label("Open File", systemImage: "doc.badge.plus")
                     }
-                    Button(action: { pasteFromClipboard() }) {
+                    Button(action: { requireAuth(for: .pasteLink) }) {
                         Label("Paste Link", systemImage: "doc.on.clipboard")
                     }
                     .disabled(!clipboardHasUrl)
-                    Button(action: { showSettings = true }) {
+                    Button(action: { requireAuth(for: .showSettings) }) {
                         Label("Settings", systemImage: "gear")
+                    }
+
+                    Divider()
+
+                    // ── Login / Logout ──
+                    if authManager.isAuthenticated {
+                        Button(action: { authManager.logout() }) {
+                            Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                        }
+                    } else {
+                        Button(action: { authManager.login() }) {
+                            Label("Sign In", systemImage: "person.crop.circle.badge.plus")
+                        }
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
@@ -61,7 +76,7 @@ struct ContentView: View {
                     playbackManager.stop()
                 },
                 onSettings: {
-                    showSettings = true
+                    requireAuth(for: .showSettings)
                 }
             )
             .padding(.horizontal)
@@ -143,6 +158,42 @@ struct ContentView: View {
         .onAppear { checkClipboardForUrl() }
         .onChange(of: scenePhase) { phase in
             if phase == .active { checkClipboardForUrl() }
+        }
+        // ── Execute deferred action after successful login ──
+        .onChange(of: authManager.isAuthenticated) { authenticated in
+            guard authenticated, let action = authManager.pendingAction else { return }
+            authManager.pendingAction = nil
+            executePendingAction(action)
+        }
+    }
+
+    // MARK: - Auth gating
+
+    /// If authenticated, execute the action immediately; otherwise, trigger login
+    /// and defer the action until authentication succeeds.
+    private func requireAuth(for action: PendingAuthAction) {
+        if authManager.isAuthenticated {
+            executePendingAction(action)
+        } else {
+            authManager.login(then: action)
+        }
+    }
+
+    /// Execute a previously deferred action (called after successful login or immediately).
+    private func executePendingAction(_ action: PendingAuthAction) {
+        switch action {
+        case .showSettings:
+            showSettings = true
+        case .openFile:
+            showFilePicker = true
+        case .pasteLink:
+            pasteFromClipboard()
+        case .loadExternal(let data, let filename):
+            midiSettings.externalFileData = data
+            midiSettings.externalFileName = filename
+            midiSettings.externalFileVersion += 1
+            midiSettings.selectedSourceId = "external"
+            midiSettings.selectedFileUrl = "external://\(filename)"
         }
     }
 
@@ -547,4 +598,5 @@ private struct CheckboxToggle: View {
         .environmentObject(AudioSessionManager())
         .environmentObject(PlaybackManager(audioSessionManager: AudioSessionManager()))
         .environmentObject(MidiSettings())
+        .environmentObject(AuthManager())
 }

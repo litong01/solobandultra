@@ -97,6 +97,19 @@ private fun midiOptionsToJson(
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// Auth-gated action types
+// ═══════════════════════════════════════════════════════════════════════
+
+/** Actions that require authentication. */
+enum class PendingAuthAction {
+    ShowSettings,
+    OpenFile,
+    PasteLink,
+    /** The file URI was already stored in openFileUri by the Activity. */
+    LoadExternalUri
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // Main screen
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -105,7 +118,12 @@ private fun midiOptionsToJson(
 fun SheetMusicScreen(
     playbackManager: PlaybackManager? = null,
     openFileUri: Uri? = null,
-    onFileUriConsumed: () -> Unit = {}
+    onFileUriConsumed: () -> Unit = {},
+    isAuthenticated: Boolean = false,
+    pendingAuthAction: PendingAuthAction? = null,
+    onPendingActionConsumed: () -> Unit = {},
+    onLoginRequested: (PendingAuthAction?) -> Unit = {},
+    onLogoutRequested: () -> Unit = {}
 ) {
     val isPlaying by playbackManager?.isPlaying?.collectAsState()
         ?: remember { mutableStateOf(false) }
@@ -205,10 +223,44 @@ fun SheetMusicScreen(
     }
 
     // Handle incoming file from "Open With" / file association intent
-    LaunchedEffect(openFileUri) {
+    // Only process the URI if the user is authenticated (or no auth gate is needed for intent).
+    LaunchedEffect(openFileUri, isAuthenticated) {
         val uri = openFileUri ?: return@LaunchedEffect
-        loadFromUri(uri)
-        onFileUriConsumed()
+        if (isAuthenticated) {
+            loadFromUri(uri)
+            onFileUriConsumed()
+        }
+        // If not authenticated, the URI stays pending; MainActivity handles the login flow.
+    }
+
+    // Execute deferred action after successful login
+    LaunchedEffect(isAuthenticated, pendingAuthAction) {
+        if (!isAuthenticated || pendingAuthAction == null) return@LaunchedEffect
+        when (pendingAuthAction) {
+            PendingAuthAction.ShowSettings -> showSettings = true
+            PendingAuthAction.OpenFile -> openDocumentLauncher.launch(arrayOf("*/*"))
+            PendingAuthAction.PasteLink -> {
+                if (!isDownloading) {
+                    pasteFromClipboard(
+                        context = context,
+                        scope = scope,
+                        onDownloading = { isDownloading = it },
+                        onResult = { bytes, filename ->
+                            externalFileData = bytes
+                            externalFileName = filename
+                            externalFileVersion++
+                            selectedSourceId = "external"
+                            selectedFileUrl = "external://$filename"
+                        }
+                    )
+                }
+            }
+            PendingAuthAction.LoadExternalUri -> {
+                // The URI is already in openFileUri; the LaunchedEffect above
+                // will pick it up now that isAuthenticated is true.
+            }
+        }
+        onPendingActionConsumed()
     }
 
     var svgContent by remember { mutableStateOf<String?>(null) }
@@ -374,11 +426,16 @@ fun SheetMusicScreen(
                             clipboardHasMusicXmlUrl(context)
                         }
 
+                        // ── Gated actions ──
                         DropdownMenuItem(
                             text = { Text("Open File") },
                             onClick = {
                                 showMenu = false
-                                openDocumentLauncher.launch(arrayOf("*/*"))
+                                if (isAuthenticated) {
+                                    openDocumentLauncher.launch(arrayOf("*/*"))
+                                } else {
+                                    onLoginRequested(PendingAuthAction.OpenFile)
+                                }
                             }
                         )
                         DropdownMenuItem(
@@ -386,19 +443,23 @@ fun SheetMusicScreen(
                             enabled = pasteEnabled,
                             onClick = {
                                 showMenu = false
-                                if (!isDownloading) {
-                                    pasteFromClipboard(
-                                        context = context,
-                                        scope = scope,
-                                        onDownloading = { isDownloading = it },
-                                        onResult = { bytes, filename ->
-                                            externalFileData = bytes
-                                            externalFileName = filename
-                                            externalFileVersion++
-                                            selectedSourceId = "external"
-                                            selectedFileUrl = "external://$filename"
-                                        }
-                                    )
+                                if (isAuthenticated) {
+                                    if (!isDownloading) {
+                                        pasteFromClipboard(
+                                            context = context,
+                                            scope = scope,
+                                            onDownloading = { isDownloading = it },
+                                            onResult = { bytes, filename ->
+                                                externalFileData = bytes
+                                                externalFileName = filename
+                                                externalFileVersion++
+                                                selectedSourceId = "external"
+                                                selectedFileUrl = "external://$filename"
+                                            }
+                                        )
+                                    }
+                                } else {
+                                    onLoginRequested(PendingAuthAction.PasteLink)
                                 }
                             }
                         )
@@ -406,9 +467,34 @@ fun SheetMusicScreen(
                             text = { Text("Settings") },
                             onClick = {
                                 showMenu = false
-                                showSettings = true
+                                if (isAuthenticated) {
+                                    showSettings = true
+                                } else {
+                                    onLoginRequested(PendingAuthAction.ShowSettings)
+                                }
                             }
                         )
+
+                        HorizontalDivider()
+
+                        // ── Login / Logout ──
+                        if (isAuthenticated) {
+                            DropdownMenuItem(
+                                text = { Text("Sign Out") },
+                                onClick = {
+                                    showMenu = false
+                                    onLogoutRequested()
+                                }
+                            )
+                        } else {
+                            DropdownMenuItem(
+                                text = { Text("Sign In") },
+                                onClick = {
+                                    showMenu = false
+                                    onLoginRequested(null)
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -423,7 +509,11 @@ fun SheetMusicScreen(
                     playbackManager?.stop()
                 },
                 onSettings = {
-                    showSettings = true
+                    if (isAuthenticated) {
+                        showSettings = true
+                    } else {
+                        onLoginRequested(PendingAuthAction.ShowSettings)
+                    }
                 }
             )
         }
