@@ -108,7 +108,7 @@ pub fn generate_midi(
         tracks.push(encode_track(&events, "Metronome"));
     }
     if options.include_piano {
-        let events = accompaniment::generate_piano(&chords, options.energy);
+        let events = accompaniment::generate_piano(&chords, options.energy, timemap);
         let mut te = vec![MidiEvent {
             tick: 0,
             bytes: vec![0xC1, 0], // Channel 1, Acoustic Grand Piano
@@ -117,7 +117,7 @@ pub fn generate_midi(
         tracks.push(encode_track(&te, "Piano"));
     }
     if options.include_bass {
-        let events = accompaniment::generate_bass(&chords, options.energy);
+        let events = accompaniment::generate_bass(&chords, options.energy, timemap);
         let mut te = vec![MidiEvent {
             tick: 0,
             bytes: vec![0xC2, 32], // Channel 2, Acoustic Bass
@@ -126,7 +126,7 @@ pub fn generate_midi(
         tracks.push(encode_track(&te, "Bass"));
     }
     if options.include_strings {
-        let events = accompaniment::generate_strings(&chords, options.energy);
+        let events = accompaniment::generate_strings(&chords, options.energy, timemap);
         let mut te = vec![MidiEvent {
             tick: 0,
             bytes: vec![0xC3, 48], // Channel 3, String Ensemble 1
@@ -135,7 +135,7 @@ pub fn generate_midi(
         tracks.push(encode_track(&te, "Strings"));
     }
     if options.include_drums {
-        let events = accompaniment::generate_drums(&chords, options.energy);
+        let events = accompaniment::generate_drums(&chords, options.energy, timemap);
         tracks.push(encode_track(&events, "Drums"));
     }
 

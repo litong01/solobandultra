@@ -9,39 +9,21 @@ struct SheetMusicView: View {
     @State private var playbackMapJson: String?
     @State private var isLoading = true
     @State private var errorMessage: String?
-    @State private var selectedFile: String = ""
     @State private var lastRenderedWidth: CGFloat = 0
     @State private var lastOptionsJson: String = ""
 
-    /// Dynamically discover all .musicxml and .mxl files in the bundled SheetMusic folder.
-    private var availableFiles: [String] {
-        guard let resourcesURL = Bundle.main.url(forResource: "SheetMusic", withExtension: nil) else {
-            return []
+    /// Extract the filename from the selected file URL.
+    private var currentFile: String {
+        let url = midiSettings.selectedFileUrl
+        if url.hasPrefix("file://SheetMusic/") {
+            return String(url.dropFirst("file://SheetMusic/".count))
         }
-        let contents = (try? FileManager.default.contentsOfDirectory(at: resourcesURL,
-                            includingPropertiesForKeys: nil)) ?? []
-        return contents
-            .map { $0.lastPathComponent }
-            .filter { $0.hasSuffix(".musicxml") || $0.hasSuffix(".mxl") }
-            .sorted()
+        return url.components(separatedBy: "/").last ?? MidiSettings.defaultLandingFile
     }
 
     var body: some View {
         GeometryReader { geometry in
             VStack(spacing: 0) {
-                // File picker
-                Picker("Score", selection: $selectedFile) {
-                    ForEach(availableFiles, id: \.self) { file in
-                        Text(file).tag(file)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .onChange(of: selectedFile) { _ in
-                    loadScore(width: geometry.size.width)
-                }
-
                 // Score display
                 if isLoading {
                     ProgressView("Rendering score...")
@@ -73,10 +55,9 @@ struct SheetMusicView: View {
             }
             .background(Color(.systemBackground))
             .onAppear {
-                // Select the first file if none is selected yet
-                if selectedFile.isEmpty, let first = availableFiles.first {
-                    selectedFile = first
-                }
+                loadScore(width: geometry.size.width)
+            }
+            .onChange(of: midiSettings.selectedFileUrl) { _ in
                 loadScore(width: geometry.size.width)
             }
             .onChange(of: geometry.size.width) { newWidth in
@@ -108,21 +89,28 @@ struct SheetMusicView: View {
 
         DispatchQueue.global(qos: .userInitiated).async {
             // Find the file in the app bundle
-            let filename = selectedFile
-            let ext = (filename as NSString).pathExtension
-            let name = (filename as NSString).deletingPathExtension
+        let filename = currentFile
+        guard !filename.isEmpty else {
+            DispatchQueue.main.async {
+                isLoading = false
+                errorMessage = "No music file selected"
+            }
+            return
+        }
+        let ext = (filename as NSString).pathExtension
+        let name = (filename as NSString).deletingPathExtension
 
-            // With a folder reference, files are inside a "SheetMusic" subdirectory
-            // of the app bundle. Try there first, then fall back to the bundle root.
-            let url: URL
-            if let folderURL = Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "SheetMusic") {
-                url = folderURL
-            } else if let rootURL = Bundle.main.url(forResource: name, withExtension: ext) {
-                url = rootURL
-            } else {
-                DispatchQueue.main.async {
-                    isLoading = false
-                    errorMessage = "File '\(filename)' not found in app bundle"
+        // With a folder reference, files are inside a "SheetMusic" subdirectory
+        // of the app bundle. Try there first, then fall back to the bundle root.
+        let url: URL
+        if let folderURL = Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "SheetMusic") {
+            url = folderURL
+        } else if let rootURL = Bundle.main.url(forResource: name, withExtension: ext) {
+            url = rootURL
+        } else {
+            DispatchQueue.main.async {
+                isLoading = false
+                errorMessage = "File '\(filename)' not found in app bundle"
                 }
                 return
             }
@@ -168,7 +156,7 @@ struct SheetMusicView: View {
         guard optionsJson != lastOptionsJson else { return }
         lastOptionsJson = optionsJson
 
-        let filename = selectedFile
+        let filename = currentFile
         guard !filename.isEmpty else { return }
 
         let ext = (filename as NSString).pathExtension

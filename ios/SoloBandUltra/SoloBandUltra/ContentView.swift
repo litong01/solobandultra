@@ -102,13 +102,28 @@ struct SettingsSheet: View {
     @ObservedObject var midiSettings: MidiSettings
     @Environment(\.dismiss) private var dismiss
 
+    // ── Working copies of settings (only applied when Done is tapped) ──
+    @State private var selectedSourceId: String = "bundled"
+    @State private var selectedFileUrl: String = MidiSettings.defaultLandingFileUrl
+    @State private var includeMelody: Bool = true
+    @State private var includePiano: Bool = false
+    @State private var includeBass: Bool = false
+    @State private var includeStrings: Bool = false
+    @State private var includeDrums: Bool = false
+    @State private var includeMetronome: Bool = true
+    @State private var energy: MidiSettings.Energy = .medium
+    @State private var playbackSpeed: Double = 1.0
+    @State private var muteMusic: Bool = false
+    @State private var repeatCount: Int = 1
+    @State private var transpose: Int = 0
+
     /// Available music sources (currently just bundled files).
     private var musicSources: [MusicSource] {
         [MusicSource(id: "bundled", name: "Bundled Sheet Music", items: Self.discoverBundledFiles())]
     }
 
     private var selectedSource: MusicSource? {
-        musicSources.first { $0.id == midiSettings.selectedSourceId }
+        musicSources.first { $0.id == selectedSourceId }
     }
 
     /// Scan the app bundle's SheetMusic folder for .musicxml and .mxl files.
@@ -145,7 +160,7 @@ struct SettingsSheet: View {
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                             Spacer()
-                            Picker("", selection: $midiSettings.selectedSourceId) {
+                            Picker("", selection: $selectedSourceId) {
                                 ForEach(musicSources) { source in
                                     Text(source.name).tag(source.id)
                                 }
@@ -164,7 +179,7 @@ struct SettingsSheet: View {
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
                                 Spacer()
-                                Picker("", selection: $midiSettings.selectedFileUrl) {
+                                Picker("", selection: $selectedFileUrl) {
                                     ForEach(source.items) { item in
                                         Text(item.name).tag(item.url)
                                     }
@@ -174,11 +189,6 @@ struct SettingsSheet: View {
                             }
                         }
                     }
-                    .onAppear {
-                        if midiSettings.selectedFileUrl.isEmpty, let firstItem = musicSources.first?.items.first {
-                            midiSettings.selectedFileUrl = firstItem.url
-                        }
-                    }
 
                     // ── 2. Accompaniment ──────────────────────────
                     SettingsSection("Accompaniment") {
@@ -186,12 +196,12 @@ struct SettingsSheet: View {
                         let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 4)
 
                         LazyVGrid(columns: columns, spacing: 6) {
-                            CheckboxToggle("Melody", isOn: $midiSettings.includeMelody)
-                            CheckboxToggle("Piano", isOn: $midiSettings.includePiano)
-                            CheckboxToggle("Bass", isOn: $midiSettings.includeBass)
-                            CheckboxToggle("Strings", isOn: $midiSettings.includeStrings)
-                            CheckboxToggle("Drums", isOn: $midiSettings.includeDrums)
-                            CheckboxToggle("Metronome", isOn: $midiSettings.includeMetronome)
+                            CheckboxToggle("Melody", isOn: $includeMelody)
+                            CheckboxToggle("Piano", isOn: $includePiano)
+                            CheckboxToggle("Bass", isOn: $includeBass)
+                            CheckboxToggle("Strings", isOn: $includeStrings)
+                            CheckboxToggle("Drums", isOn: $includeDrums)
+                            CheckboxToggle("Metronome", isOn: $includeMetronome)
                         }
 
                         // Energy picker
@@ -200,7 +210,7 @@ struct SettingsSheet: View {
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
 
-                            Picker("Energy", selection: $midiSettings.energy) {
+                            Picker("Energy", selection: $energy) {
                                 ForEach(MidiSettings.Energy.allCases) { level in
                                     Text(level.displayName).tag(level)
                                 }
@@ -217,7 +227,7 @@ struct SettingsSheet: View {
                             Text("Speed")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
-                            TextField("1.0", value: $midiSettings.playbackSpeed, format: .number)
+                            TextField("1.0", value: $playbackSpeed, format: .number)
                                 .textFieldStyle(.roundedBorder)
                                 .keyboardType(.decimalPad)
                                 .frame(width: 52)
@@ -230,14 +240,14 @@ struct SettingsSheet: View {
 
                             // Mute
                             Button {
-                                midiSettings.muteMusic.toggle()
+                                muteMusic.toggle()
                             } label: {
                                 HStack(spacing: 3) {
                                     Text("Mute")
                                         .font(.subheadline)
                                         .foregroundStyle(.primary)
-                                    Image(systemName: midiSettings.muteMusic ? "checkmark.square.fill" : "square")
-                                        .foregroundStyle(midiSettings.muteMusic ? Color.accentColor : .secondary)
+                                    Image(systemName: muteMusic ? "checkmark.square.fill" : "square")
+                                        .foregroundStyle(muteMusic ? Color.accentColor : .secondary)
                                         .font(.callout)
                                 }
                             }
@@ -251,23 +261,23 @@ struct SettingsSheet: View {
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
                                 Button {
-                                    if midiSettings.repeatCount > 1 {
-                                        midiSettings.repeatCount -= 1
+                                    if repeatCount > 1 {
+                                        repeatCount -= 1
                                     }
                                 } label: {
                                     Image(systemName: "minus.circle.fill")
                                         .foregroundStyle(
-                                            midiSettings.repeatCount > 1 ? Color.accentColor : Color(.tertiaryLabel)
+                                            repeatCount > 1 ? Color.accentColor : Color(.tertiaryLabel)
                                         )
                                 }
-                                .disabled(midiSettings.repeatCount <= 1)
+                                .disabled(repeatCount <= 1)
 
-                                Text("\(midiSettings.repeatCount)×")
+                                Text("\(repeatCount)×")
                                     .font(.subheadline.monospacedDigit())
                                     .frame(minWidth: 20)
 
                                 Button {
-                                    midiSettings.repeatCount += 1
+                                    repeatCount += 1
                                 } label: {
                                     Image(systemName: "plus.circle.fill")
                                         .foregroundStyle(.tint)
@@ -285,20 +295,20 @@ struct SettingsSheet: View {
                             Spacer()
 
                             Button {
-                                midiSettings.transpose -= 1
+                                transpose -= 1
                             } label: {
                                 Image(systemName: "minus.circle.fill")
                                     .font(.title2)
                                     .foregroundStyle(.tint)
                             }
 
-                            Text("\(midiSettings.transpose)")
+                            Text("\(transpose)")
                                 .font(.title3.monospacedDigit())
                                 .frame(minWidth: 36)
                                 .multilineTextAlignment(.center)
 
                             Button {
-                                midiSettings.transpose += 1
+                                transpose += 1
                             } label: {
                                 Image(systemName: "plus.circle.fill")
                                     .font(.title2)
@@ -315,10 +325,46 @@ struct SettingsSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                    Button("Done") { applySettings() }
                 }
             }
+            .onAppear { loadFromSettings() }
         }
+    }
+
+    /// Copy current midiSettings into local working copies.
+    private func loadFromSettings() {
+        selectedSourceId = midiSettings.selectedSourceId
+        selectedFileUrl = midiSettings.selectedFileUrl
+        includeMelody = midiSettings.includeMelody
+        includePiano = midiSettings.includePiano
+        includeBass = midiSettings.includeBass
+        includeStrings = midiSettings.includeStrings
+        includeDrums = midiSettings.includeDrums
+        includeMetronome = midiSettings.includeMetronome
+        energy = midiSettings.energy
+        playbackSpeed = midiSettings.playbackSpeed
+        muteMusic = midiSettings.muteMusic
+        repeatCount = midiSettings.repeatCount
+        transpose = midiSettings.transpose
+    }
+
+    /// Write local working copies back to midiSettings and dismiss.
+    private func applySettings() {
+        midiSettings.selectedSourceId = selectedSourceId
+        midiSettings.selectedFileUrl = selectedFileUrl
+        midiSettings.includeMelody = includeMelody
+        midiSettings.includePiano = includePiano
+        midiSettings.includeBass = includeBass
+        midiSettings.includeStrings = includeStrings
+        midiSettings.includeDrums = includeDrums
+        midiSettings.includeMetronome = includeMetronome
+        midiSettings.energy = energy
+        midiSettings.playbackSpeed = playbackSpeed
+        midiSettings.muteMusic = muteMusic
+        midiSettings.repeatCount = repeatCount
+        midiSettings.transpose = transpose
+        dismiss()
     }
 }
 

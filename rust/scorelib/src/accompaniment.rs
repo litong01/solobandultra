@@ -443,7 +443,7 @@ pub fn generate_metronome(timemap: &[TimemapEntry]) -> Vec<MidiEvent> {
 const PIANO_CHANNEL: u8 = 1;
 
 /// Generate piano accompaniment events (broken chord / arpeggio pattern).
-pub fn generate_piano(chords: &[Chord], energy: Energy) -> Vec<MidiEvent> {
+pub fn generate_piano(chords: &[Chord], energy: Energy, timemap: &[TimemapEntry]) -> Vec<MidiEvent> {
     let em = energy_multipliers(energy);
     let mut events = Vec::new();
     let mut prev_voicing: Vec<u8> = Vec::new();
@@ -467,8 +467,8 @@ pub fn generate_piano(chords: &[Chord], energy: Energy) -> Vec<MidiEvent> {
         for (j, &note) in piano_notes.iter().enumerate() {
             let stagger_ms = j as f64 * 15.0;
             let note_time_ms = chord.time_ms + stagger_ms;
-            let on_tick = ms_to_ticks(note_time_ms, &[]);
-            let off_tick = ms_to_ticks(note_time_ms + dur_ms, &[]);
+            let on_tick = ms_to_ticks(note_time_ms, timemap);
+            let off_tick = ms_to_ticks(note_time_ms + dur_ms, timemap);
 
             let note_vel = base_vel.min(127);
             events.push(MidiEvent {
@@ -487,8 +487,8 @@ pub fn generate_piano(chords: &[Chord], energy: Energy) -> Vec<MidiEvent> {
             for (j, &note) in piano_notes.iter().enumerate() {
                 let stagger_ms = j as f64 * 15.0;
                 let note_time_ms = sweep_time + stagger_ms;
-                let on_tick = ms_to_ticks(note_time_ms, &[]);
-                let off_tick = ms_to_ticks(note_time_ms + dur_ms * 0.8, &[]);
+                let on_tick = ms_to_ticks(note_time_ms, timemap);
+                let off_tick = ms_to_ticks(note_time_ms + dur_ms * 0.8, timemap);
 
                 let note_vel = (base_vel as f64 * 0.85).round().max(1.0).min(127.0) as u8;
                 events.push(MidiEvent {
@@ -515,7 +515,7 @@ pub fn generate_piano(chords: &[Chord], energy: Energy) -> Vec<MidiEvent> {
 const BASS_CHANNEL: u8 = 2;
 
 /// Generate walking bass events.
-pub fn generate_bass(chords: &[Chord], energy: Energy) -> Vec<MidiEvent> {
+pub fn generate_bass(chords: &[Chord], energy: Energy, timemap: &[TimemapEntry]) -> Vec<MidiEvent> {
     let em = energy_multipliers(energy);
     let mut events = Vec::new();
     let base_vel = velocity(90.0, em.bass);
@@ -526,8 +526,8 @@ pub fn generate_bass(chords: &[Chord], energy: Energy) -> Vec<MidiEvent> {
 
         // Beat 1: root
         let dur1 = chord.duration_ms * 0.45;
-        let on1 = ms_to_ticks(chord.time_ms, &[]);
-        let off1 = ms_to_ticks(chord.time_ms + dur1, &[]);
+        let on1 = ms_to_ticks(chord.time_ms, timemap);
+        let off1 = ms_to_ticks(chord.time_ms + dur1, timemap);
         events.push(MidiEvent {
             tick: on1,
             bytes: vec![0x90 | BASS_CHANNEL, bass_note, base_vel],
@@ -541,8 +541,8 @@ pub fn generate_bass(chords: &[Chord], energy: Energy) -> Vec<MidiEvent> {
         let fifth_time = chord.time_ms + chord.duration_ms * 0.5;
         let fifth_note = bass_note + 7;
         let dur2 = chord.duration_ms * 0.35;
-        let on2 = ms_to_ticks(fifth_time, &[]);
-        let off2 = ms_to_ticks(fifth_time + dur2, &[]);
+        let on2 = ms_to_ticks(fifth_time, timemap);
+        let off2 = ms_to_ticks(fifth_time + dur2, timemap);
         events.push(MidiEvent {
             tick: on2,
             bytes: vec![0x90 | BASS_CHANNEL, fifth_note.min(127), base_vel],
@@ -557,8 +557,8 @@ pub fn generate_bass(chords: &[Chord], energy: Energy) -> Vec<MidiEvent> {
             let oct_time = chord.time_ms + chord.duration_ms * 0.75;
             let oct_note = bass_note + 12;
             let dur3 = chord.duration_ms * 0.20;
-            let on3 = ms_to_ticks(oct_time, &[]);
-            let off3 = ms_to_ticks(oct_time + dur3, &[]);
+            let on3 = ms_to_ticks(oct_time, timemap);
+            let off3 = ms_to_ticks(oct_time + dur3, timemap);
             events.push(MidiEvent {
                 tick: on3,
                 bytes: vec![0x90 | BASS_CHANNEL, oct_note.min(127), base_vel],
@@ -580,7 +580,7 @@ pub fn generate_bass(chords: &[Chord], energy: Energy) -> Vec<MidiEvent> {
 const STRING_CHANNEL: u8 = 3;
 
 /// Generate sustained string pad events.
-pub fn generate_strings(chords: &[Chord], energy: Energy) -> Vec<MidiEvent> {
+pub fn generate_strings(chords: &[Chord], energy: Energy, timemap: &[TimemapEntry]) -> Vec<MidiEvent> {
     let em = energy_multipliers(energy);
     let mut events = Vec::new();
     let base_vel = velocity(65.0, em.strings);
@@ -592,8 +592,8 @@ pub fn generate_strings(chords: &[Chord], energy: Energy) -> Vec<MidiEvent> {
 
         // Sustained pad: play all notes for the chord duration (slight overlap)
         let dur_ms = chord.duration_ms * 1.05;
-        let on_tick = ms_to_ticks(chord.time_ms, &[]);
-        let off_tick = ms_to_ticks(chord.time_ms + dur_ms, &[]);
+        let on_tick = ms_to_ticks(chord.time_ms, timemap);
+        let off_tick = ms_to_ticks(chord.time_ms + dur_ms, timemap);
 
         for &note in &voicing {
             events.push(MidiEvent {
@@ -621,7 +621,7 @@ const SNARE: u8 = 38;
 const HIHAT_CLOSED: u8 = 42;
 
 /// Generate drum pattern events.
-pub fn generate_drums(chords: &[Chord], energy: Energy) -> Vec<MidiEvent> {
+pub fn generate_drums(chords: &[Chord], energy: Energy, timemap: &[TimemapEntry]) -> Vec<MidiEvent> {
     let em = energy_multipliers(energy);
     let mut events = Vec::new();
 
@@ -631,7 +631,7 @@ pub fn generate_drums(chords: &[Chord], energy: Energy) -> Vec<MidiEvent> {
 
         for b in 0..beats {
             let beat_time = chord.time_ms + b as f64 * beat_dur_ms;
-            let on_tick = ms_to_ticks(beat_time, &[]);
+            let on_tick = ms_to_ticks(beat_time, timemap);
             let dur_ticks = (TICKS_PER_QUARTER as f64 * 0.25) as u32;
             let off_tick = on_tick + dur_ticks;
 
@@ -675,7 +675,7 @@ pub fn generate_drums(chords: &[Chord], energy: Energy) -> Vec<MidiEvent> {
             // Hi-hat eighth notes between beats
             if beat_dur_ms > 300.0 {
                 let eighth_time = beat_time + beat_dur_ms * 0.5;
-                let eighth_tick = ms_to_ticks(eighth_time, &[]);
+                let eighth_tick = ms_to_ticks(eighth_time, timemap);
                 let eighth_vel = velocity(50.0, em.drums);
                 events.push(MidiEvent {
                     tick: eighth_tick,

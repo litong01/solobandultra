@@ -51,6 +51,9 @@ import kotlinx.coroutines.withContext
 data class MusicItem(val name: String, val url: String)
 data class MusicSourceData(val id: String, val name: String, val items: List<MusicItem>)
 
+/** The default music file shown on app launch (landing page). */
+const val DEFAULT_LANDING_FILE = "asa-branca.musicxml"
+
 // ── MIDI Settings ───────────────────────────────────────────────────
 
 enum class EnergyLevel(val key: String, val displayName: String) {
@@ -109,7 +112,7 @@ fun SheetMusicScreen(
 
     // Music source selection
     var selectedSourceId by remember { mutableStateOf("bundled") }
-    var selectedFileUrl by remember { mutableStateOf("") }
+    var selectedFileUrl by remember { mutableStateOf("file://sheetmusic/$DEFAULT_LANDING_FILE") }
 
     val context = LocalContext.current
 
@@ -144,7 +147,6 @@ fun SheetMusicScreen(
             }
         }
     }
-    var selectedIndex by remember { mutableIntStateOf(0) }
     var svgContent by remember { mutableStateOf<String?>(null) }
     var playbackMapJson by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(true) }
@@ -164,7 +166,7 @@ fun SheetMusicScreen(
         )
     }
 
-    fun loadScore(fileIndex: Int, pageWidth: Float) {
+    fun loadScore(filePath: String, pageWidth: Float) {
         isLoading = true
         errorMessage = null
         svgContent = null
@@ -173,10 +175,10 @@ fun SheetMusicScreen(
             val currentOptionsJson = optionsJson
             val result = withContext(Dispatchers.IO) {
                 try {
-                    val svg = ScoreLib.renderAsset(context, availableFiles[fileIndex], pageWidth)
-                    val pmap = ScoreLib.playbackMapFromAsset(context, availableFiles[fileIndex], pageWidth)
+                    val svg = ScoreLib.renderAsset(context, filePath, pageWidth)
+                    val pmap = ScoreLib.playbackMapFromAsset(context, filePath, pageWidth)
                     val midi = ScoreLib.generateMidiFromAsset(
-                        context, availableFiles[fileIndex], currentOptionsJson
+                        context, filePath, currentOptionsJson
                     )
                     Triple(svg, pmap, midi)
                 } catch (e: Exception) {
@@ -194,14 +196,17 @@ fun SheetMusicScreen(
                     playbackManager?.prepareMidi(midi)
                 }
             } else {
-                errorMessage = "Failed to render ${availableFiles[fileIndex]}"
+                errorMessage = "Failed to render $filePath"
             }
         }
     }
 
-    // Re-render when screen width changes (e.g. device rotation)
-    LaunchedEffect(screenWidthDp, selectedIndex) {
-        loadScore(selectedIndex, screenWidthDp)
+    // Re-render when screen width or selected file changes
+    LaunchedEffect(screenWidthDp, selectedFileUrl) {
+        val filePath = selectedFileUrl.removePrefix("file://")
+        if (filePath.isNotEmpty()) {
+            loadScore(filePath, screenWidthDp)
+        }
     }
 
     // Regenerate MIDI when settings change (no need to re-render SVG)
@@ -209,14 +214,14 @@ fun SheetMusicScreen(
         // Skip the initial launch (already handled by the loadScore above)
         if (svgContent == null) return@LaunchedEffect
 
-        val fileIndex = selectedIndex
-        if (fileIndex < 0 || fileIndex >= availableFiles.size) return@LaunchedEffect
+        val filePath = selectedFileUrl.removePrefix("file://")
+        if (filePath.isEmpty()) return@LaunchedEffect
 
         val currentOptionsJson = optionsJson
         val midi = withContext(Dispatchers.IO) {
             try {
                 ScoreLib.generateMidiFromAsset(
-                    context, availableFiles[fileIndex], currentOptionsJson
+                    context, filePath, currentOptionsJson
                 )
             } catch (_: Exception) {
                 null
@@ -277,21 +282,6 @@ fun SheetMusicScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Score file selector
-            TabRow(selectedTabIndex = selectedIndex) {
-                availableFiles.forEachIndexed { index, file ->
-                    Tab(
-                        selected = selectedIndex == index,
-                        onClick = {
-                            selectedIndex = index
-                        },
-                        text = {
-                            Text(file.substringAfterLast('/'))
-                        }
-                    )
-                }
-            }
-
             // Score content
             Box(
                 modifier = Modifier
@@ -329,32 +319,35 @@ fun SheetMusicScreen(
         ) {
             SettingsSheetContent(
                 musicSources = musicSources,
-                selectedSourceId = selectedSourceId,
-                onSourceIdChange = { selectedSourceId = it },
-                selectedFileUrl = selectedFileUrl,
-                onFileUrlChange = { selectedFileUrl = it },
-                includeMelody = includeMelody,
-                onMelodyChange = { includeMelody = it },
-                includePiano = includePiano,
-                onPianoChange = { includePiano = it },
-                includeBass = includeBass,
-                onBassChange = { includeBass = it },
-                includeStrings = includeStrings,
-                onStringsChange = { includeStrings = it },
-                includeDrums = includeDrums,
-                onDrumsChange = { includeDrums = it },
-                includeMetronome = includeMetronome,
-                onMetronomeChange = { includeMetronome = it },
-                energy = energy,
-                onEnergyChange = { energy = it },
-                playbackSpeed = playbackSpeed,
-                onSpeedChange = { playbackSpeed = it },
-                muteMusic = muteMusic,
-                onMuteMusicChange = { muteMusic = it },
-                repeatCount = repeatCount,
-                onRepeatCountChange = { repeatCount = it },
-                transpose = transpose,
-                onTransposeChange = { transpose = it }
+                initialSelectedSourceId = selectedSourceId,
+                initialSelectedFileUrl = selectedFileUrl,
+                initialIncludeMelody = includeMelody,
+                initialIncludePiano = includePiano,
+                initialIncludeBass = includeBass,
+                initialIncludeStrings = includeStrings,
+                initialIncludeDrums = includeDrums,
+                initialIncludeMetronome = includeMetronome,
+                initialEnergy = energy,
+                initialPlaybackSpeed = playbackSpeed,
+                initialMuteMusic = muteMusic,
+                initialRepeatCount = repeatCount,
+                initialTranspose = transpose,
+                onDone = { src, file, mel, pia, bas, str, drm, met, eng, spd, mute, rep, trans ->
+                    selectedSourceId = src
+                    selectedFileUrl = file
+                    includeMelody = mel
+                    includePiano = pia
+                    includeBass = bas
+                    includeStrings = str
+                    includeDrums = drm
+                    includeMetronome = met
+                    energy = eng
+                    playbackSpeed = spd
+                    muteMusic = mute
+                    repeatCount = rep
+                    transpose = trans
+                    showSettings = false
+                }
             )
         }
     }
@@ -368,33 +361,36 @@ fun SheetMusicScreen(
 @Composable
 private fun SettingsSheetContent(
     musicSources: List<MusicSourceData>,
-    selectedSourceId: String,
-    onSourceIdChange: (String) -> Unit,
-    selectedFileUrl: String,
-    onFileUrlChange: (String) -> Unit,
-    includeMelody: Boolean,
-    onMelodyChange: (Boolean) -> Unit,
-    includePiano: Boolean,
-    onPianoChange: (Boolean) -> Unit,
-    includeBass: Boolean,
-    onBassChange: (Boolean) -> Unit,
-    includeStrings: Boolean,
-    onStringsChange: (Boolean) -> Unit,
-    includeDrums: Boolean,
-    onDrumsChange: (Boolean) -> Unit,
-    includeMetronome: Boolean,
-    onMetronomeChange: (Boolean) -> Unit,
-    energy: EnergyLevel,
-    onEnergyChange: (EnergyLevel) -> Unit,
-    playbackSpeed: Double,
-    onSpeedChange: (Double) -> Unit,
-    muteMusic: Boolean,
-    onMuteMusicChange: (Boolean) -> Unit,
-    repeatCount: Int,
-    onRepeatCountChange: (Int) -> Unit,
-    transpose: Int,
-    onTransposeChange: (Int) -> Unit
+    initialSelectedSourceId: String,
+    initialSelectedFileUrl: String,
+    initialIncludeMelody: Boolean,
+    initialIncludePiano: Boolean,
+    initialIncludeBass: Boolean,
+    initialIncludeStrings: Boolean,
+    initialIncludeDrums: Boolean,
+    initialIncludeMetronome: Boolean,
+    initialEnergy: EnergyLevel,
+    initialPlaybackSpeed: Double,
+    initialMuteMusic: Boolean,
+    initialRepeatCount: Int,
+    initialTranspose: Int,
+    onDone: (String, String, Boolean, Boolean, Boolean, Boolean, Boolean, Boolean, EnergyLevel, Double, Boolean, Int, Int) -> Unit
 ) {
+    // Local working copies (only applied when Done is tapped)
+    var selectedSourceId by remember { mutableStateOf(initialSelectedSourceId) }
+    var selectedFileUrl by remember { mutableStateOf(initialSelectedFileUrl) }
+    var includeMelody by remember { mutableStateOf(initialIncludeMelody) }
+    var includePiano by remember { mutableStateOf(initialIncludePiano) }
+    var includeBass by remember { mutableStateOf(initialIncludeBass) }
+    var includeStrings by remember { mutableStateOf(initialIncludeStrings) }
+    var includeDrums by remember { mutableStateOf(initialIncludeDrums) }
+    var includeMetronome by remember { mutableStateOf(initialIncludeMetronome) }
+    var energy by remember { mutableStateOf(initialEnergy) }
+    var playbackSpeed by remember { mutableStateOf(initialPlaybackSpeed) }
+    var muteMusic by remember { mutableStateOf(initialMuteMusic) }
+    var repeatCount by remember { mutableIntStateOf(initialRepeatCount) }
+    var transpose by remember { mutableIntStateOf(initialTranspose) }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -403,10 +399,27 @@ private fun SettingsSheetContent(
             .padding(bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        Text(
-            text = "Settings",
-            style = MaterialTheme.typography.headlineSmall
-        )
+        // Title row with Done button
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Settings",
+                style = MaterialTheme.typography.headlineSmall
+            )
+            TextButton(onClick = {
+                onDone(
+                    selectedSourceId, selectedFileUrl,
+                    includeMelody, includePiano, includeBass, includeStrings,
+                    includeDrums, includeMetronome, energy, playbackSpeed,
+                    muteMusic, repeatCount, transpose
+                )
+            }) {
+                Text("Done")
+            }
+        }
 
         // ── 1. Music Source ──────────────────────────────────────
         SettingsCard("Music Source") {
@@ -437,7 +450,7 @@ private fun SettingsSheetContent(
                         DropdownMenuItem(
                             text = { Text(source.name) },
                             onClick = {
-                                onSourceIdChange(source.id)
+                                selectedSourceId = source.id
                                 sourceExpanded = false
                             }
                         )
@@ -475,7 +488,7 @@ private fun SettingsSheetContent(
                             DropdownMenuItem(
                                 text = { Text(item.name) },
                                 onClick = {
-                                    onFileUrlChange(item.url)
+                                    selectedFileUrl = item.url
                                     fileExpanded = false
                                 }
                             )
@@ -493,17 +506,17 @@ private fun SettingsSheetContent(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    CompactCheckbox("Melody", includeMelody, onMelodyChange, Modifier.weight(1f))
-                    CompactCheckbox("Piano", includePiano, onPianoChange, Modifier.weight(1f))
-                    CompactCheckbox("Bass", includeBass, onBassChange, Modifier.weight(1f))
-                    CompactCheckbox("Strings", includeStrings, onStringsChange, Modifier.weight(1f))
+                    CompactCheckbox("Melody", includeMelody, { includeMelody = it }, Modifier.weight(1f))
+                    CompactCheckbox("Piano", includePiano, { includePiano = it }, Modifier.weight(1f))
+                    CompactCheckbox("Bass", includeBass, { includeBass = it }, Modifier.weight(1f))
+                    CompactCheckbox("Strings", includeStrings, { includeStrings = it }, Modifier.weight(1f))
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    CompactCheckbox("Drums", includeDrums, onDrumsChange, Modifier.weight(1f))
-                    CompactCheckbox("Metronome", includeMetronome, onMetronomeChange, Modifier.weight(1f))
+                    CompactCheckbox("Drums", includeDrums, { includeDrums = it }, Modifier.weight(1f))
+                    CompactCheckbox("Metronome", includeMetronome, { includeMetronome = it }, Modifier.weight(1f))
                     Spacer(modifier = Modifier.weight(1f))
                     Spacer(modifier = Modifier.weight(1f))
                 }
@@ -527,7 +540,7 @@ private fun SettingsSheetContent(
                             index = index,
                             count = EnergyLevel.entries.size
                         ),
-                        onClick = { onEnergyChange(level) },
+                        onClick = { energy = level },
                         selected = energy == level,
                         label = { Text(level.displayName) }
                     )
@@ -558,7 +571,7 @@ private fun SettingsSheetContent(
                     value = speedText,
                     onValueChange = { newText ->
                         speedText = newText
-                        newText.toDoubleOrNull()?.let { onSpeedChange(it) }
+                        newText.toDoubleOrNull()?.let { playbackSpeed = it }
                     },
                     modifier = Modifier
                         .width(48.dp)
@@ -583,7 +596,7 @@ private fun SettingsSheetContent(
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
-                        .clickable { onMuteMusicChange(!muteMusic) }
+                        .clickable { muteMusic = !muteMusic }
                         .padding(vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -609,7 +622,7 @@ private fun SettingsSheetContent(
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 FilledTonalIconButton(
-                    onClick = { if (repeatCount > 1) onRepeatCountChange(repeatCount - 1) },
+                    onClick = { if (repeatCount > 1) repeatCount -= 1 },
                     enabled = repeatCount > 1,
                     modifier = Modifier.size(28.dp)
                 ) {
@@ -628,7 +641,7 @@ private fun SettingsSheetContent(
                 )
 
                 FilledTonalIconButton(
-                    onClick = { onRepeatCountChange(repeatCount + 1) },
+                    onClick = { repeatCount += 1 },
                     modifier = Modifier.size(28.dp)
                 ) {
                     Icon(
@@ -657,7 +670,7 @@ private fun SettingsSheetContent(
                 Spacer(modifier = Modifier.weight(1f))
 
                 FilledTonalIconButton(
-                    onClick = { onTransposeChange(transpose - 1) },
+                    onClick = { transpose -= 1 },
                     modifier = Modifier.size(36.dp)
                 ) {
                     Icon(
@@ -675,7 +688,7 @@ private fun SettingsSheetContent(
                 )
 
                 FilledTonalIconButton(
-                    onClick = { onTransposeChange(transpose + 1) },
+                    onClick = { transpose += 1 },
                     modifier = Modifier.size(36.dp)
                 ) {
                     Icon(
