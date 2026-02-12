@@ -132,43 +132,45 @@ fun SheetMusicScreen(
     // External file (opened via document picker or pasted URL)
     var externalFileData by remember { mutableStateOf<ByteArray?>(null) }
     var externalFileName by remember { mutableStateOf<String?>(null) }
+    /** Monotonically increasing counter to force reload when same file is re-opened. */
+    var externalFileVersion by remember { mutableIntStateOf(0) }
     var isDownloading by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
-    // File picker launcher for opening external MusicXML / MXL files
-    val openDocumentLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        uri?.let {
-            try {
-                val bytes = context.contentResolver.openInputStream(it)?.use { stream ->
-                    stream.readBytes()
-                }
-                if (bytes != null) {
-                    // Resolve display name from the content URI
+    /** Read a content URI on IO, validate, and set external file state. */
+    fun loadFromUri(uri: Uri) {
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                try {
+                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        ?: return@withContext null
                     var displayName = "unknown.musicxml"
-                    context.contentResolver.query(it, null, null, null, null)?.use { cursor ->
+                    context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
                         if (cursor.moveToFirst()) {
                             val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                            if (idx >= 0) {
-                                displayName = cursor.getString(idx) ?: displayName
-                            }
+                            if (idx >= 0) displayName = cursor.getString(idx) ?: displayName
                         }
                     }
                     val ext = displayName.substringAfterLast('.', "").lowercase()
                     if (ext == "musicxml" || ext == "mxl" || ext == "xml") {
-                        externalFileData = bytes
-                        externalFileName = displayName
-                        selectedSourceId = "external"
-                        selectedFileUrl = "external://$displayName"
-                    }
-                }
-            } catch (_: Exception) {
-                // Silently ignore errors reading the file
-            }
+                        Pair(bytes, displayName)
+                    } else null
+                } catch (_: Exception) { null }
+            } ?: return@launch
+            externalFileData = result.first
+            externalFileName = result.second
+            externalFileVersion++
+            selectedSourceId = "external"
+            selectedFileUrl = "external://${result.second}"
         }
     }
+
+    // File picker launcher for opening external MusicXML / MXL files
+    val openDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri -> uri?.let { loadFromUri(it) } }
 
     // Dynamically discover all .musicxml and .mxl files in the assets/sheetmusic folder
     val availableFiles = remember {
@@ -205,29 +207,7 @@ fun SheetMusicScreen(
     // Handle incoming file from "Open With" / file association intent
     LaunchedEffect(openFileUri) {
         val uri = openFileUri ?: return@LaunchedEffect
-        try {
-            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-            if (bytes != null) {
-                var displayName = "unknown.musicxml"
-                context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                    if (cursor.moveToFirst()) {
-                        val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                        if (idx >= 0) {
-                            displayName = cursor.getString(idx) ?: displayName
-                        }
-                    }
-                }
-                val ext = displayName.substringAfterLast('.', "").lowercase()
-                if (ext == "musicxml" || ext == "mxl" || ext == "xml") {
-                    externalFileData = bytes
-                    externalFileName = displayName
-                    selectedSourceId = "external"
-                    selectedFileUrl = "external://$displayName"
-                }
-            }
-        } catch (_: Exception) {
-            // Silently ignore errors reading the file
-        }
+        loadFromUri(uri)
         onFileUriConsumed()
     }
 
@@ -238,7 +218,6 @@ fun SheetMusicScreen(
     /** Monotonically increasing counter to detect stale loadScore results. */
     var loadGeneration by remember { mutableIntStateOf(0) }
 
-    val scope = rememberCoroutineScope()
     val screenWidthDp = LocalConfiguration.current.screenWidthDp.toFloat()
 
     // Derive the options JSON from current settings
@@ -312,7 +291,7 @@ fun SheetMusicScreen(
     }
 
     // Re-render when screen width, selected file, or transpose changes
-    LaunchedEffect(screenWidthDp, selectedFileUrl, transpose) {
+    LaunchedEffect(screenWidthDp, selectedFileUrl, transpose, externalFileVersion) {
         val filePath = if (selectedFileUrl.startsWith("external://")) {
             selectedFileUrl.removePrefix("external://")
         } else {
@@ -407,17 +386,20 @@ fun SheetMusicScreen(
                             enabled = pasteEnabled,
                             onClick = {
                                 showMenu = false
-                                pasteFromClipboard(
-                                    context = context,
-                                    scope = scope,
-                                    onDownloading = { isDownloading = it },
-                                    onResult = { bytes, filename ->
-                                        externalFileData = bytes
-                                        externalFileName = filename
-                                        selectedSourceId = "external"
-                                        selectedFileUrl = "external://$filename"
-                                    }
-                                )
+                                if (!isDownloading) {
+                                    pasteFromClipboard(
+                                        context = context,
+                                        scope = scope,
+                                        onDownloading = { isDownloading = it },
+                                        onResult = { bytes, filename ->
+                                            externalFileData = bytes
+                                            externalFileName = filename
+                                            externalFileVersion++
+                                            selectedSourceId = "external"
+                                            selectedFileUrl = "external://$filename"
+                                        }
+                                    )
+                                }
                             }
                         )
                         DropdownMenuItem(

@@ -43,6 +43,7 @@ struct SoloBandUltraApp: App {
 
         midiSettings.externalFileData = data
         midiSettings.externalFileName = filename
+        midiSettings.externalFileVersion += 1
         midiSettings.selectedSourceId = "external"
         midiSettings.selectedFileUrl = "external://\(filename)"
     }

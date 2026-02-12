@@ -112,6 +112,7 @@ struct ContentView: View {
 
                 midiSettings.externalFileData = data
                 midiSettings.externalFileName = filename
+                midiSettings.externalFileVersion += 1
                 midiSettings.selectedSourceId = "external"
                 midiSettings.selectedFileUrl = "external://\(filename)"
             case .failure:
@@ -164,6 +165,9 @@ struct ContentView: View {
 
     /// Read clipboard, validate as a MusicXML URL, download, and load.
     private func pasteFromClipboard() {
+        // Prevent overlapping downloads
+        guard !isDownloading else { return }
+
         guard let clipString = UIPasteboard.general.string?.trimmingCharacters(in: .whitespacesAndNewlines),
               !clipString.isEmpty,
               let url = URL(string: clipString),
@@ -203,6 +207,7 @@ struct ContentView: View {
 
                 midiSettings.externalFileData = data
                 midiSettings.externalFileName = filename
+                midiSettings.externalFileVersion += 1
                 midiSettings.selectedSourceId = "external"
                 midiSettings.selectedFileUrl = "external://\(filename)"
             }

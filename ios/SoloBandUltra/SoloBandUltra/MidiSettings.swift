@@ -56,6 +56,9 @@ class MidiSettings: ObservableObject {
     @Published var externalFileData: Data? = nil
     /// Display name of the externally opened file.
     @Published var externalFileName: String? = nil
+    /// Monotonically increasing counter bumped every time an external file is set.
+    /// Used to force a reload even when the filename is identical.
+    @Published var externalFileVersion: Int = 0
 
     enum Energy: String, CaseIterable, Identifiable {
         case soft = "soft"

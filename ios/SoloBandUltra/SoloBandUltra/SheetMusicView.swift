@@ -13,6 +13,8 @@ struct SheetMusicView: View {
     @State private var lastOptionsJson: String = ""
     /// Monotonically increasing counter to detect stale loadScore results.
     @State private var loadGeneration: Int = 0
+    /// Monotonically increasing counter to detect stale regenerateMidi results.
+    @State private var midiGeneration: Int = 0
 
     /// Whether the current file is externally opened (via document picker).
     private var isExternalFile: Bool {
@@ -73,6 +75,12 @@ struct SheetMusicView: View {
             }
             .onChange(of: midiSettings.selectedFileUrl) { _ in
                 loadScore(width: geometry.size.width)
+            }
+            .onChange(of: midiSettings.externalFileVersion) { _ in
+                // Force reload even when the same external filename is reopened.
+                if isExternalFile {
+                    loadScore(width: geometry.size.width)
+                }
             }
             .onChange(of: midiSettings.transpose) { _ in
                 loadScore(width: geometry.size.width)
@@ -203,6 +211,10 @@ struct SheetMusicView: View {
         guard optionsJson != lastOptionsJson else { return }
         lastOptionsJson = optionsJson
 
+        // Bump the MIDI generation counter so any in-flight regen is discarded.
+        midiGeneration += 1
+        let thisMidiGen = midiGeneration
+
         let filename = currentFile
         guard !filename.isEmpty else { return }
 
@@ -232,6 +244,8 @@ struct SheetMusicView: View {
             let midi = ScoreLib.generateMidi(data, extension: ext, optionsJson: optionsJson)
 
             DispatchQueue.main.async {
+                // Discard if a newer regeneration was started while we were working.
+                guard thisMidiGen == midiGeneration else { return }
                 if let midiData = midi {
                     playbackManager.prepareMidi(midiData)
                 }
