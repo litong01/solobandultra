@@ -118,7 +118,7 @@ struct SettingsSheet: View {
     @ObservedObject var midiSettings: MidiSettings
     @Binding var isPresented: Bool
 
-    // ── Working copies of settings (only applied when Done is tapped) ──
+    // ── Working copies of settings (only applied when Apply is tapped) ──
     @State private var selectedSourceId: String = "bundled"
     @State private var selectedFileUrl: String = MidiSettings.defaultLandingFileUrl
     @State private var includeMelody: Bool = true
@@ -303,7 +303,8 @@ struct SettingsSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { applySettings() }
+                    Button("Apply") { applySettings() }
+                        .font(.subheadline)
                 }
             }
             .onAppear { loadFromSettings() }

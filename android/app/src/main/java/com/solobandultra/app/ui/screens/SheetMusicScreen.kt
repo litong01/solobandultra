@@ -383,7 +383,7 @@ private fun SettingsSheetContent(
     initialTranspose: Int,
     onDone: (String, String, Boolean, Boolean, Boolean, Boolean, Boolean, Boolean, Double, Boolean, Int, Int) -> Unit
 ) {
-    // Local working copies (only applied when Done is tapped)
+    // Local working copies (only applied when Apply is tapped)
     var selectedSourceId by remember { mutableStateOf(initialSelectedSourceId) }
     var selectedFileUrl by remember { mutableStateOf(initialSelectedFileUrl) }
     var includeMelody by remember { mutableStateOf(initialIncludeMelody) }
@@ -405,7 +405,7 @@ private fun SettingsSheetContent(
             .padding(bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        // Title row with Done button
+        // Title row with Apply button
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -423,7 +423,7 @@ private fun SettingsSheetContent(
                     muteMusic, repeatCount, transpose
                 )
             }) {
-                Text("Done")
+                Text("Apply", style = MaterialTheme.typography.bodySmall)
             }
         }
 

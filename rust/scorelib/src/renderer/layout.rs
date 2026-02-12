@@ -335,10 +335,29 @@ pub(super) fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], pag
             }
 
             let lyric_evts = collect_lyric_events(&score.parts, mi, &divisions_per_part);
-            let total_quarters = running_times[mi]
+            let nominal_quarters = running_times[mi]
                 .as_ref()
                 .map(|ts| ts.beats as f64 * 4.0 / ts.beat_type as f64)
                 .unwrap_or(4.0);
+            // For pickup/implicit measures, use the actual note content duration
+            // so notes are spaced the same as in full measures.
+            let total_quarters = if mi < ref_part.measures.len() && ref_part.measures[mi].implicit {
+                let div = divisions_per_part[parts_staves[0].0].max(1);
+                let mut total_divs = 0i32;
+                for note in &ref_part.measures[mi].notes {
+                    if !note.chord && !note.grace {
+                        total_divs += note.duration;
+                    }
+                }
+                let actual = total_divs as f64 / div as f64;
+                if actual > 0.0 && actual < nominal_quarters {
+                    actual
+                } else {
+                    nominal_quarters
+                }
+            } else {
+                nominal_quarters
+            };
             let beat_x_map = compute_beat_x_map(&all_beat_times, x, w, left_inset, right_inset, &lyric_evts, total_quarters);
 
             measures.push(MeasureLayout {
