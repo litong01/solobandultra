@@ -32,8 +32,15 @@ pub(super) fn compute_note_beat_times(notes: &[Note], divisions: i32) -> Vec<f64
     beat_times
 }
 
+/// Minimum pixel gap between consecutive note positions.
+const MIN_NOTE_SPACING: f64 = 12.0;
+
 /// Build a sorted beat-time → x-position mapping from note beat times across
 /// all parts. This is the core of cross-staff/cross-part vertical alignment.
+///
+/// `total_quarters` is the full duration of the measure in quarter notes
+/// (from the time signature). Notes are spaced proportionally to their
+/// duration, so a half note gets twice the space of a quarter note.
 pub(super) fn compute_beat_x_map(
     all_beat_times: &[Vec<f64>],
     mx: f64,
@@ -41,6 +48,7 @@ pub(super) fn compute_beat_x_map(
     left_pad: f64,
     right_pad: f64,
     lyric_events: &[LyricEvent],
+    total_quarters: f64,
 ) -> Vec<(f64, f64)> {
     let usable_width = mw - left_pad - right_pad;
 
@@ -58,53 +66,46 @@ pub(super) fn compute_beat_x_map(
         return vec![];
     }
 
-    let max_beat = unique_beats.last().copied().unwrap_or(1.0).max(0.001);
+    let total_q = total_quarters.max(0.001);
+    let n = unique_beats.len();
 
-    if lyric_events.is_empty() {
-        return unique_beats
-            .iter()
-            .map(|&bt| {
-                let x = mx + left_pad + (bt / max_beat) * usable_width;
-                (bt, x)
-            })
-            .collect();
-    }
-
+    // Compute gap sizes (n gaps: between consecutive notes + trailing gap to measure end)
     let event_at = |bt: f64| -> Option<&LyricEvent> {
         lyric_events.iter().find(|ev| (ev.beat_time - bt).abs() < 0.001)
     };
 
-    let n = unique_beats.len();
-    let mut min_dists: Vec<f64> = Vec::with_capacity(n.saturating_sub(1));
-    let mut total_min = 0.0f64;
+    let mut gaps: Vec<f64> = Vec::with_capacity(n);
 
     for i in 1..n {
-        let prop_dist = ((unique_beats[i] - unique_beats[i - 1]) / max_beat) * usable_width;
+        // Proportional distance based on duration fraction
+        let prop_dist = ((unique_beats[i] - unique_beats[i - 1]) / total_q) * usable_width;
 
-        let left_ev = event_at(unique_beats[i - 1]);
-        let right_ev = event_at(unique_beats[i]);
-
-        let lyrics_dist = match (left_ev, right_ev) {
+        // Lyrics minimum spacing (if applicable)
+        let lyrics_dist = match (event_at(unique_beats[i - 1]), event_at(unique_beats[i])) {
             (Some(le), Some(re)) => lyric_pair_min_spacing(le, re),
             (Some(le), None) => le.text_width / 2.0,
             (None, Some(re)) => re.text_width / 2.0,
             (None, None) => 0.0,
         };
 
-        let min_dist = prop_dist.max(lyrics_dist);
-        min_dists.push(min_dist);
-        total_min += min_dist;
+        gaps.push(prop_dist.max(lyrics_dist).max(MIN_NOTE_SPACING));
     }
 
-    let scale = if total_min > 0.0 { usable_width / total_min } else { 1.0 };
+    // Trailing gap: space after the last note to the measure's right edge
+    let last_beat = unique_beats.last().copied().unwrap_or(0.0);
+    let trailing_prop = ((total_q - last_beat) / total_q) * usable_width;
+    gaps.push(trailing_prop.max(MIN_NOTE_SPACING));
 
+    // Scale all gaps so they sum to exactly usable_width
+    let total_gaps: f64 = gaps.iter().sum();
+    let scale = if total_gaps > 0.0 { usable_width / total_gaps } else { 1.0 };
+
+    // Place notes at cumulative gap positions
     let mut result = Vec::with_capacity(n);
     let mut x = mx + left_pad;
-    result.push((unique_beats[0], x));
-
-    for i in 0..min_dists.len() {
-        x += min_dists[i] * scale;
-        result.push((unique_beats[i + 1], x));
+    for i in 0..n {
+        result.push((unique_beats[i], x));
+        x += gaps[i] * scale;
     }
 
     result

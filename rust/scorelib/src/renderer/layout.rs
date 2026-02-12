@@ -335,7 +335,11 @@ pub(super) fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], pag
             }
 
             let lyric_evts = collect_lyric_events(&score.parts, mi, &divisions_per_part);
-            let beat_x_map = compute_beat_x_map(&all_beat_times, x, w, left_inset, right_inset, &lyric_evts);
+            let total_quarters = running_times[mi]
+                .as_ref()
+                .map(|ts| ts.beats as f64 * 4.0 / ts.beat_type as f64)
+                .unwrap_or(4.0);
+            let beat_x_map = compute_beat_x_map(&all_beat_times, x, w, left_inset, right_inset, &lyric_evts, total_quarters);
 
             measures.push(MeasureLayout {
                 measure_idx: mi,
