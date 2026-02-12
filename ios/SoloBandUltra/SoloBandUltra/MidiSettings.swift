@@ -51,6 +51,12 @@ class MidiSettings: ObservableObject {
     @Published var selectedSourceId: String = "bundled"
     @Published var selectedFileUrl: String = defaultLandingFileUrl
 
+    // ── External file (opened via document picker) ──
+    /// Raw bytes of an externally opened file (from Files, iCloud, Google Drive, etc.)
+    @Published var externalFileData: Data? = nil
+    /// Display name of the externally opened file.
+    @Published var externalFileName: String? = nil
+
     enum Energy: String, CaseIterable, Identifiable {
         case soft = "soft"
         case medium = "medium"

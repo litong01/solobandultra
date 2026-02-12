@@ -1,11 +1,17 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @EnvironmentObject var audioSessionManager: AudioSessionManager
     @EnvironmentObject var playbackManager: PlaybackManager
     @EnvironmentObject var midiSettings: MidiSettings
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var showSettings = false
+    @State private var showFilePicker = false
+    @State private var isDownloading = false
+    @State private var downloadError: String?
+    @State private var clipboardHasUrl = false
 
     var body: some View {
         NavigationStack {
@@ -38,15 +44,69 @@ struct ContentView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
-                        Button(action: {}) {
+                        Button(action: { showFilePicker = true }) {
                             Label("Open File", systemImage: "doc.badge.plus")
                         }
+                        Button(action: { pasteFromClipboard() }) {
+                            Label("Paste Link", systemImage: "doc.on.clipboard")
+                        }
+                        .disabled(!clipboardHasUrl)
                         Button(action: { showSettings = true }) {
                             Label("Settings", systemImage: "gear")
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
+                }
+            }
+            .overlay {
+                if isDownloading {
+                    ZStack {
+                        Color.black.opacity(0.3).ignoresSafeArea()
+                        VStack(spacing: 12) {
+                            ProgressView()
+                                .scaleEffect(1.5)
+                            Text("Downloading…")
+                                .font(.callout)
+                                .foregroundStyle(.white)
+                        }
+                        .padding(24)
+                        .background(.ultraThinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                }
+            }
+            .alert("Paste Error", isPresented: .init(
+                get: { downloadError != nil },
+                set: { if !$0 { downloadError = nil } }
+            )) {
+                Button("OK") { downloadError = nil }
+            } message: {
+                Text(downloadError ?? "")
+            }
+            .fileImporter(
+                isPresented: $showFilePicker,
+                allowedContentTypes: [.xml, .data],
+                allowsMultipleSelection: false
+            ) { result in
+                switch result {
+                case .success(let urls):
+                    guard let url = urls.first else { return }
+                    guard url.startAccessingSecurityScopedResource() else { return }
+                    defer { url.stopAccessingSecurityScopedResource() }
+
+                    guard let data = try? Data(contentsOf: url) else { return }
+                    let filename = url.lastPathComponent
+                    let ext = (filename as NSString).pathExtension.lowercased()
+
+                    guard ext == "musicxml" || ext == "mxl" || ext == "xml" else { return }
+
+                    midiSettings.externalFileData = data
+                    midiSettings.externalFileName = filename
+                    midiSettings.selectedSourceId = "external"
+                    midiSettings.selectedFileUrl = "external://\(filename)"
+                case .failure:
+                    break
                 }
             }
         }
@@ -71,6 +131,74 @@ struct ContentView: View {
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.86), value: showSettings)
+        .onAppear { checkClipboardForUrl() }
+        .onChange(of: scenePhase) { phase in
+            if phase == .active { checkClipboardForUrl() }
+        }
+    }
+
+    // MARK: - Clipboard detection
+
+    /// Check if the clipboard probably contains a web URL (without triggering the paste prompt).
+    private func checkClipboardForUrl() {
+        UIPasteboard.general.detectPatterns(for: [.probableWebURL]) { result in
+            DispatchQueue.main.async {
+                if case .success(let patterns) = result {
+                    clipboardHasUrl = patterns.contains(.probableWebURL)
+                } else {
+                    clipboardHasUrl = false
+                }
+            }
+        }
+    }
+
+    // MARK: - Paste Link
+
+    /// Read clipboard, validate as a MusicXML URL, download, and load.
+    private func pasteFromClipboard() {
+        guard let clipString = UIPasteboard.general.string?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !clipString.isEmpty,
+              let url = URL(string: clipString),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else {
+            return // Button should be disabled; silent guard only
+        }
+
+        let pathExt = (url.lastPathComponent as NSString).pathExtension.lowercased()
+        guard pathExt == "musicxml" || pathExt == "mxl" || pathExt == "xml" else {
+            downloadError = "URL doesn't point to a MusicXML file (.musicxml, .mxl, or .xml)."
+            return
+        }
+
+        isDownloading = true
+        let filename = url.lastPathComponent
+
+        URLSession.shared.dataTask(with: url) { data, response, error in
+            DispatchQueue.main.async {
+                isDownloading = false
+
+                if let error = error {
+                    downloadError = "Download failed: \(error.localizedDescription)"
+                    return
+                }
+
+                guard let httpResponse = response as? HTTPURLResponse,
+                      (200...299).contains(httpResponse.statusCode) else {
+                    downloadError = "Download failed: server returned an error."
+                    return
+                }
+
+                guard let data = data, !data.isEmpty else {
+                    downloadError = "Downloaded file is empty."
+                    return
+                }
+
+                midiSettings.externalFileData = data
+                midiSettings.externalFileName = filename
+                midiSettings.selectedSourceId = "external"
+                midiSettings.selectedFileUrl = "external://\(filename)"
+            }
+        }.resume()
     }
 }
 

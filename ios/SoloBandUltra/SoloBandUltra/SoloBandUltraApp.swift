@@ -23,7 +23,28 @@ struct SoloBandUltraApp: App {
                 .environmentObject(audioSessionManager)
                 .environmentObject(playbackManager)
                 .environmentObject(midiSettings)
+                .onOpenURL { url in
+                    handleIncomingFile(url)
+                }
         }
+    }
+
+    /// Handle a file URL passed via "Open With" / file association.
+    private func handleIncomingFile(_ url: URL) {
+        // Security-scoped access may or may not be required depending on the source
+        let didStart = url.startAccessingSecurityScopedResource()
+        defer { if didStart { url.stopAccessingSecurityScopedResource() } }
+
+        guard let data = try? Data(contentsOf: url) else { return }
+
+        let filename = url.lastPathComponent
+        let ext = (filename as NSString).pathExtension.lowercased()
+        guard ext == "musicxml" || ext == "mxl" || ext == "xml" else { return }
+
+        midiSettings.externalFileData = data
+        midiSettings.externalFileName = filename
+        midiSettings.selectedSourceId = "external"
+        midiSettings.selectedFileUrl = "external://\(filename)"
     }
 
     /// Configure AVAudioSession for playback category.

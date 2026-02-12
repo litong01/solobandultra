@@ -40,6 +40,13 @@ object ScoreLib {
         return renderBytes(bytes, extension.ifEmpty { null }, pageWidth, transpose)
     }
 
+    /**
+     * Render MusicXML bytes to SVG (convenience for pre-loaded data).
+     */
+    fun renderData(data: ByteArray, ext: String, pageWidth: Float = 0f, transpose: Int = 0): String? {
+        return renderBytes(data, ext.ifEmpty { null }, pageWidth, transpose)
+    }
+
     // ── Playback Map ────────────────────────────────────────────────────
 
     /**
@@ -58,6 +65,13 @@ object ScoreLib {
         val extension = assetPath.substringAfterLast('.', "")
         val bytes = context.assets.open(assetPath).use { it.readBytes() }
         return playbackMap(bytes, extension.ifEmpty { null }, pageWidth, transpose)
+    }
+
+    /**
+     * Generate a playback map from pre-loaded MusicXML bytes.
+     */
+    fun playbackMapFromData(data: ByteArray, ext: String, pageWidth: Float = 0f, transpose: Int = 0): String? {
+        return playbackMap(data, ext.ifEmpty { null }, pageWidth, transpose)
     }
 
     // ── MIDI Generation ─────────────────────────────────────────────────
@@ -79,5 +93,16 @@ object ScoreLib {
         val extension = assetPath.substringAfterLast('.', "")
         val bytes = context.assets.open(assetPath).use { it.readBytes() }
         return generateMidi(bytes, extension.ifEmpty { null }, optionsJson)
+    }
+
+    /**
+     * Generate MIDI bytes from pre-loaded MusicXML bytes.
+     */
+    fun generateMidiFromData(
+        data: ByteArray,
+        ext: String,
+        optionsJson: String? = null
+    ): ByteArray? {
+        return generateMidi(data, ext.ifEmpty { null }, optionsJson)
     }
 }

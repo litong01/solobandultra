@@ -1,8 +1,14 @@
 package com.solobandultra.app.ui.screens
 
+import android.content.ClipboardManager
+import android.net.Uri
+import android.provider.OpenableColumns
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -41,6 +47,8 @@ import com.solobandultra.app.ui.theme.SoloBandUltraTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.net.HttpURLConnection
+import java.net.URL
 
 // ═══════════════════════════════════════════════════════════════════════
 // MIDI Settings state
@@ -92,7 +100,9 @@ private fun midiOptionsToJson(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SheetMusicScreen(
-    playbackManager: PlaybackManager? = null
+    playbackManager: PlaybackManager? = null,
+    openFileUri: Uri? = null,
+    onFileUriConsumed: () -> Unit = {}
 ) {
     val isPlaying by playbackManager?.isPlaying?.collectAsState()
         ?: remember { mutableStateOf(false) }
@@ -116,7 +126,46 @@ fun SheetMusicScreen(
     var selectedSourceId by remember { mutableStateOf("bundled") }
     var selectedFileUrl by remember { mutableStateOf("file://sheetmusic/$DEFAULT_LANDING_FILE") }
 
+    // External file (opened via document picker or pasted URL)
+    var externalFileData by remember { mutableStateOf<ByteArray?>(null) }
+    var externalFileName by remember { mutableStateOf<String?>(null) }
+    var isDownloading by remember { mutableStateOf(false) }
+
     val context = LocalContext.current
+
+    // File picker launcher for opening external MusicXML / MXL files
+    val openDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let {
+            try {
+                val bytes = context.contentResolver.openInputStream(it)?.use { stream ->
+                    stream.readBytes()
+                }
+                if (bytes != null) {
+                    // Resolve display name from the content URI
+                    var displayName = "unknown.musicxml"
+                    context.contentResolver.query(it, null, null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                            if (idx >= 0) {
+                                displayName = cursor.getString(idx) ?: displayName
+                            }
+                        }
+                    }
+                    val ext = displayName.substringAfterLast('.', "").lowercase()
+                    if (ext == "musicxml" || ext == "mxl" || ext == "xml") {
+                        externalFileData = bytes
+                        externalFileName = displayName
+                        selectedSourceId = "external"
+                        selectedFileUrl = "external://$displayName"
+                    }
+                }
+            } catch (_: Exception) {
+                // Silently ignore errors reading the file
+            }
+        }
+    }
 
     // Dynamically discover all .musicxml and .mxl files in the assets/sheetmusic folder
     val availableFiles = remember {
@@ -149,10 +198,42 @@ fun SheetMusicScreen(
             }
         }
     }
+
+    // Handle incoming file from "Open With" / file association intent
+    LaunchedEffect(openFileUri) {
+        val uri = openFileUri ?: return@LaunchedEffect
+        try {
+            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            if (bytes != null) {
+                var displayName = "unknown.musicxml"
+                context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (idx >= 0) {
+                            displayName = cursor.getString(idx) ?: displayName
+                        }
+                    }
+                }
+                val ext = displayName.substringAfterLast('.', "").lowercase()
+                if (ext == "musicxml" || ext == "mxl" || ext == "xml") {
+                    externalFileData = bytes
+                    externalFileName = displayName
+                    selectedSourceId = "external"
+                    selectedFileUrl = "external://$displayName"
+                }
+            }
+        } catch (_: Exception) {
+            // Silently ignore errors reading the file
+        }
+        onFileUriConsumed()
+    }
+
     var svgContent by remember { mutableStateOf<String?>(null) }
     var playbackMapJson by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    /** Monotonically increasing counter to detect stale loadScore results. */
+    var loadGeneration by remember { mutableIntStateOf(0) }
 
     val scope = rememberCoroutineScope()
     val screenWidthDp = LocalConfiguration.current.screenWidthDp.toFloat()
@@ -169,25 +250,48 @@ fun SheetMusicScreen(
     }
 
     fun loadScore(filePath: String, pageWidth: Float) {
+        // Bump the generation counter so any in-flight load is discarded.
+        loadGeneration++
+        val thisGeneration = loadGeneration
+
         isLoading = true
         errorMessage = null
         svgContent = null
         playbackMapJson = null
+
+        // Stop any previous playback immediately so the user never hears the
+        // old piece while the new one is loading.
+        playbackManager?.stop()
+
+        val isExternal = selectedFileUrl.startsWith("external://")
+        val extBytes = if (isExternal) externalFileData else null
         scope.launch {
             val currentOptionsJson = optionsJson
             val currentTranspose = transpose
             val result = withContext(Dispatchers.IO) {
                 try {
-                    val svg = ScoreLib.renderAsset(context, filePath, pageWidth, currentTranspose)
-                    val pmap = ScoreLib.playbackMapFromAsset(context, filePath, pageWidth, currentTranspose)
-                    val midi = ScoreLib.generateMidiFromAsset(
-                        context, filePath, currentOptionsJson
-                    )
-                    Triple(svg, pmap, midi)
+                    if (isExternal && extBytes != null) {
+                        val ext = filePath.substringAfterLast('.', "")
+                        val svg = ScoreLib.renderData(extBytes, ext, pageWidth, currentTranspose)
+                        val pmap = ScoreLib.playbackMapFromData(extBytes, ext, pageWidth, currentTranspose)
+                        val midi = ScoreLib.generateMidiFromData(extBytes, ext, currentOptionsJson)
+                        Triple(svg, pmap, midi)
+                    } else {
+                        val svg = ScoreLib.renderAsset(context, filePath, pageWidth, currentTranspose)
+                        val pmap = ScoreLib.playbackMapFromAsset(context, filePath, pageWidth, currentTranspose)
+                        val midi = ScoreLib.generateMidiFromAsset(
+                            context, filePath, currentOptionsJson
+                        )
+                        Triple(svg, pmap, midi)
+                    }
                 } catch (e: Exception) {
                     Triple(null, null, null)
                 }
             }
+
+            // Discard this result if a newer loadScore was started while we were working.
+            if (thisGeneration != loadGeneration) return@launch
+
             isLoading = false
             val (svg, pmap, midi) = result
             if (svg != null) {
@@ -206,7 +310,11 @@ fun SheetMusicScreen(
 
     // Re-render when screen width, selected file, or transpose changes
     LaunchedEffect(screenWidthDp, selectedFileUrl, transpose) {
-        val filePath = selectedFileUrl.removePrefix("file://")
+        val filePath = if (selectedFileUrl.startsWith("external://")) {
+            selectedFileUrl.removePrefix("external://")
+        } else {
+            selectedFileUrl.removePrefix("file://")
+        }
         if (filePath.isNotEmpty()) {
             loadScore(filePath, screenWidthDp)
         }
@@ -224,15 +332,24 @@ fun SheetMusicScreen(
         // Skip the initial launch (already handled by the loadScore above)
         if (svgContent == null) return@LaunchedEffect
 
-        val filePath = selectedFileUrl.removePrefix("file://")
+        val isExternal = selectedFileUrl.startsWith("external://")
+        val filePath = if (isExternal) {
+            selectedFileUrl.removePrefix("external://")
+        } else {
+            selectedFileUrl.removePrefix("file://")
+        }
         if (filePath.isEmpty()) return@LaunchedEffect
 
         val currentOptionsJson = optionsJson
+        val extBytes = if (isExternal) externalFileData else null
         val midi = withContext(Dispatchers.IO) {
             try {
-                ScoreLib.generateMidiFromAsset(
-                    context, filePath, currentOptionsJson
-                )
+                if (isExternal && extBytes != null) {
+                    val ext = filePath.substringAfterLast('.', "")
+                    ScoreLib.generateMidiFromData(extBytes, ext, currentOptionsJson)
+                } else {
+                    ScoreLib.generateMidiFromAsset(context, filePath, currentOptionsJson)
+                }
             } catch (_: Exception) {
                 null
             }
@@ -257,9 +374,36 @@ fun SheetMusicScreen(
                         expanded = showMenu,
                         onDismissRequest = { showMenu = false }
                     ) {
+                        // Check clipboard for a valid MusicXML URL each time the menu opens
+                        val pasteEnabled = remember(showMenu) {
+                            if (!showMenu) return@remember false
+                            clipboardHasMusicXmlUrl(context)
+                        }
+
                         DropdownMenuItem(
                             text = { Text("Open File") },
-                            onClick = { showMenu = false }
+                            onClick = {
+                                showMenu = false
+                                openDocumentLauncher.launch(arrayOf("*/*"))
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Paste Link") },
+                            enabled = pasteEnabled,
+                            onClick = {
+                                showMenu = false
+                                pasteFromClipboard(
+                                    context = context,
+                                    scope = scope,
+                                    onDownloading = { isDownloading = it },
+                                    onResult = { bytes, filename ->
+                                        externalFileData = bytes
+                                        externalFileName = filename
+                                        selectedSourceId = "external"
+                                        selectedFileUrl = "external://$filename"
+                                    }
+                                )
+                            }
                         )
                         DropdownMenuItem(
                             text = { Text("Settings") },
@@ -287,10 +431,10 @@ fun SheetMusicScreen(
             )
         }
     ) { paddingValues ->
+        Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
         ) {
             // Score content
             Box(
@@ -315,6 +459,29 @@ fun SheetMusicScreen(
                             playbackMapJson = playbackMapJson,
                             playbackManager = playbackManager
                         )
+                    }
+                }
+            }
+        }
+        }
+
+        // Download overlay
+        if (isDownloading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    tonalElevation = 6.dp
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        CircularProgressIndicator()
+                        Text("Downloading…", style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }
@@ -357,6 +524,65 @@ fun SheetMusicScreen(
                     showSettings = false
                 }
             )
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Paste Link helper
+// ═══════════════════════════════════════════════════════════════════════
+
+/** Check if the clipboard contains an HTTP(S) URL pointing to a MusicXML file. */
+private fun clipboardHasMusicXmlUrl(context: android.content.Context): Boolean {
+    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager
+    val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString()?.trim() ?: return false
+    val url = try { URL(text) } catch (_: Exception) { return false }
+    val scheme = url.protocol?.lowercase()
+    if (scheme != "http" && scheme != "https") return false
+    val ext = url.path.substringAfterLast('.', "").lowercase()
+    return ext == "musicxml" || ext == "mxl" || ext == "xml"
+}
+
+/** Read clipboard, validate as a MusicXML URL, download, and deliver the bytes. */
+private fun pasteFromClipboard(
+    context: android.content.Context,
+    scope: kotlinx.coroutines.CoroutineScope,
+    onDownloading: (Boolean) -> Unit,
+    onResult: (ByteArray, String) -> Unit
+) {
+    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager
+    val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString()?.trim()
+
+    val url = try { text?.let { URL(it) } } catch (_: Exception) { null }
+    val scheme = url?.protocol?.lowercase()
+    if (url == null || (scheme != "http" && scheme != "https")) return
+
+    val filename = url.path.substringAfterLast('/')
+    val ext = filename.substringAfterLast('.', "").lowercase()
+    if (ext != "musicxml" && ext != "mxl" && ext != "xml") return
+
+    onDownloading(true)
+    scope.launch {
+        val bytes = withContext(Dispatchers.IO) {
+            try {
+                val connection = url.openConnection() as HttpURLConnection
+                connection.connectTimeout = 15_000
+                connection.readTimeout = 15_000
+                connection.requestMethod = "GET"
+                if (connection.responseCode in 200..299) {
+                    connection.inputStream.use { it.readBytes() }
+                } else {
+                    null
+                }
+            } catch (_: Exception) {
+                null
+            }
+        }
+        onDownloading(false)
+        if (bytes != null && bytes.isNotEmpty()) {
+            onResult(bytes, filename)
+        } else {
+            Toast.makeText(context, "Download failed.", Toast.LENGTH_SHORT).show()
         }
     }
 }
