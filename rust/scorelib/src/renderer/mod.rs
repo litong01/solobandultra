@@ -553,12 +553,16 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
 /// Compute the visual position of each measure and system in the SVG.
 ///
 /// Returns two vectors:
-/// - Measures: `(measure_idx, x, width, system_idx)` for each measure in the score
+/// - Measures: `(measure_idx, x, width, system_idx, beat_x_map)` for each measure
 /// - Systems: `(y, height)` for each system (line of music)
+///
+/// The `beat_x_map` is a `Vec<(f64, f64)>` of `(beat_time_in_quarters, svg_x)`
+/// pairs for each unique rhythmic onset in the measure, enabling note-level
+/// cursor positioning.
 pub fn compute_measure_positions(
     score: &Score,
     page_width: Option<f64>,
-) -> (Vec<(usize, f64, f64, usize)>, Vec<(f64, f64)>) {
+) -> (Vec<(usize, f64, f64, usize, Vec<(f64, f64)>)>, Vec<(f64, f64)>) {
     let page_width = match page_width {
         Some(w) if w > 0.0 => w,
         _ => DEFAULT_PAGE_WIDTH,
@@ -594,7 +598,13 @@ pub fn compute_measure_positions(
         system_positions.push((system.y, y_offset));
 
         for ml in &system.measures {
-            measure_positions.push((ml.measure_idx, ml.x, ml.width, sys_idx));
+            measure_positions.push((
+                ml.measure_idx,
+                ml.x,
+                ml.width,
+                sys_idx,
+                ml.beat_x_map.clone(),
+            ));
         }
     }
 

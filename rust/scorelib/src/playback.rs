@@ -36,6 +36,10 @@ pub struct MeasurePosition {
     pub width: f64,
     /// Which system (line) this measure belongs to (0-based)
     pub system_idx: usize,
+    /// Per-note positions for cursor snapping: `[[time_fraction, svg_x], ...]`
+    /// where `time_fraction` is 0.0–1.0 within the measure's duration.
+    /// Includes a right-edge anchor at time_fraction=1.0.
+    pub note_positions: Vec<(f64, f64)>,
 }
 
 /// Visual position and dimensions of a system (line of music).
@@ -89,13 +93,52 @@ pub fn generate_playback_map(score: &Score, page_width: Option<f64>) -> Playback
     let unrolled = unroller::unroll(score, part_idx);
     let tmap = timemap::generate_timemap(score, part_idx, &unrolled);
 
+    // Build a lookup: original_measure_index → effective_quarters (from first timemap hit)
+    let mut effective_quarters_by_idx: std::collections::HashMap<usize, f64> =
+        std::collections::HashMap::new();
+    for entry in &tmap {
+        effective_quarters_by_idx
+            .entry(entry.original_index)
+            .or_insert(entry.effective_quarters);
+    }
+
     let measures = measure_positions
         .into_iter()
-        .map(|(measure_idx, x, width, system_idx)| MeasurePosition {
-            measure_idx,
-            x,
-            width,
-            system_idx,
+        .map(|(measure_idx, x, width, system_idx, beat_x_map)| {
+            // Convert beat_x_map to note_positions with time fractions
+            let eff_q = effective_quarters_by_idx
+                .get(&measure_idx)
+                .copied()
+                .unwrap_or(4.0); // fallback: assume 4/4
+
+            let mut note_positions: Vec<(f64, f64)> = beat_x_map
+                .iter()
+                .filter_map(|&(beat_time, svg_x)| {
+                    if eff_q > 0.0 {
+                        let frac = (beat_time / eff_q).min(1.0).max(0.0);
+                        Some((frac, svg_x))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            // Add a right-edge anchor at fraction 1.0 (end of measure)
+            let right_edge_x = x + width;
+            let needs_anchor = note_positions
+                .last()
+                .map_or(true, |&(frac, _)| (frac - 1.0).abs() > 0.001);
+            if needs_anchor {
+                note_positions.push((1.0, right_edge_x));
+            }
+
+            MeasurePosition {
+                measure_idx,
+                x,
+                width,
+                system_idx,
+                note_positions,
+            }
         })
         .collect();
 

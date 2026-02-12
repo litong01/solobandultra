@@ -1004,12 +1004,33 @@ function moveCursor(timeMs) {
     var mPos = _measureByIdx[entry.original_index];
     if (!mPos) return;
 
+    // Compute time ratio within the measure (0.0 – 1.0)
     var offset = timeMs - entry.timestamp_ms;
     var ratio = entry.duration_ms > 0 ? offset / entry.duration_ms : 0;
     if (ratio < 0) ratio = 0;
     if (ratio > 1) ratio = 1;
 
-    var cursorX_svg = mPos.x + ratio * mPos.width;
+    // Piecewise-linear interpolation using per-note positions
+    var cursorX_svg;
+    var np = mPos.note_positions;
+    if (np && np.length > 1) {
+        // Find the segment that brackets the current ratio
+        var lo = 0;
+        for (var i = 1; i < np.length; i++) {
+            if (np[i][0] <= ratio) lo = i;
+            else break;
+        }
+        var hi = Math.min(lo + 1, np.length - 1);
+        if (lo === hi) {
+            cursorX_svg = np[lo][1];
+        } else {
+            var segRatio = (ratio - np[lo][0]) / (np[hi][0] - np[lo][0]);
+            cursorX_svg = np[lo][1] + segRatio * (np[hi][1] - np[lo][1]);
+        }
+    } else {
+        // Fallback: linear interpolation across the whole measure
+        cursorX_svg = mPos.x + ratio * mPos.width;
+    }
 
     var sys = _systems[mPos.system_idx];
     if (!sys) return;
