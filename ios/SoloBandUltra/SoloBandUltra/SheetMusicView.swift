@@ -55,9 +55,16 @@ struct SheetMusicView: View {
             }
             .background(Color(.systemBackground))
             .onAppear {
+                // Sync playback settings to PlaybackManager on first appear
+                playbackManager.speed = midiSettings.playbackSpeed
+                playbackManager.isMuted = midiSettings.muteMusic
+                playbackManager.repeatCount = midiSettings.repeatCount
                 loadScore(width: geometry.size.width)
             }
             .onChange(of: midiSettings.selectedFileUrl) { _ in
+                loadScore(width: geometry.size.width)
+            }
+            .onChange(of: midiSettings.transpose) { _ in
                 loadScore(width: geometry.size.width)
             }
             .onChange(of: geometry.size.width) { newWidth in
@@ -73,6 +80,16 @@ struct SheetMusicView: View {
                     regenerateMidi()
                 }
             }
+            // ── Playback settings → PlaybackManager (no MIDI regen) ──
+            .onChange(of: midiSettings.playbackSpeed) { newSpeed in
+                playbackManager.speed = newSpeed
+            }
+            .onChange(of: midiSettings.muteMusic) { newMute in
+                playbackManager.isMuted = newMute
+            }
+            .onChange(of: midiSettings.repeatCount) { newRepeat in
+                playbackManager.repeatCount = newRepeat
+            }
         }
     }
 
@@ -86,6 +103,7 @@ struct SheetMusicView: View {
         let pageWidth = Double(width)
         let optionsJson = midiSettings.toJson()
         lastOptionsJson = optionsJson
+        let transposeVal = Int32(midiSettings.transpose)
 
         DispatchQueue.global(qos: .userInitiated).async {
             // Find the file in the app bundle
@@ -124,13 +142,13 @@ struct SheetMusicView: View {
                 return
             }
 
-            // Render SVG using the Rust library
-            let svg = ScoreLib.renderFile(at: url.path, pageWidth: pageWidth)
+            // Render SVG using the Rust library (with transpose)
+            let svg = ScoreLib.renderFile(at: url.path, pageWidth: pageWidth, transpose: transposeVal)
 
-            // Generate playback map
-            let pmap = ScoreLib.playbackMap(data, extension: ext, pageWidth: pageWidth)
+            // Generate playback map (with transpose for consistent positions)
+            let pmap = ScoreLib.playbackMap(data, extension: ext, pageWidth: pageWidth, transpose: transposeVal)
 
-            // Generate MIDI data for playback with current settings
+            // Generate MIDI data for playback with current settings (transpose is in optionsJson)
             let midi = ScoreLib.generateMidi(data, extension: ext, optionsJson: optionsJson)
 
             DispatchQueue.main.async {

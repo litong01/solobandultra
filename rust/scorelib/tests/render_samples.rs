@@ -16,7 +16,7 @@ fn output_dir() -> PathBuf {
 #[test]
 fn render_asa_branca_svg() {
     let path = sheetmusic_dir().join("asa-branca.musicxml");
-    let svg = render_file_to_svg(&path, None).expect("Failed to render asa-branca");
+    let svg = render_file_to_svg(&path, None, 0).expect("Failed to render asa-branca");
 
     // Basic SVG structure checks
     assert!(svg.starts_with("<svg"), "Output should be SVG");
@@ -40,7 +40,7 @@ fn render_asa_branca_svg() {
 #[test]
 fn render_tongnian_svg() {
     let path = sheetmusic_dir().join("童年.mxl");
-    let svg = render_file_to_svg(&path, None).expect("Failed to render 童年");
+    let svg = render_file_to_svg(&path, None, 0).expect("Failed to render 童年");
 
     assert!(svg.starts_with("<svg"));
     assert!(svg.contains("童年"), "SVG should contain Chinese title");
@@ -56,7 +56,7 @@ fn render_tongnian_svg() {
 #[test]
 fn render_chopin_trois_valses_svg() {
     let path = sheetmusic_dir().join("chopin-trois-valses.mxl");
-    let svg = render_file_to_svg(&path, None).expect("Failed to render chopin-trois-valses");
+    let svg = render_file_to_svg(&path, None, 0).expect("Failed to render chopin-trois-valses");
 
     assert!(svg.starts_with("<svg"));
     assert!(svg.contains("</svg>"));
@@ -115,7 +115,7 @@ fn render_narrow_phone_width() {
 #[test]
 fn render_blue_bag_folly_svg() {
     let path = sheetmusic_dir().join("blue-bag-folly.musicxml");
-    let svg = render_file_to_svg(&path, None).expect("Failed to render blue-bag-folly");
+    let svg = render_file_to_svg(&path, None, 0).expect("Failed to render blue-bag-folly");
 
     // Basic SVG structure checks
     assert!(svg.starts_with("<svg"), "Output should be SVG");

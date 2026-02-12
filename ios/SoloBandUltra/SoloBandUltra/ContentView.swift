@@ -111,7 +111,6 @@ struct SettingsSheet: View {
     @State private var includeStrings: Bool = false
     @State private var includeDrums: Bool = false
     @State private var includeMetronome: Bool = true
-    @State private var energy: MidiSettings.Energy = .medium
     @State private var playbackSpeed: Double = 1.0
     @State private var muteMusic: Bool = false
     @State private var repeatCount: Int = 1
@@ -203,21 +202,6 @@ struct SettingsSheet: View {
                             CheckboxToggle("Drums", isOn: $includeDrums)
                             CheckboxToggle("Metronome", isOn: $includeMetronome)
                         }
-
-                        // Energy picker
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Energy")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-
-                            Picker("Energy", selection: $energy) {
-                                ForEach(MidiSettings.Energy.allCases) { level in
-                                    Text(level.displayName).tag(level)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                        }
-                        .padding(.top, 8)
                     }
 
                     // ── 3. Playback ──────────────────────────────
@@ -342,7 +326,6 @@ struct SettingsSheet: View {
         includeStrings = midiSettings.includeStrings
         includeDrums = midiSettings.includeDrums
         includeMetronome = midiSettings.includeMetronome
-        energy = midiSettings.energy
         playbackSpeed = midiSettings.playbackSpeed
         muteMusic = midiSettings.muteMusic
         repeatCount = midiSettings.repeatCount
@@ -359,7 +342,6 @@ struct SettingsSheet: View {
         midiSettings.includeStrings = includeStrings
         midiSettings.includeDrums = includeDrums
         midiSettings.includeMetronome = includeMetronome
-        midiSettings.energy = energy
         midiSettings.playbackSpeed = playbackSpeed
         midiSettings.muteMusic = muteMusic
         midiSettings.repeatCount = repeatCount

@@ -18,23 +18,26 @@ object ScoreLib {
     /**
      * Render a MusicXML file at the given path to SVG.
      * @param pageWidth SVG width in user-units (pass 0f for the default 820).
+     * @param transpose Semitones to transpose (0 = no change).
      */
-    external fun renderFile(path: String, pageWidth: Float): String?
+    external fun renderFile(path: String, pageWidth: Float, transpose: Int): String?
 
     /**
      * Render MusicXML bytes to SVG.
      * @param pageWidth SVG width in user-units (pass 0f for the default 820).
+     * @param transpose Semitones to transpose (0 = no change).
      */
-    external fun renderBytes(data: ByteArray, extension: String?, pageWidth: Float): String?
+    external fun renderBytes(data: ByteArray, extension: String?, pageWidth: Float, transpose: Int): String?
 
     /**
      * Render a MusicXML asset file to SVG.
      * @param pageWidth SVG width in user-units (pass 0f for the default 820).
+     * @param transpose Semitones to transpose (0 = no change).
      */
-    fun renderAsset(context: Context, assetPath: String, pageWidth: Float = 0f): String? {
+    fun renderAsset(context: Context, assetPath: String, pageWidth: Float = 0f, transpose: Int = 0): String? {
         val extension = assetPath.substringAfterLast('.', "")
         val bytes = context.assets.open(assetPath).use { it.readBytes() }
-        return renderBytes(bytes, extension.ifEmpty { null }, pageWidth)
+        return renderBytes(bytes, extension.ifEmpty { null }, pageWidth, transpose)
     }
 
     // ── Playback Map ────────────────────────────────────────────────────
@@ -43,16 +46,18 @@ object ScoreLib {
      * Generate a playback map JSON string from MusicXML bytes.
      * Contains measure positions, system positions, and timemap.
      * @param pageWidth SVG width in user-units (pass 0f for the default 820).
+     * @param transpose Semitones to transpose (0 = no change). Must match render transpose.
      */
-    external fun playbackMap(data: ByteArray, extension: String?, pageWidth: Float): String?
+    external fun playbackMap(data: ByteArray, extension: String?, pageWidth: Float, transpose: Int): String?
 
     /**
      * Generate a playback map from a MusicXML asset file.
+     * @param transpose Semitones to transpose (0 = no change). Must match render transpose.
      */
-    fun playbackMapFromAsset(context: Context, assetPath: String, pageWidth: Float = 0f): String? {
+    fun playbackMapFromAsset(context: Context, assetPath: String, pageWidth: Float = 0f, transpose: Int = 0): String? {
         val extension = assetPath.substringAfterLast('.', "")
         val bytes = context.assets.open(assetPath).use { it.readBytes() }
-        return playbackMap(bytes, extension.ifEmpty { null }, pageWidth)
+        return playbackMap(bytes, extension.ifEmpty { null }, pageWidth, transpose)
     }
 
     // ── MIDI Generation ─────────────────────────────────────────────────

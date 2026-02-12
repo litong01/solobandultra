@@ -36,6 +36,136 @@ pub use unroller::unroll;
 pub use timemap::generate_timemap;
 pub use playback::{generate_playback_map, PlaybackMap};
 
+// ═══════════════════════════════════════════════════════════════════════
+// Score transposition
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Transpose all pitches, key signatures, and harmony symbols in a score
+/// by the given number of semitones.  Positive = up, negative = down.
+///
+/// This modifies the `Score` in-place so that both rendering and MIDI
+/// generation produce transposed output.
+pub fn transpose_score(score: &mut Score, semitones: i32) {
+    if semitones == 0 {
+        return;
+    }
+
+    for part in &mut score.parts {
+        let mut current_fifths: i32 = 0; // running key context (C major default)
+
+        for measure in &mut part.measures {
+            // --- Transpose key signature if present ---
+            if let Some(ref mut attrs) = measure.attributes {
+                if let Some(ref mut key) = attrs.key {
+                    let old_root = (key.fifths * 7).rem_euclid(12);
+                    let new_root = (old_root + semitones).rem_euclid(12);
+                    key.fifths = semitone_to_fifths(new_root);
+                    current_fifths = key.fifths;
+                }
+            }
+
+            let use_sharps = current_fifths >= 0;
+
+            // --- Transpose note pitches ---
+            for note in &mut measure.notes {
+                if let Some(ref mut pitch) = note.pitch {
+                    let midi = pitch.to_midi() + semitones;
+                    let octave = midi / 12 - 1;
+                    let pc = midi.rem_euclid(12);
+                    let (step, alter) = semitone_to_note(pc, use_sharps);
+                    pitch.step = step.to_string();
+                    pitch.alter = if alter != 0.0 { Some(alter) } else { None };
+                    pitch.octave = octave;
+                }
+            }
+
+            // --- Transpose harmony roots and bass notes ---
+            for harmony in &mut measure.harmonies {
+                transpose_harmony_root(&mut harmony.root, semitones, use_sharps);
+                if let Some(ref mut bass) = harmony.bass {
+                    transpose_harmony_root(bass, semitones, use_sharps);
+                }
+            }
+        }
+    }
+}
+
+/// Map a semitone (0–11) to the simplest key-signature fifths value.
+fn semitone_to_fifths(semi: i32) -> i32 {
+    match semi.rem_euclid(12) {
+        0  =>  0,  // C
+        1  => -5,  // Db
+        2  =>  2,  // D
+        3  => -3,  // Eb
+        4  =>  4,  // E
+        5  => -1,  // F
+        6  => -6,  // Gb
+        7  =>  1,  // G
+        8  => -4,  // Ab
+        9  =>  3,  // A
+        10 => -2,  // Bb
+        11 =>  5,  // B
+        _  =>  0,
+    }
+}
+
+/// Convert a pitch-class semitone (0–11) to (step, alter) using sharp or flat spelling.
+fn semitone_to_note(pc: i32, use_sharps: bool) -> (&'static str, f64) {
+    let pc = pc.rem_euclid(12);
+    if use_sharps {
+        match pc {
+            0  => ("C", 0.0),
+            1  => ("C", 1.0),
+            2  => ("D", 0.0),
+            3  => ("D", 1.0),
+            4  => ("E", 0.0),
+            5  => ("F", 0.0),
+            6  => ("F", 1.0),
+            7  => ("G", 0.0),
+            8  => ("G", 1.0),
+            9  => ("A", 0.0),
+            10 => ("A", 1.0),
+            11 => ("B", 0.0),
+            _  => ("C", 0.0),
+        }
+    } else {
+        match pc {
+            0  => ("C", 0.0),
+            1  => ("D",-1.0),
+            2  => ("D", 0.0),
+            3  => ("E",-1.0),
+            4  => ("E", 0.0),
+            5  => ("F", 0.0),
+            6  => ("G",-1.0),
+            7  => ("G", 0.0),
+            8  => ("A",-1.0),
+            9  => ("A", 0.0),
+            10 => ("B",-1.0),
+            11 => ("B", 0.0),
+            _  => ("C", 0.0),
+        }
+    }
+}
+
+/// Transpose a harmony root or bass note in-place.
+fn transpose_harmony_root(root: &mut model::HarmonyRoot, semitones: i32, use_sharps: bool) {
+    let step_semi = match root.step.as_str() {
+        "C" => 0, "D" => 2, "E" => 4, "F" => 5,
+        "G" => 7, "A" => 9, "B" => 11,
+        _ => 0,
+    };
+    let alter = root.alter.unwrap_or(0.0) as i32;
+    let old_pc = (step_semi + alter).rem_euclid(12);
+    let new_pc = (old_pc + semitones).rem_euclid(12);
+    let (step, alter_f) = semitone_to_note(new_pc, use_sharps);
+    root.step = step.to_string();
+    root.alter = if alter_f != 0.0 { Some(alter_f) } else { None };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Parsing
+// ═══════════════════════════════════════════════════════════════════════
+
 /// Parse a MusicXML file from a file path.
 /// Automatically detects format based on file extension:
 /// - `.musicxml` or `.xml` → uncompressed MusicXML
@@ -83,11 +213,15 @@ pub fn score_to_json(score: &Score) -> Result<String, String> {
 /// `page_width` sets the SVG width in user units. Pass `None` to use the
 /// default (820). On phones, pass the screen width in points so the renderer
 /// fits fewer measures per system and keeps notes readable.
+///
+/// `transpose` shifts all pitches by the given number of semitones (0 = no change).
 pub fn render_file_to_svg<P: AsRef<std::path::Path>>(
     path: P,
     page_width: Option<f64>,
+    transpose: i32,
 ) -> Result<String, String> {
-    let score = parse_file(path)?;
+    let mut score = parse_file(path)?;
+    transpose_score(&mut score, transpose);
     Ok(render_score_to_svg(&score, page_width))
 }
 
@@ -95,12 +229,16 @@ pub fn render_file_to_svg<P: AsRef<std::path::Path>>(
 ///
 /// `page_width` sets the SVG width in user units. Pass `None` to use the
 /// default (820).
+///
+/// `transpose` shifts all pitches by the given number of semitones (0 = no change).
 pub fn render_bytes_to_svg(
     data: &[u8],
     extension: Option<&str>,
     page_width: Option<f64>,
+    transpose: i32,
 ) -> Result<String, String> {
-    let score = parse_bytes(data, extension)?;
+    let mut score = parse_bytes(data, extension)?;
+    transpose_score(&mut score, transpose);
     Ok(render_score_to_svg(&score, page_width))
 }
 
@@ -121,7 +259,8 @@ pub fn generate_midi_from_file<P: AsRef<Path>>(
     path: P,
     options: &MidiOptions,
 ) -> Result<Vec<u8>, String> {
-    let score = parse_file(path)?;
+    let mut score = parse_file(path)?;
+    transpose_score(&mut score, options.transpose);
     Ok(generate_midi_from_score(&score, options))
 }
 
@@ -131,7 +270,8 @@ pub fn generate_midi_from_bytes(
     extension: Option<&str>,
     options: &MidiOptions,
 ) -> Result<Vec<u8>, String> {
-    let score = parse_bytes(data, extension)?;
+    let mut score = parse_bytes(data, extension)?;
+    transpose_score(&mut score, options.transpose);
     Ok(generate_midi_from_score(&score, options))
 }
 
@@ -145,12 +285,17 @@ pub fn playback_map_from_score(score: &Score, page_width: Option<f64>) -> String
 }
 
 /// Parse MusicXML bytes and return a playback map JSON string.
+///
+/// `transpose` shifts all pitches by the given number of semitones (0 = no change).
+/// This must match the transpose used for SVG rendering so positions are consistent.
 pub fn playback_map_from_bytes(
     data: &[u8],
     extension: Option<&str>,
     page_width: Option<f64>,
+    transpose: i32,
 ) -> Result<String, String> {
-    let score = parse_bytes(data, extension)?;
+    let mut score = parse_bytes(data, extension)?;
+    transpose_score(&mut score, transpose);
     Ok(playback_map_from_score(&score, page_width))
 }
 
@@ -172,6 +317,7 @@ use std::os::raw::c_char;
 pub unsafe extern "C" fn scorelib_render_file(
     path: *const c_char,
     page_width: f64,
+    transpose: i32,
 ) -> *mut c_char {
     if path.is_null() {
         return std::ptr::null_mut();
@@ -184,7 +330,7 @@ pub unsafe extern "C" fn scorelib_render_file(
 
     let pw = if page_width > 0.0 { Some(page_width) } else { None };
 
-    match render_file_to_svg(path_str, pw) {
+    match render_file_to_svg(path_str, pw, transpose) {
         Ok(svg) => CString::new(svg).unwrap_or_default().into_raw(),
         Err(_) => std::ptr::null_mut(),
     }
@@ -203,6 +349,7 @@ pub unsafe extern "C" fn scorelib_render_bytes(
     len: usize,
     extension: *const c_char,
     page_width: f64,
+    transpose: i32,
 ) -> *mut c_char {
     if data.is_null() || len == 0 {
         return std::ptr::null_mut();
@@ -216,7 +363,7 @@ pub unsafe extern "C" fn scorelib_render_bytes(
 
     let pw = if page_width > 0.0 { Some(page_width) } else { None };
 
-    match render_bytes_to_svg(bytes, ext, pw) {
+    match render_bytes_to_svg(bytes, ext, pw, transpose) {
         Ok(svg) => CString::new(svg).unwrap_or_default().into_raw(),
         Err(_) => std::ptr::null_mut(),
     }
@@ -313,6 +460,7 @@ pub unsafe extern "C" fn scorelib_playback_map(
     len: usize,
     extension: *const c_char,
     page_width: f64,
+    transpose: i32,
 ) -> *mut c_char {
     if data.is_null() || len == 0 {
         return std::ptr::null_mut();
@@ -326,7 +474,7 @@ pub unsafe extern "C" fn scorelib_playback_map(
 
     let pw = if page_width > 0.0 { Some(page_width) } else { None };
 
-    match playback_map_from_bytes(bytes, ext, pw) {
+    match playback_map_from_bytes(bytes, ext, pw, transpose) {
         Ok(json) => CString::new(json).unwrap_or_default().into_raw(),
         Err(_) => std::ptr::null_mut(),
     }
@@ -408,6 +556,24 @@ unsafe fn parse_midi_options_json(json_ptr: *const c_char) -> MidiOptions {
     }
     if json_str.contains("\"energy\":\"strong\"") || json_str.contains("\"energy\": \"strong\"") {
         opts.energy = Energy::Strong;
+    }
+    // Parse "transpose":N — extract the integer value after the key
+    if let Some(pos) = json_str.find("\"transpose\":") {
+        let after = &json_str[pos + "\"transpose\":".len()..];
+        let num_str: String = after.trim().chars()
+            .take_while(|c| *c == '-' || c.is_ascii_digit())
+            .collect();
+        if let Ok(val) = num_str.parse::<i32>() {
+            opts.transpose = val;
+        }
+    } else if let Some(pos) = json_str.find("\"transpose\": ") {
+        let after = &json_str[pos + "\"transpose\": ".len()..];
+        let num_str: String = after.trim().chars()
+            .take_while(|c| *c == '-' || c.is_ascii_digit())
+            .collect();
+        if let Ok(val) = num_str.parse::<i32>() {
+            opts.transpose = val;
+        }
     }
     opts
 }

@@ -39,6 +39,8 @@ pub struct MidiOptions {
     pub include_metronome: bool,
     pub melody_channel: u8,
     pub energy: Energy,
+    /// Transposition in semitones (applied to the Score before generation).
+    pub transpose: i32,
 }
 
 impl Default for MidiOptions {
@@ -52,6 +54,7 @@ impl Default for MidiOptions {
             include_metronome: true,
             melody_channel: 0,
             energy: Energy::Medium,
+            transpose: 0,
         }
     }
 }

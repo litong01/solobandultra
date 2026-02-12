@@ -70,7 +70,8 @@ private fun midiOptionsToJson(
     includeStrings: Boolean,
     includeDrums: Boolean,
     includeMetronome: Boolean,
-    energy: EnergyLevel
+    energy: EnergyLevel,
+    transpose: Int
 ): String = buildString {
     append("{")
     append("\"include_melody\":$includeMelody,")
@@ -79,7 +80,8 @@ private fun midiOptionsToJson(
     append("\"include_strings\":$includeStrings,")
     append("\"include_drums\":$includeDrums,")
     append("\"include_metronome\":$includeMetronome,")
-    append("\"energy\":\"${energy.key}\"")
+    append("\"energy\":\"${energy.key}\",")
+    append("\"transpose\":$transpose")
     append("}")
 }
 
@@ -104,7 +106,7 @@ fun SheetMusicScreen(
     var includeStrings by remember { mutableStateOf(false) }
     var includeDrums by remember { mutableStateOf(false) }
     var includeMetronome by remember { mutableStateOf(true) }
-    var energy by remember { mutableStateOf(EnergyLevel.Medium) }
+    val energy = EnergyLevel.Strong  // Hardcoded; not user-facing
     var playbackSpeed by remember { mutableStateOf(1.0) }
     var muteMusic by remember { mutableStateOf(false) }
     var repeatCount by remember { mutableIntStateOf(1) }
@@ -158,11 +160,11 @@ fun SheetMusicScreen(
     // Derive the options JSON from current settings
     val optionsJson = remember(
         includeMelody, includePiano, includeBass,
-        includeStrings, includeDrums, includeMetronome, energy
+        includeStrings, includeDrums, includeMetronome, energy, transpose
     ) {
         midiOptionsToJson(
             includeMelody, includePiano, includeBass,
-            includeStrings, includeDrums, includeMetronome, energy
+            includeStrings, includeDrums, includeMetronome, energy, transpose
         )
     }
 
@@ -173,10 +175,11 @@ fun SheetMusicScreen(
         playbackMapJson = null
         scope.launch {
             val currentOptionsJson = optionsJson
+            val currentTranspose = transpose
             val result = withContext(Dispatchers.IO) {
                 try {
-                    val svg = ScoreLib.renderAsset(context, filePath, pageWidth)
-                    val pmap = ScoreLib.playbackMapFromAsset(context, filePath, pageWidth)
+                    val svg = ScoreLib.renderAsset(context, filePath, pageWidth, currentTranspose)
+                    val pmap = ScoreLib.playbackMapFromAsset(context, filePath, pageWidth, currentTranspose)
                     val midi = ScoreLib.generateMidiFromAsset(
                         context, filePath, currentOptionsJson
                     )
@@ -201,12 +204,19 @@ fun SheetMusicScreen(
         }
     }
 
-    // Re-render when screen width or selected file changes
-    LaunchedEffect(screenWidthDp, selectedFileUrl) {
+    // Re-render when screen width, selected file, or transpose changes
+    LaunchedEffect(screenWidthDp, selectedFileUrl, transpose) {
         val filePath = selectedFileUrl.removePrefix("file://")
         if (filePath.isNotEmpty()) {
             loadScore(filePath, screenWidthDp)
         }
+    }
+
+    // ── Wire playback settings to PlaybackManager (no MIDI regen) ──
+    LaunchedEffect(playbackSpeed, muteMusic, repeatCount) {
+        playbackManager?.speed = playbackSpeed
+        playbackManager?.isMuted = muteMusic
+        playbackManager?.repeatCount = repeatCount
     }
 
     // Regenerate MIDI when settings change (no need to re-render SVG)
@@ -327,12 +337,11 @@ fun SheetMusicScreen(
                 initialIncludeStrings = includeStrings,
                 initialIncludeDrums = includeDrums,
                 initialIncludeMetronome = includeMetronome,
-                initialEnergy = energy,
                 initialPlaybackSpeed = playbackSpeed,
                 initialMuteMusic = muteMusic,
                 initialRepeatCount = repeatCount,
                 initialTranspose = transpose,
-                onDone = { src, file, mel, pia, bas, str, drm, met, eng, spd, mute, rep, trans ->
+                onDone = { src, file, mel, pia, bas, str, drm, met, spd, mute, rep, trans ->
                     selectedSourceId = src
                     selectedFileUrl = file
                     includeMelody = mel
@@ -341,7 +350,6 @@ fun SheetMusicScreen(
                     includeStrings = str
                     includeDrums = drm
                     includeMetronome = met
-                    energy = eng
                     playbackSpeed = spd
                     muteMusic = mute
                     repeatCount = rep
@@ -369,12 +377,11 @@ private fun SettingsSheetContent(
     initialIncludeStrings: Boolean,
     initialIncludeDrums: Boolean,
     initialIncludeMetronome: Boolean,
-    initialEnergy: EnergyLevel,
     initialPlaybackSpeed: Double,
     initialMuteMusic: Boolean,
     initialRepeatCount: Int,
     initialTranspose: Int,
-    onDone: (String, String, Boolean, Boolean, Boolean, Boolean, Boolean, Boolean, EnergyLevel, Double, Boolean, Int, Int) -> Unit
+    onDone: (String, String, Boolean, Boolean, Boolean, Boolean, Boolean, Boolean, Double, Boolean, Int, Int) -> Unit
 ) {
     // Local working copies (only applied when Done is tapped)
     var selectedSourceId by remember { mutableStateOf(initialSelectedSourceId) }
@@ -385,7 +392,6 @@ private fun SettingsSheetContent(
     var includeStrings by remember { mutableStateOf(initialIncludeStrings) }
     var includeDrums by remember { mutableStateOf(initialIncludeDrums) }
     var includeMetronome by remember { mutableStateOf(initialIncludeMetronome) }
-    var energy by remember { mutableStateOf(initialEnergy) }
     var playbackSpeed by remember { mutableStateOf(initialPlaybackSpeed) }
     var muteMusic by remember { mutableStateOf(initialMuteMusic) }
     var repeatCount by remember { mutableIntStateOf(initialRepeatCount) }
@@ -413,7 +419,7 @@ private fun SettingsSheetContent(
                 onDone(
                     selectedSourceId, selectedFileUrl,
                     includeMelody, includePiano, includeBass, includeStrings,
-                    includeDrums, includeMetronome, energy, playbackSpeed,
+                    includeDrums, includeMetronome, playbackSpeed,
                     muteMusic, repeatCount, transpose
                 )
             }) {
@@ -522,30 +528,6 @@ private fun SettingsSheetContent(
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Energy picker
-            Text(
-                text = "Energy",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                EnergyLevel.entries.forEachIndexed { index, level ->
-                    SegmentedButton(
-                        shape = SegmentedButtonDefaults.itemShape(
-                            index = index,
-                            count = EnergyLevel.entries.size
-                        ),
-                        onClick = { energy = level },
-                        selected = energy == level,
-                        label = { Text(level.displayName) }
-                    )
-                }
-            }
         }
 
         // ── 3. Playback ─────────────────────────────────────────

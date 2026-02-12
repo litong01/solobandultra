@@ -7,8 +7,9 @@ enum ScoreLib {
 
     /// Render a MusicXML file at the given path to SVG.
     /// - Parameter pageWidth: SVG width in user-units. Pass 0 for the default (820).
-    static func renderFile(at path: String, pageWidth: Double = 0) -> String? {
-        guard let cResult = scorelib_render_file(path, pageWidth) else {
+    /// - Parameter transpose: Semitones to transpose (0 = no change).
+    static func renderFile(at path: String, pageWidth: Double = 0, transpose: Int32 = 0) -> String? {
+        guard let cResult = scorelib_render_file(path, pageWidth, transpose) else {
             return nil
         }
         let svg = String(cString: cResult)
@@ -18,17 +19,18 @@ enum ScoreLib {
 
     /// Render MusicXML data (bytes) to SVG.
     /// - Parameter pageWidth: SVG width in user-units. Pass 0 for the default (820).
-    static func renderData(_ data: Data, extension ext: String? = nil, pageWidth: Double = 0) -> String? {
+    /// - Parameter transpose: Semitones to transpose (0 = no change).
+    static func renderData(_ data: Data, extension ext: String? = nil, pageWidth: Double = 0, transpose: Int32 = 0) -> String? {
         let result: UnsafeMutablePointer<CChar>? = data.withUnsafeBytes { buffer in
             guard let baseAddress = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
                 return nil
             }
             if let ext = ext {
                 return ext.withCString { extPtr in
-                    scorelib_render_bytes(baseAddress, buffer.count, extPtr, pageWidth)
+                    scorelib_render_bytes(baseAddress, buffer.count, extPtr, pageWidth, transpose)
                 }
             } else {
-                return scorelib_render_bytes(baseAddress, buffer.count, nil, pageWidth)
+                return scorelib_render_bytes(baseAddress, buffer.count, nil, pageWidth, transpose)
             }
         }
 
@@ -46,17 +48,18 @@ enum ScoreLib {
     ///
     /// The playback map contains measure visual positions, system positions,
     /// and the unrolled timemap — everything needed for cursor synchronization.
-    static func playbackMap(_ data: Data, extension ext: String? = nil, pageWidth: Double = 0) -> String? {
+    /// - Parameter transpose: Semitones to transpose (0 = no change). Must match render transpose.
+    static func playbackMap(_ data: Data, extension ext: String? = nil, pageWidth: Double = 0, transpose: Int32 = 0) -> String? {
         let result: UnsafeMutablePointer<CChar>? = data.withUnsafeBytes { buffer in
             guard let baseAddress = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
                 return nil
             }
             if let ext = ext {
                 return ext.withCString { extPtr in
-                    scorelib_playback_map(baseAddress, buffer.count, extPtr, pageWidth)
+                    scorelib_playback_map(baseAddress, buffer.count, extPtr, pageWidth, transpose)
                 }
             } else {
-                return scorelib_playback_map(baseAddress, buffer.count, nil, pageWidth)
+                return scorelib_playback_map(baseAddress, buffer.count, nil, pageWidth, transpose)
             }
         }
 

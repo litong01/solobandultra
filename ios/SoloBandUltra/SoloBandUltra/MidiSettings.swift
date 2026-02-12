@@ -32,8 +32,8 @@ class MidiSettings: ObservableObject {
     @Published var includeDrums: Bool = false
     @Published var includeMetronome: Bool = true
 
-    // ── Energy level ──
-    @Published var energy: Energy = .medium
+    // ── Energy level (hardcoded to strong; not user-facing) ──
+    @Published var energy: Energy = .strong
 
     // ── Playback ──
     @Published var playbackSpeed: Double = 1.0
@@ -89,7 +89,8 @@ class MidiSettings: ObservableObject {
             "\"include_strings\":\(includeStrings)",
             "\"include_drums\":\(includeDrums)",
             "\"include_metronome\":\(includeMetronome)",
-            "\"energy\":\"\(energy.rawValue)\""
+            "\"energy\":\"\(energy.rawValue)\"",
+            "\"transpose\":\(transpose)"
         ]
         return "{\(parts.joined(separator: ","))}"
     }
