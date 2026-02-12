@@ -466,7 +466,7 @@ private fun SettingsSheetContent(
 
             // File picker (shown when a source with items is selected)
             if (selectedSource != null && selectedSource.items.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(4.dp))
 
                 var fileExpanded by remember { mutableStateOf(false) }
                 val selectedFile = selectedSource.items.firstOrNull { it.url == selectedFileUrl }
@@ -507,7 +507,10 @@ private fun SettingsSheetContent(
         // ── 2. Accompaniment ─────────────────────────────────────
         SettingsCard("Accompaniment") {
             // Four-column checkbox grid
-            Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+            Column(
+                modifier = Modifier.padding(vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -527,7 +530,6 @@ private fun SettingsSheetContent(
                     Spacer(modifier = Modifier.weight(1f))
                 }
             }
-
         }
 
         // ── 3. Playback ─────────────────────────────────────────

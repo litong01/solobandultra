@@ -49,12 +49,28 @@ struct ContentView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showSettings) {
-                SettingsSheet(midiSettings: midiSettings)
-                    .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
+        }
+        .overlay {
+            if showSettings {
+                ZStack(alignment: .bottom) {
+                    // Dimming scrim
+                    Color.black.opacity(0.3)
+                        .ignoresSafeArea()
+                        .onTapGesture { showSettings = false }
+
+                    // Bottom-anchored settings card
+                    SettingsSheet(midiSettings: midiSettings, isPresented: $showSettings)
+                        .frame(maxHeight: UIScreen.main.bounds.height * 0.55)
+                        .background(Color(.systemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .shadow(color: .black.opacity(0.15), radius: 20, y: -5)
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 8)
+                }
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
+        .animation(.spring(response: 0.35, dampingFraction: 0.86), value: showSettings)
     }
 }
 
@@ -100,7 +116,7 @@ struct PlaybackControlBar: View {
 
 struct SettingsSheet: View {
     @ObservedObject var midiSettings: MidiSettings
-    @Environment(\.dismiss) private var dismiss
+    @Binding var isPresented: Bool
 
     // ── Working copies of settings (only applied when Done is tapped) ──
     @State private var selectedSourceId: String = "bundled"
@@ -158,6 +174,7 @@ struct SettingsSheet: View {
                             Text("Playlist")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
+                                .frame(width: 60, alignment: .leading)
                             Spacer()
                             Picker("", selection: $selectedSourceId) {
                                 ForEach(musicSources) { source in
@@ -170,13 +187,11 @@ struct SettingsSheet: View {
 
                         // File picker (shown when a source is selected)
                         if let source = selectedSource, !source.items.isEmpty {
-                            Divider()
-                                .padding(.vertical, 4)
-
                             HStack {
                                 Text("Music")
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
+                                    .frame(width: 60, alignment: .leading)
                                 Spacer()
                                 Picker("", selection: $selectedFileUrl) {
                                     ForEach(source.items) { item in
@@ -194,7 +209,7 @@ struct SettingsSheet: View {
                         // Four-column checkbox grid
                         let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 4)
 
-                        LazyVGrid(columns: columns, spacing: 6) {
+                        LazyVGrid(columns: columns, spacing: 16) {
                             CheckboxToggle("Melody", isOn: $includeMelody)
                             CheckboxToggle("Piano", isOn: $includePiano)
                             CheckboxToggle("Bass", isOn: $includeBass)
@@ -202,6 +217,7 @@ struct SettingsSheet: View {
                             CheckboxToggle("Drums", isOn: $includeDrums)
                             CheckboxToggle("Metronome", isOn: $includeMetronome)
                         }
+                        .padding(.vertical, 4)
                     }
 
                     // ── 3. Playback ──────────────────────────────
@@ -214,11 +230,8 @@ struct SettingsSheet: View {
                             TextField("1.0", value: $playbackSpeed, format: .number)
                                 .textFieldStyle(.roundedBorder)
                                 .keyboardType(.decimalPad)
-                                .frame(width: 52)
+                                .frame(width: 40)
                                 .font(.subheadline)
-                            Text("×")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
 
                             Spacer()
 
@@ -239,34 +252,15 @@ struct SettingsSheet: View {
 
                             Spacer()
 
-                            // Repeat
-                            HStack(spacing: 4) {
-                                Text("Repeat")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                Button {
-                                    if repeatCount > 1 {
-                                        repeatCount -= 1
-                                    }
-                                } label: {
-                                    Image(systemName: "minus.circle.fill")
-                                        .foregroundStyle(
-                                            repeatCount > 1 ? Color.accentColor : Color(.tertiaryLabel)
-                                        )
-                                }
-                                .disabled(repeatCount <= 1)
-
-                                Text("\(repeatCount)×")
-                                    .font(.subheadline.monospacedDigit())
-                                    .frame(minWidth: 20)
-
-                                Button {
-                                    repeatCount += 1
-                                } label: {
-                                    Image(systemName: "plus.circle.fill")
-                                        .foregroundStyle(.tint)
-                                }
-                            }
+                            // Repeat input
+                            Text("Repeat")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            TextField("1", value: $repeatCount, format: .number)
+                                .textFieldStyle(.roundedBorder)
+                                .keyboardType(.numberPad)
+                                .frame(width: 40)
+                                .font(.subheadline)
                         }
                     }
 
@@ -346,7 +340,7 @@ struct SettingsSheet: View {
         midiSettings.muteMusic = muteMusic
         midiSettings.repeatCount = repeatCount
         midiSettings.transpose = transpose
-        dismiss()
+        isPresented = false
     }
 }
 
