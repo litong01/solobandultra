@@ -185,9 +185,9 @@ jobs:
         working-directory: android
         run: gradle wrapper
 
-      - name: Build Android debug APK
+      - name: Build Android release APK (unsigned)
         working-directory: android
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleRelease
 
       - name: Build Android release AAB (unsigned)
         working-directory: android
@@ -195,9 +195,9 @@ jobs:
 
       - name: Rename build outputs
         run: |
-          # Debug APK (ready to install on device)
-          cp android/app/build/outputs/apk/debug/app-debug.apk \
-            SoloBandUltra-Android-debug.apk
+          # Release APK (unsigned, ready to install on device)
+          cp android/app/build/outputs/apk/release/app-release-unsigned.apk \
+            SoloBandUltra-Android-release.apk
 
           # Release AAB (for Play Store upload, needs signing for production)
           cp android/app/build/outputs/bundle/release/app-release.aab \
@@ -207,7 +207,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: android-apk-build
-          path: SoloBandUltra-Android-debug.apk
+          path: SoloBandUltra-Android-release.apk
           if-no-files-found: error
 
       - name: Upload Android AAB artifact
@@ -289,7 +289,7 @@ jobs:
             | Platform | File | Description |
             |----------|------|-------------|
             | iOS | `SoloBandUltra-iOS-Simulator.zip` | iOS Simulator build (unsigned) |
-            | Android | `SoloBandUltra-Android-debug.apk` | Debug APK — install directly on device |
+            | Android | `SoloBandUltra-Android-release.apk` | Release APK (unsigned) — install directly on device |
             | Android | `SoloBandUltra-Android-release.aab` | Release AAB — for Google Play upload |
 
             ### Installation
@@ -306,7 +306,7 @@ jobs:
             > **Note:** The iOS build is for Simulator only. A signed IPA for physical devices requires Apple Developer certificates configured in the workflow.
           files: |
             ./artifacts/SoloBandUltra-iOS-Simulator.zip
-            ./artifacts/SoloBandUltra-Android-debug.apk
+            ./artifacts/SoloBandUltra-Android-release.apk
             ./artifacts/SoloBandUltra-Android-release.aab
           draft: false
           prerelease: false
