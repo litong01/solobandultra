@@ -6,6 +6,14 @@ use scorelib::{
     MidiOptions, Energy,
 };
 
+/// Write bytes to a path, creating parent directories if needed.
+fn write_test_output(path: &str, data: &[u8]) {
+    if let Some(parent) = std::path::Path::new(path).parent() {
+        std::fs::create_dir_all(parent).unwrap();
+    }
+    std::fs::write(path, data).unwrap();
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Unroller tests
 // ═══════════════════════════════════════════════════════════════════════
@@ -248,7 +256,7 @@ fn midi_asa_branca_valid_smf() {
 
     // Write to test output for manual inspection
     let output_path = "test_output/asa-branca.mid";
-    std::fs::write(output_path, &midi).unwrap();
+    write_test_output(output_path, &midi);
     println!("✓ asa-branca MIDI: {} bytes, {} tracks → {}", midi.len(), track_count, output_path);
 }
 
@@ -274,7 +282,7 @@ fn midi_blue_bag_folly_valid_smf() {
     assert_eq!(track_count, 7, "Expected 7 tracks (all enabled), got {}", track_count);
 
     let output_path = "test_output/blue-bag-folly.mid";
-    std::fs::write(output_path, &midi).unwrap();
+    write_test_output(output_path, &midi);
     println!("✓ blue-bag-folly MIDI: {} bytes, {} tracks → {}", midi.len(), track_count, output_path);
 }
 
@@ -293,7 +301,7 @@ fn midi_chopin_melody_only() {
     assert_eq!(track_count, 2, "Expected 2 tracks (melody only), got {}", track_count);
 
     let output_path = "test_output/chopin-trois-valses.mid";
-    std::fs::write(output_path, &midi).unwrap();
+    write_test_output(output_path, &midi);
     println!("✓ chopin MIDI: {} bytes, {} tracks → {}", midi.len(), track_count, output_path);
 }
 
@@ -330,7 +338,7 @@ fn midi_chopin_with_inferred_accompaniment() {
     assert!(midi.len() > 43000, "Full accompaniment MIDI should be larger than melody-only");
 
     let output_path = "test_output/chopin-trois-valses-full.mid";
-    std::fs::write(output_path, &midi).unwrap();
+    write_test_output(output_path, &midi);
     println!("✓ chopin (inferred chords) MIDI: {} bytes, {} tracks → {}", midi.len(), track_count, output_path);
 }
 
@@ -354,6 +362,6 @@ fn midi_tongnian_with_accompaniment() {
     assert!(midi.len() > 100, "MIDI seems too small: {} bytes", midi.len());
 
     let output_path = "test_output/tongnian.mid";
-    std::fs::write(output_path, &midi).unwrap();
+    write_test_output(output_path, &midi);
     println!("✓ 童年 MIDI: {} bytes, {} tracks → {}", midi.len(), track_count, output_path);
 }
