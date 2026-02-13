@@ -26,7 +26,9 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var audioSessionManager: AudioSessionManager
     private lateinit var playbackManager: PlaybackManager
-    private lateinit var kindeSDK: KindeSDK
+
+    /** Kinde SDK instance — null if SDK failed to initialize (e.g. placeholder credentials). */
+    private var kindeSDK: KindeSDK? = null
 
     /** URI of a file opened via "Open With" / file association. */
     private val pendingFileUri = mutableStateOf<Uri?>(null)
@@ -48,34 +50,37 @@ class MainActivity : AppCompatActivity() {
         // Initialize playback manager
         playbackManager = PlaybackManager(this, audioSessionManager)
 
-        // Initialize Kinde authentication SDK
-        kindeSDK = KindeSDK(
-            this,
-            object : KindeSDK.SDKListener {
-                override fun onNewToken(token: String) {
-                    Handler(Looper.getMainLooper()).post {
-                        isAuthenticated.value = true
+        // Initialize Kinde authentication SDK (gracefully handle misconfiguration)
+        try {
+            kindeSDK = KindeSDK(
+                this,
+                object : KindeSDK.SDKListener {
+                    override fun onNewToken(token: String) {
+                        Handler(Looper.getMainLooper()).post {
+                            isAuthenticated.value = true
+                        }
+                    }
+
+                    override fun onLogout() {
+                        Handler(Looper.getMainLooper()).post {
+                            isAuthenticated.value = false
+                            pendingAuthAction.value = null
+                        }
+                    }
+
+                    override fun onException(exception: Exception) {
+                        Handler(Looper.getMainLooper()).post {
+                            Log.e("Kinde", "Auth error: ${exception.message}")
+                            pendingAuthAction.value = null
+                        }
                     }
                 }
-
-                override fun onLogout() {
-                    Handler(Looper.getMainLooper()).post {
-                        isAuthenticated.value = false
-                        pendingAuthAction.value = null
-                    }
-                }
-
-                override fun onException(exception: Exception) {
-                    Handler(Looper.getMainLooper()).post {
-                        Log.e("Kinde", "Auth error: ${exception.message}")
-                        pendingAuthAction.value = null
-                    }
-                }
-            }
-        )
-
-        // Check if the user has an existing session
-        isAuthenticated.value = kindeSDK.isAuthenticated()
+            )
+            isAuthenticated.value = kindeSDK?.isAuthenticated() == true
+        } catch (e: Exception) {
+            Log.w("Kinde", "Kinde SDK failed to initialize (check au.kinde.domain / au.kinde.clientId in AndroidManifest.xml): ${e.message}")
+            kindeSDK = null
+        }
 
         // Check if launched with a file intent
         handleIntent(intent)
@@ -94,11 +99,16 @@ class MainActivity : AppCompatActivity() {
                         pendingAuthAction = pendingAuthAction.value,
                         onPendingActionConsumed = { pendingAuthAction.value = null },
                         onLoginRequested = { action ->
-                            pendingAuthAction.value = action
-                            kindeSDK.login(GrantType.PKCE)
+                            val sdk = kindeSDK
+                            if (sdk != null) {
+                                pendingAuthAction.value = action
+                                sdk.login(GrantType.PKCE)
+                            } else {
+                                Log.w("Kinde", "Login requested but Kinde SDK is not initialized")
+                            }
                         },
                         onLogoutRequested = {
-                            kindeSDK.logout()
+                            kindeSDK?.logout()
                         }
                     )
                 }
@@ -115,15 +125,15 @@ class MainActivity : AppCompatActivity() {
     private fun handleIntent(intent: Intent?) {
         if (intent?.action == Intent.ACTION_VIEW) {
             val uri = intent.data ?: return
-            if (isAuthenticated.value) {
+            val sdk = kindeSDK
+            if (isAuthenticated.value || sdk == null) {
+                // Authenticated or SDK unavailable — load file directly.
                 pendingFileUri.value = uri
             } else {
                 // Store the URI so it can be loaded after login succeeds.
-                // We encode the URI string in the pending action; the screen
-                // will process it after authentication.
                 pendingFileUri.value = uri
                 pendingAuthAction.value = PendingAuthAction.LoadExternalUri
-                kindeSDK.login(GrantType.PKCE)
+                sdk.login(GrantType.PKCE)
             }
         }
     }
