@@ -1,14 +1,15 @@
 package com.solobandultra.app
 
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -16,13 +17,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import au.kinde.sdk.GrantType
 import au.kinde.sdk.KindeSDK
+import au.kinde.sdk.SDKListener
 import com.solobandultra.app.audio.AudioSessionManager
 import com.solobandultra.app.audio.PlaybackManager
 import com.solobandultra.app.ui.screens.PendingAuthAction
 import com.solobandultra.app.ui.screens.SheetMusicScreen
 import com.solobandultra.app.ui.theme.SoloBandUltraTheme
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : ComponentActivity() {
 
     private lateinit var audioSessionManager: AudioSessionManager
     private lateinit var playbackManager: PlaybackManager
@@ -52,9 +54,17 @@ class MainActivity : AppCompatActivity() {
 
         // Initialize Kinde authentication SDK (gracefully handle misconfiguration)
         try {
+            // Read the Kinde domain from manifest meta-data to construct redirect URLs.
+            val appInfo = packageManager.getApplicationInfo(packageName, PackageManager.GET_META_DATA)
+            val kindeDomain = appInfo.metaData?.getString("au.kinde.domain") ?: ""
+            val loginRedirect = "au.kinde://$kindeDomain/kinde_callback"
+            val logoutRedirect = "au.kinde://$kindeDomain/kinde_logoutcallback"
+
             kindeSDK = KindeSDK(
-                this,
-                object : KindeSDK.SDKListener {
+                activity = this,
+                loginRedirect = loginRedirect,
+                logoutRedirect = logoutRedirect,
+                sdkListener = object : SDKListener {
                     override fun onNewToken(token: String) {
                         Handler(Looper.getMainLooper()).post {
                             isAuthenticated.value = true
