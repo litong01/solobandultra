@@ -57,8 +57,8 @@ class MainActivity : ComponentActivity() {
             // Read the Kinde domain from manifest meta-data to construct redirect URLs.
             val appInfo = packageManager.getApplicationInfo(packageName, PackageManager.GET_META_DATA)
             val kindeDomain = appInfo.metaData?.getString("au.kinde.domain") ?: ""
-            val loginRedirect = "au.kinde://$kindeDomain/kinde_callback"
-            val logoutRedirect = "au.kinde://$kindeDomain/kinde_logoutcallback"
+            val loginRedirect = "kinde.sdk://$kindeDomain/kinde_callback"
+            val logoutRedirect = "kinde.sdk://$kindeDomain/kinde_logoutcallback"
 
             kindeSDK = KindeSDK(
                 activity = this,
