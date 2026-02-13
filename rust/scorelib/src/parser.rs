@@ -144,6 +144,7 @@ fn parse_defaults(node: &Node) -> Defaults {
 fn parse_credit(node: &Node, score: &mut Score) {
     let mut credit_type = String::new();
     let mut credit_text = String::new();
+    let mut style = TextStyle::default();
 
     for child in node.children().filter(|n| n.is_element()) {
         match child.tag_name().name() {
@@ -158,10 +159,36 @@ fn parse_credit(node: &Node, score: &mut Score) {
                     }
                     credit_text.push_str(text);
                 }
+                // Extract font attributes from the first <credit-words> element
+                // (the primary one that typically carries the style).
+                if style.font_family.is_none() {
+                    style.font_family = child.attribute("font-family")
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty());
+                }
+                if style.font_size.is_none() {
+                    style.font_size = child.attribute("font-size")
+                        .and_then(|s| s.trim().parse::<f64>().ok());
+                }
+                if style.font_weight.is_none() {
+                    style.font_weight = child.attribute("font-weight")
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty());
+                }
+                if style.font_style.is_none() {
+                    style.font_style = child.attribute("font-style")
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty());
+                }
             }
             _ => {}
         }
     }
+
+    let has_style = style.font_family.is_some()
+        || style.font_size.is_some()
+        || style.font_weight.is_some()
+        || style.font_style.is_some();
 
     match credit_type.as_str() {
         // <credit> values are the primary source for title and composer;
@@ -169,12 +196,23 @@ fn parse_credit(node: &Node, score: &mut Score) {
         "title" => {
             if !credit_text.is_empty() {
                 score.title = Some(credit_text);
+                if has_style {
+                    score.title_style = Some(style);
+                }
             }
         }
-        "subtitle" => score.subtitle = Some(credit_text),
+        "subtitle" => {
+            score.subtitle = Some(credit_text);
+            if has_style {
+                score.subtitle_style = Some(style);
+            }
+        }
         "composer" => {
             if !credit_text.is_empty() {
                 score.composer = Some(credit_text);
+                if has_style {
+                    score.composer_style = Some(style);
+                }
             }
         }
         _ => {}

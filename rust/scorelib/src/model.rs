@@ -5,15 +5,34 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Font/style attributes parsed from a MusicXML `<credit-words>` element.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TextStyle {
+    /// Font family (e.g., "Times New Roman", "Arial")
+    pub font_family: Option<String>,
+    /// Font size in points (e.g., 22.0)
+    pub font_size: Option<f64>,
+    /// Font weight (e.g., "bold", "normal")
+    pub font_weight: Option<String>,
+    /// Font style (e.g., "italic", "normal")
+    pub font_style: Option<String>,
+}
+
 /// A complete musical score parsed from MusicXML.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Score {
     /// Title of the piece
     pub title: Option<String>,
+    /// Style for the title text (from `<credit-words>` attributes)
+    pub title_style: Option<TextStyle>,
     /// Subtitle
     pub subtitle: Option<String>,
+    /// Style for the subtitle text
+    pub subtitle_style: Option<TextStyle>,
     /// Composer name
     pub composer: Option<String>,
+    /// Style for the composer text
+    pub composer_style: Option<TextStyle>,
     /// Arranger name
     pub arranger: Option<String>,
     /// MusicXML version (e.g., "3.1", "4.0")
@@ -322,8 +341,11 @@ impl Score {
     pub fn new() -> Self {
         Self {
             title: None,
+            title_style: None,
             subtitle: None,
+            subtitle_style: None,
             composer: None,
+            composer_style: None,
             arranger: None,
             version: None,
             software: None,

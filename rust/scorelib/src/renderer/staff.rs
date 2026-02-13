@@ -13,13 +13,23 @@ pub(super) fn render_header(svg: &mut SvgBuilder, score: &Score, page_width: f64
     let center_x = page_width / 2.0;
 
     if let Some(ref title) = score.title {
-        svg.text(center_x, PAGE_MARGIN_TOP + 22.0, title, 22.0, "bold",
-                 HEADER_COLOR, "middle");
+        let style = score.title_style.as_ref();
+        let size = style.and_then(|s| s.font_size).unwrap_or(22.0);
+        let weight = style.and_then(|s| s.font_weight.as_deref()).unwrap_or("bold");
+        let family = style.and_then(|s| s.font_family.as_deref());
+        let font_style = style.and_then(|s| s.font_style.as_deref());
+        svg.styled_text(center_x, PAGE_MARGIN_TOP + 22.0, title, size, weight,
+                        HEADER_COLOR, "middle", family, font_style);
     }
 
     if let Some(ref subtitle) = score.subtitle {
-        svg.text(center_x, PAGE_MARGIN_TOP + 40.0, subtitle, 14.0, "normal",
-                 HEADER_COLOR, "middle");
+        let style = score.subtitle_style.as_ref();
+        let size = style.and_then(|s| s.font_size).unwrap_or(14.0);
+        let weight = style.and_then(|s| s.font_weight.as_deref()).unwrap_or("normal");
+        let family = style.and_then(|s| s.font_family.as_deref());
+        let font_style = style.and_then(|s| s.font_style.as_deref());
+        svg.styled_text(center_x, PAGE_MARGIN_TOP + 40.0, subtitle, size, weight,
+                        HEADER_COLOR, "middle", family, font_style);
     }
 
     if let Some(ref composer) = score.composer {
@@ -28,8 +38,13 @@ pub(super) fn render_header(svg: &mut SvgBuilder, score: &Score, page_width: f64
         } else {
             composer.clone()
         };
-        svg.text(page_width - PAGE_MARGIN_RIGHT, PAGE_MARGIN_TOP + 55.0,
-                 &label, 11.0, "normal", HEADER_COLOR, "end");
+        let style = score.composer_style.as_ref();
+        let size = style.and_then(|s| s.font_size).unwrap_or(11.0);
+        let weight = style.and_then(|s| s.font_weight.as_deref()).unwrap_or("normal");
+        let family = style.and_then(|s| s.font_family.as_deref());
+        let font_style = style.and_then(|s| s.font_style.as_deref());
+        svg.styled_text(page_width - PAGE_MARGIN_RIGHT, PAGE_MARGIN_TOP + 55.0,
+                        &label, size, weight, HEADER_COLOR, "end", family, font_style);
     }
 }
 

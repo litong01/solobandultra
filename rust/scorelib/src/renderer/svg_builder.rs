@@ -78,6 +78,31 @@ impl SvgBuilder {
         ));
     }
 
+    /// Render a styled text element with optional font-family and font-style attributes.
+    pub(super) fn styled_text(
+        &mut self, x: f64, y: f64, content: &str,
+        size: f64, weight: &str, fill: &str, anchor: &str,
+        font_family: Option<&str>, font_style: Option<&str>,
+    ) {
+        let escaped = content
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;");
+
+        let mut attrs = format!(
+            r#"x="{:.1}" y="{:.1}" font-size="{:.0}" font-weight="{}" fill="{}" text-anchor="{}""#,
+            x, y, size, weight, fill, anchor
+        );
+        if let Some(family) = font_family {
+            let esc_family = family.replace('"', "&quot;");
+            attrs.push_str(&format!(r#" font-family="{}""#, esc_family));
+        }
+        if let Some(style) = font_style {
+            attrs.push_str(&format!(r#" font-style="{}""#, style));
+        }
+        self.elements.push(format!("<text {}>{}</text>", attrs, escaped));
+    }
+
     /// Render chord symbols matching OSMD style: Times New Roman, normal weight, no letter-spacing
     pub(super) fn chord_text(&mut self, x: f64, y: f64, content: &str, size: f64, fill: &str) {
         let escaped = content
