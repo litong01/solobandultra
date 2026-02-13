@@ -21,9 +21,13 @@ fn parse_asa_branca_musicxml() {
 }
 
 fn assert_score_asa_branca(score: &Score) {
-    // Metadata
+    // Metadata — title and composer are sourced from <credit> elements (primary),
+    // falling back to <work-title> and <creator type="composer">.
     assert_eq!(score.title.as_deref(), Some("Asa branca"));
-    assert_eq!(score.composer.as_deref(), Some("Luiz Gonzaga"));
+    assert_eq!(
+        score.composer.as_deref(),
+        Some("Luiz Gonzaga\nArr. Karim Ratib")
+    );
     assert_eq!(score.version.as_deref(), Some("3.1"));
 
     // Parts

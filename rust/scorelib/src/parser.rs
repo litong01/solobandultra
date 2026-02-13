@@ -47,7 +47,10 @@ pub fn parse_musicxml(xml: &str) -> Result<Score, String> {
 fn parse_work(node: &Node, score: &mut Score) {
     for child in node.children().filter(|n| n.is_element()) {
         if child.tag_name().name() == "work-title" {
-            score.title = child.text().map(|t| t.trim().to_string());
+            // Only use work-title as a fallback; <credit type="title"> takes priority.
+            if score.title.is_none() {
+                score.title = child.text().map(|t| t.trim().to_string());
+            }
         }
     }
 }
@@ -61,7 +64,13 @@ fn parse_identification(node: &Node, score: &mut Score) {
                 let creator_type = child.attribute("type").unwrap_or("");
                 let text = child.text().map(|t| t.trim().to_string());
                 match creator_type {
-                    "composer" => score.composer = text,
+                    // Only use <creator type="composer"> as a fallback;
+                    // <credit type="composer"> takes priority.
+                    "composer" => {
+                        if score.composer.is_none() {
+                            score.composer = text;
+                        }
+                    }
                     "arranger" => score.arranger = text,
                     _ => {}
                 }
@@ -155,14 +164,16 @@ fn parse_credit(node: &Node, score: &mut Score) {
     }
 
     match credit_type.as_str() {
+        // <credit> values are the primary source for title and composer;
+        // <work-title> and <creator type="composer"> are fallbacks.
         "title" => {
-            if score.title.is_none() {
+            if !credit_text.is_empty() {
                 score.title = Some(credit_text);
             }
         }
         "subtitle" => score.subtitle = Some(credit_text),
         "composer" => {
-            if score.composer.is_none() {
+            if !credit_text.is_empty() {
                 score.composer = Some(credit_text);
             }
         }
