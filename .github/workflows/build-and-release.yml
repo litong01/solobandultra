@@ -48,26 +48,50 @@ jobs:
           key: ios-cargo-${{ hashFiles('rust/scorelib/Cargo.toml', 'rust/scorelib/Cargo.lock') }}
           restore-keys: ios-cargo-
 
-      - name: Build Rust static library (iOS Simulator)
+      - name: Build Rust static library (iOS Device + Simulator)
         working-directory: rust/scorelib
         run: |
           # Temporarily adjust crate-type for static lib only (no cdylib linker needed)
           cp Cargo.toml Cargo.toml.orig
           sed -i '' 's/crate-type = .*/crate-type = ["lib", "staticlib"]/' Cargo.toml
 
+          cargo build --release --target aarch64-apple-ios
           cargo build --release --target aarch64-apple-ios-sim
           cargo build --release --target x86_64-apple-ios
 
           mv Cargo.toml.orig Cargo.toml
 
-      - name: Create universal iOS library (lipo)
+      - name: Create XCFramework
         run: |
-          mkdir -p ios/SoloBandUltra/lib
+          RUST_SRC=rust/scorelib
+          LIB_DIR=ios/SoloBandUltra/lib
+          INCLUDE_DIR=ios/SoloBandUltra/include
+          mkdir -p "$LIB_DIR"
+
+          # Create fat simulator library (ARM64 + x86_64)
+          SIM_FAT="$RUST_SRC/target/libscorelib-sim.a"
           lipo -create \
-            rust/scorelib/target/aarch64-apple-ios-sim/release/libscorelib.a \
-            rust/scorelib/target/x86_64-apple-ios/release/libscorelib.a \
-            -output ios/SoloBandUltra/lib/libscorelib.a
-          lipo -info ios/SoloBandUltra/lib/libscorelib.a
+            "$RUST_SRC/target/aarch64-apple-ios-sim/release/libscorelib.a" \
+            "$RUST_SRC/target/x86_64-apple-ios/release/libscorelib.a" \
+            -output "$SIM_FAT"
+
+          # Create XCFramework with device + simulator slices
+          rm -rf "$LIB_DIR/libscorelib.xcframework"
+          xcodebuild -create-xcframework \
+            -library "$RUST_SRC/target/aarch64-apple-ios/release/libscorelib.a" \
+            -headers "$INCLUDE_DIR" \
+            -library "$SIM_FAT" \
+            -headers "$INCLUDE_DIR" \
+            -output "$LIB_DIR/libscorelib.xcframework"
+
+          rm -f "$SIM_FAT"
+
+      - name: Resolve Swift Package dependencies
+        working-directory: ios/SoloBandUltra
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project SoloBandUltra.xcodeproj \
+            -scheme SoloBandUltra
 
       - name: Build iOS app (Release, Simulator)
         working-directory: ios/SoloBandUltra
