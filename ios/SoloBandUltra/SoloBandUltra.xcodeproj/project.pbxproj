@@ -17,6 +17,9 @@
 		CC00000000000000000001B1 /* SheetMusic in Resources */ = {isa = PBXBuildFile; fileRef = CC00000000000000000001A1 /* SheetMusic */; };
 		DD00000000000000000001B1 /* PlaybackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD00000000000000000001A1 /* PlaybackManager.swift */; };
 		EE00000000000000000001B1 /* MidiSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE00000000000000000001A1 /* MidiSettings.swift */; };
+		FF00000000000000000001B1 /* AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF00000000000000000001A1 /* AuthManager.swift */; };
+		FF00000000000000000002B1 /* kinde-auth.json in Resources */ = {isa = PBXBuildFile; fileRef = FF00000000000000000002A1 /* kinde-auth.json */; };
+		FF00000000000000000003B1 /* KindeSDK in Frameworks */ = {isa = PBXBuildFile; productRef = FF00000000000000000004A1 /* KindeSDK */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -33,6 +36,8 @@
 		CC00000000000000000001A1 /* SheetMusic */ = {isa = PBXFileReference; lastKnownFileType = folder; path = SheetMusic; sourceTree = "<group>"; };
 		DD00000000000000000001A1 /* PlaybackManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackManager.swift; sourceTree = "<group>"; };
 		EE00000000000000000001A1 /* MidiSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MidiSettings.swift; sourceTree = "<group>"; };
+		FF00000000000000000001A1 /* AuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthManager.swift; sourceTree = "<group>"; };
+		FF00000000000000000002A1 /* kinde-auth.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "kinde-auth.json"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -41,6 +46,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				BB00000000000000000003B1 /* libscorelib.xcframework in Frameworks */,
+				FF00000000000000000003B1 /* KindeSDK in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -66,6 +72,8 @@
 				BB00000000000000000001A1 /* ScoreLibBridge.swift */,
 				DD00000000000000000001A1 /* PlaybackManager.swift */,
 				EE00000000000000000001A1 /* MidiSettings.swift */,
+				FF00000000000000000001A1 /* AuthManager.swift */,
+				FF00000000000000000002A1 /* kinde-auth.json */,
 				BB00000000000000000002A1 /* SoloBandUltra-Bridging-Header.h */,
 				CC00000000000000000001A1 /* SheetMusic */,
 				AA00000000000000000005A1 /* Assets.xcassets */,
@@ -98,6 +106,9 @@
 			dependencies = (
 			);
 			name = SoloBandUltra;
+			packageProductDependencies = (
+				FF00000000000000000004A1 /* KindeSDK */,
+			);
 			productName = SoloBandUltra;
 			productReference = AA00000000000000000007A1 /* SoloBandUltra.app */;
 			productType = "com.apple.product-type.application";
@@ -126,6 +137,9 @@
 				Base,
 			);
 			mainGroup = AA0000000000000000000D01;
+			packageReferences = (
+				FF00000000000000000003A1 /* XCRemoteSwiftPackageReference "kinde-sdk-ios" */,
+			);
 			productRefGroup = AA0000000000000000000D03 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -142,6 +156,7 @@
 			files = (
 				AA00000000000000000005B1 /* Assets.xcassets in Resources */,
 				CC00000000000000000001B1 /* SheetMusic in Resources */,
+				FF00000000000000000002B1 /* kinde-auth.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -159,6 +174,7 @@
 				BB00000000000000000001B1 /* ScoreLibBridge.swift in Sources */,
 				DD00000000000000000001B1 /* PlaybackManager.swift in Sources */,
 				EE00000000000000000001B1 /* MidiSettings.swift in Sources */,
+				FF00000000000000000001B1 /* AuthManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -357,6 +373,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		FF00000000000000000003A1 /* XCRemoteSwiftPackageReference "kinde-sdk-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/kinde-oss/kinde-sdk-ios.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.5.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		FF00000000000000000004A1 /* KindeSDK */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FF00000000000000000003A1 /* XCRemoteSwiftPackageReference "kinde-sdk-ios" */;
+			productName = KindeSDK;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = AA0000000000000000000B01 /* Project object */;
 }
