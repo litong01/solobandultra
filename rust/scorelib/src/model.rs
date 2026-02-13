@@ -323,6 +323,12 @@ pub struct Direction {
     pub sound_tocoda: bool,
     /// Font style for <words>: "italic", "bold", "bold italic"
     pub words_font_style: Option<String>,
+    /// Octave-shift type: "down" (8va — display lower), "up" (8vb — display higher), "stop"
+    #[serde(default)]
+    pub octave_shift_type: Option<String>,
+    /// Octave-shift size: 8 (1 octave), 15 (2 octaves), 22 (3 octaves)
+    #[serde(default)]
+    pub octave_shift_size: i32,
 }
 
 /// A metronome marking (e.g., quarter = 120).

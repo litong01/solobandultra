@@ -68,6 +68,8 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
         time: Option<TimeSignature>,
         divisions: i32,
         transpose_octave: i32,
+        /// Active octave-shift display offset (e.g. -1 for 8va, +1 for 8vb)
+        octave_shift: i32,
     }
 
     let mut part_states: Vec<PartState> = parts_staves
@@ -115,7 +117,7 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                 });
             }
 
-            PartState { clefs, key, time, divisions, transpose_octave }
+            PartState { clefs, key, time, divisions, transpose_octave, octave_shift: 0 }
         })
         .collect();
 
@@ -153,6 +155,18 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                         }
                         if let Some(ref t) = attrs.transpose {
                             ps.transpose_octave = t.octave_change.unwrap_or(0);
+                        }
+                    }
+                    // Update octave-shift state from directions
+                    let ps = &mut part_states[pidx];
+                    for dir in &measure.directions {
+                        if let Some(ref ost) = dir.octave_shift_type {
+                            match ost.as_str() {
+                                "down" => { ps.octave_shift = -(dir.octave_shift_size / 8); }
+                                "up" => { ps.octave_shift = dir.octave_shift_size / 8; }
+                                "stop" => { ps.octave_shift = 0; }
+                                _ => {}
+                            }
                         }
                     }
                 }
@@ -254,7 +268,7 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                 let lowest = measure_lowest_note_y(
                     measure, staff_y_bottom,
                     ps.clefs.get(bottom_staff_num).and_then(|c| c.as_ref()),
-                    ps.transpose_octave, staff_filter,
+                    ps.transpose_octave + ps.octave_shift, staff_filter,
                 );
                 if lowest > system_lowest_y {
                     system_lowest_y = lowest;
@@ -369,6 +383,27 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                     }
                 }
 
+                // Update octave-shift state from directions in this measure.
+                // In MusicXML: type="down" → 8va (display notes lower),
+                //              type="up"   → 8vb (display notes higher),
+                //              type="stop" → end of shift.
+                for dir in &measure.directions {
+                    if let Some(ref ost) = dir.octave_shift_type {
+                        match ost.as_str() {
+                            "down" => {
+                                ps.octave_shift = -(dir.octave_shift_size / 8);
+                            }
+                            "up" => {
+                                ps.octave_shift = dir.octave_shift_size / 8;
+                            }
+                            "stop" => {
+                                ps.octave_shift = 0;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+
                 for staff_num in 1..=part_info.num_staves {
                     let staff_y = system_y
                         + part_info.y_offset
@@ -459,13 +494,15 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                         None
                     };
 
+                    let effective_transpose = ps.transpose_octave + ps.octave_shift;
+
                     render_notes(
                         &mut svg,
                         measure,
                         staff_y,
                         ps.clefs[staff_num].as_ref(),
                         ps.divisions,
-                        ps.transpose_octave,
+                        effective_transpose,
                         staff_filter,
                         &ml.beat_x_map,
                         mx, mw,
@@ -482,7 +519,7 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                             staff_y,
                             ps.clefs[staff_num].as_ref(),
                             ps.divisions,
-                            ps.transpose_octave,
+                            effective_transpose,
                             staff_filter,
                             &ml.beat_x_map,
                             staff_slurs,

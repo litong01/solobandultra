@@ -79,13 +79,42 @@ pub fn unroll(score: &Score, part_idx: usize) -> Vec<UnrolledMeasure> {
         }
     }
 
+    // ── Pre-scan: compute max passes per repeat section ────────────
+    // For each forward-repeat position, find the highest volta ending
+    // number in its section.  This tells us how many passes to take.
+    let mut section_max_passes: std::collections::HashMap<usize, i32> = std::collections::HashMap::new();
+    {
+        let mut current_forward: Option<usize> = None;
+        for (i, m) in measures.iter().enumerate() {
+            for bl in &m.barlines {
+                if bl.location == "left" {
+                    if let Some(ref rep) = bl.repeat {
+                        if rep.direction == "forward" {
+                            current_forward = Some(i);
+                        }
+                    }
+                }
+            }
+            if let Some(nums) = volta_map.get(&i) {
+                if let Some(fwd) = current_forward {
+                    let entry = section_max_passes.entry(fwd).or_insert(2);
+                    for &n in nums {
+                        if n > *entry {
+                            *entry = n;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // ── Walk: expand into play order ────────────────────────────────
     let mut result: Vec<UnrolledMeasure> = Vec::new();
     let mut pos: usize = 0;
     let mut repeat_start: usize = 0;
-    let mut repeat_pass: i32 = 1; // 1 = first pass, 2 = second pass
+    let mut repeat_pass: i32 = 1; // 1-based pass counter (1st, 2nd, 3rd, …)
     let mut jump_taken = false;
-    let max_iterations = measures.len() * 4; // safety limit
+    let max_iterations = measures.len() * 8; // safety limit
     let mut iterations = 0;
 
     while pos < measures.len() {
@@ -97,15 +126,13 @@ pub fn unroll(score: &Score, part_idx: usize) -> Vec<UnrolledMeasure> {
         let m = &measures[pos];
 
         // Check for forward repeat barline (left barline).
-        // Only update repeat_start on the first encounter (pass 1);
-        // if we're already on pass 2 (returning from a backward repeat),
-        // don't reset the pass counter.
+        // Only update repeat_start on the very first encounter (pass 1);
+        // on subsequent passes we're jumping back here, so don't reset.
         for bl in &m.barlines {
             if bl.location == "left" {
                 if let Some(ref rep) = bl.repeat {
-                    if rep.direction == "forward" && repeat_pass != 2 {
+                    if rep.direction == "forward" && repeat_pass == 1 {
                         repeat_start = pos;
-                        repeat_pass = 1;
                     }
                 }
             }
@@ -151,11 +178,20 @@ pub fn unroll(score: &Score, part_idx: usize) -> Vec<UnrolledMeasure> {
             for bl in &m.barlines {
                 if bl.location == "right" {
                     if let Some(ref rep) = bl.repeat {
-                        if rep.direction == "backward" && repeat_pass == 1 {
-                            repeat_pass = 2;
-                            pos = repeat_start;
-                            took_repeat = true;
-                            break;
+                        if rep.direction == "backward" {
+                            // Determine how many total passes this section needs
+                            // from the pre-computed map; default to 2 (simple repeat).
+                            let max_pass = section_max_passes
+                                .get(&repeat_start)
+                                .copied()
+                                .unwrap_or(2);
+                            if repeat_pass < max_pass {
+                                repeat_pass += 1;
+                                pos = repeat_start;
+                                took_repeat = true;
+                                break;
+                            }
+                            // Last pass done — fall through to continue forward.
                         }
                     }
                 }
@@ -192,15 +228,16 @@ pub fn unroll(score: &Score, part_idx: usize) -> Vec<UnrolledMeasure> {
         }
 
         pos += 1;
-        // Reset repeat pass when moving past a repeat section
-        if repeat_pass == 2 {
+        // Reset repeat pass when we've finished all passes and move past
+        // the last volta bracket in a repeat section.
+        if repeat_pass > 1 {
             let prev_had_backward = measures.get(pos.wrapping_sub(1)).map_or(false, |pm| {
                 pm.barlines.iter().any(|bl| {
                     bl.location == "right"
                         && bl.repeat.as_ref().map_or(false, |r| r.direction == "backward")
                 })
             });
-            if prev_had_backward {
+            if prev_had_backward && !volta_map.contains_key(&pos) {
                 repeat_pass = 1;
             }
         }
@@ -251,6 +288,28 @@ mod tests {
             unrolled.len(), raw_count
         );
         println!("asa-branca: {} raw measures → {} unrolled measures", raw_count, unrolled.len());
+    }
+
+    #[test]
+    fn unroll_tongnian_has_multiple_endings() {
+        let score = parse_file("../../sheetmusic/童年.mxl").unwrap();
+        let unrolled = unroll(&score, 0);
+        let raw_count = score.parts[0].measures.len();
+
+        // 童年 has:
+        //   - Intro (2 measures, repeated once = 4)
+        //   - Body gap (4 measures)
+        //   - Main section (16 body + 1 ending) × 6 volta endings = 102
+        //   - Bridge (1 measure)
+        //   - Chorus (3 body + 1 ending) × 2 volta endings = 8
+        //   - Coda (6 measures)
+        // Total: 4 + 4 + 102 + 1 + 8 + 6 = 125
+        assert!(
+            unrolled.len() > raw_count,
+            "Unrolled length {} should be > raw measure count {} (multiple endings)",
+            unrolled.len(), raw_count
+        );
+        println!("童年: {} raw measures → {} unrolled measures", raw_count, unrolled.len());
     }
 
     #[test]

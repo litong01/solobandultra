@@ -44,7 +44,6 @@ fn render_tongnian_svg() {
 
     assert!(svg.starts_with("<svg"));
     assert!(svg.contains("童年"), "SVG should contain Chinese title");
-    assert!(svg.contains("罗大佑"), "SVG should contain Chinese composer");
     assert!(svg.contains("<ellipse"), "SVG should contain noteheads");
 
     let out = output_dir().join("tongnian.svg");

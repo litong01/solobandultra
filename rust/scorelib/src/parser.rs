@@ -335,6 +335,8 @@ fn parse_measure(node: &Node) -> Measure {
                         sound_fine: false,
                         sound_tocoda: false,
                         words_font_style: None,
+                        octave_shift_type: None,
+                        octave_shift_size: 0,
                     });
                 }
             }
@@ -699,6 +701,8 @@ fn parse_direction(node: &Node) -> Option<Direction> {
     let mut sound_dalsegno = false;
     let mut sound_fine = false;
     let mut sound_tocoda = false;
+    let mut octave_shift_type: Option<String> = None;
+    let mut octave_shift_size: i32 = 0;
 
     for child in node.children().filter(|n| n.is_element()) {
         match child.tag_name().name() {
@@ -724,6 +728,12 @@ fn parse_direction(node: &Node) -> Option<Direction> {
                         "coda" => { coda = true; }
                         "rehearsal" => {
                             rehearsal = dt_child.text().map(|t| t.trim().to_string());
+                        }
+                        "octave-shift" => {
+                            octave_shift_type = dt_child.attribute("type").map(String::from);
+                            octave_shift_size = dt_child.attribute("size")
+                                .and_then(|s| s.parse::<i32>().ok())
+                                .unwrap_or(8);
                         }
                         _ => {}
                     }
@@ -760,7 +770,8 @@ fn parse_direction(node: &Node) -> Option<Direction> {
         || sound_dacapo
         || sound_dalsegno
         || sound_fine
-        || sound_tocoda;
+        || sound_tocoda
+        || octave_shift_type.is_some();
 
     if has_content {
         Some(Direction {
@@ -776,6 +787,8 @@ fn parse_direction(node: &Node) -> Option<Direction> {
             sound_fine,
             sound_tocoda,
             words_font_style,
+            octave_shift_type,
+            octave_shift_size,
         })
     } else {
         None
