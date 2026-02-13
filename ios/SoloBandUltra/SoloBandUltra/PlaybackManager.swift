@@ -95,8 +95,14 @@ class PlaybackManager: ObservableObject {
         engine.attach(synth)
         engine.connect(synth, to: engine.mainMixerNode, format: nil)
 
-        // Load custom sound bank if available.
-        if let bankURL = Bundle.main.url(forResource: "gs_instruments", withExtension: "dls") {
+        // Load a General MIDI sound bank.  On real iOS devices the DLS synth
+        // has no built-in instrument sounds (unlike the macOS Simulator), so
+        // a bundled SoundFont / DLS file is required for audible playback.
+        let bankURL: URL? =
+            Bundle.main.url(forResource: "GeneralUser_GS", withExtension: "sf2")
+            ?? Bundle.main.url(forResource: "gs_instruments", withExtension: "dls")
+
+        if let bankURL = bankURL {
             var url: CFURL = bankURL as CFURL
             let status = AudioUnitSetProperty(
                 synth.audioUnit,
@@ -107,12 +113,12 @@ class PlaybackManager: ObservableObject {
                 UInt32(MemoryLayout<CFURL>.size)
             )
             if status == noErr {
-                print("[PlaybackManager] Loaded sound bank: gs_instruments.dls")
+                print("[PlaybackManager] Loaded sound bank: \(bankURL.lastPathComponent)")
             } else {
-                print("[PlaybackManager] Sound bank load failed (status \(status)), using built-in GM sounds")
+                print("[PlaybackManager] Sound bank load failed (status \(status))")
             }
         } else {
-            print("[PlaybackManager] No custom sound bank found, using built-in GM sounds")
+            print("[PlaybackManager] WARNING: No sound bank found — audio will be silent on real devices")
         }
     }
 

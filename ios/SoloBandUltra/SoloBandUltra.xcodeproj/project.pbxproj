@@ -20,6 +20,7 @@
 		FF00000000000000000001B1 /* AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF00000000000000000001A1 /* AuthManager.swift */; };
 		FF00000000000000000002B1 /* kinde-auth.json in Resources */ = {isa = PBXBuildFile; fileRef = FF00000000000000000002A1 /* kinde-auth.json */; };
 		FF00000000000000000003B1 /* KindeSDK in Frameworks */ = {isa = PBXBuildFile; productRef = FF00000000000000000004A1 /* KindeSDK */; };
+		GG00000000000000000001B1 /* GeneralUser_GS.sf2 in Resources */ = {isa = PBXBuildFile; fileRef = GG00000000000000000001A1 /* GeneralUser_GS.sf2 */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -38,6 +39,7 @@
 		EE00000000000000000001A1 /* MidiSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MidiSettings.swift; sourceTree = "<group>"; };
 		FF00000000000000000001A1 /* AuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthManager.swift; sourceTree = "<group>"; };
 		FF00000000000000000002A1 /* kinde-auth.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "kinde-auth.json"; sourceTree = "<group>"; };
+		GG00000000000000000001A1 /* GeneralUser_GS.sf2 */ = {isa = PBXFileReference; lastKnownFileType = file; path = GeneralUser_GS.sf2; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -78,6 +80,7 @@
 				CC00000000000000000001A1 /* SheetMusic */,
 				AA00000000000000000005A1 /* Assets.xcassets */,
 				AA00000000000000000006A1 /* Info.plist */,
+				GG00000000000000000001A1 /* GeneralUser_GS.sf2 */,
 			);
 			path = SoloBandUltra;
 			sourceTree = "<group>";
@@ -157,6 +160,7 @@
 				AA00000000000000000005B1 /* Assets.xcassets in Resources */,
 				CC00000000000000000001B1 /* SheetMusic in Resources */,
 				FF00000000000000000002B1 /* kinde-auth.json in Resources */,
+				GG00000000000000000001B1 /* GeneralUser_GS.sf2 in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
