@@ -84,6 +84,14 @@ pub fn generate_midi(
         None => return Vec::new(),
     };
 
+    debug_assert_eq!(
+        unrolled.len(),
+        timemap.len(),
+        "unrolled ({}) and timemap ({}) must have the same length",
+        unrolled.len(),
+        timemap.len()
+    );
+
     let mut tracks: Vec<Vec<u8>> = Vec::new();
 
     // ── Track 0: Tempo map ──────────────────────────────────────────
@@ -165,22 +173,29 @@ fn extract_melody(
         let divisions = entry.divisions.max(1) as f64;
         let quarter_notes_in_measure = entry.effective_quarters;
 
-        let mut position_in_divisions: f64 = 0.0;
-        // Track the onset of the last principal (non-chord) note,
-        // so chord notes can share the same start time.
-        let mut last_onset: f64 = 0.0;
+        // Per-voice position tracking for correct multi-voice timing.
+        // MusicXML lists notes in document order; Voice 2 notes appear
+        // after Voice 1 notes without any explicit "backup" in our model.
+        use std::collections::HashMap;
+        let mut voice_positions: HashMap<i32, f64> = HashMap::new();
+        let mut voice_last_onset: HashMap<i32, f64> = HashMap::new();
 
         for note in &measure.notes {
             if note.grace {
                 continue;
             }
+
+            let voice = note.voice.unwrap_or(1);
+            let pos_div = voice_positions.entry(voice).or_insert(0.0);
+
             // Chord notes share the same onset as their principal note
             if note.chord {
                 if !note.rest {
                     if let Some(ref pitch) = note.pitch {
                         let midi_note = pitch.to_midi().max(0).min(127) as u8;
+                        let onset = voice_last_onset.get(&voice).copied().unwrap_or(0.0);
                         let note_time_ms = entry.timestamp_ms
-                            + (last_onset / divisions / quarter_notes_in_measure)
+                            + (onset / divisions / quarter_notes_in_measure)
                                 * entry.duration_ms;
                         let note_dur_ms = (note.duration as f64 / divisions
                             / quarter_notes_in_measure)
@@ -206,15 +221,15 @@ fn extract_melody(
             }
 
             if note.rest {
-                position_in_divisions += note.duration as f64;
+                *pos_div += note.duration as f64;
                 continue;
             }
 
             if let Some(ref pitch) = note.pitch {
                 let midi_note = pitch.to_midi().max(0).min(127) as u8;
-                last_onset = position_in_divisions;
+                voice_last_onset.insert(voice, *pos_div);
                 let note_time_ms = entry.timestamp_ms
-                    + (position_in_divisions / divisions / quarter_notes_in_measure)
+                    + (*pos_div / divisions / quarter_notes_in_measure)
                         * entry.duration_ms;
                 let note_dur_ms =
                     (note.duration as f64 / divisions / quarter_notes_in_measure)
@@ -242,7 +257,7 @@ fn extract_melody(
                 }
             }
 
-            position_in_divisions += note.duration as f64;
+            *pos_div += note.duration as f64;
         }
     }
 

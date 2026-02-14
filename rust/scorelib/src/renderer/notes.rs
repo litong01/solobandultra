@@ -410,7 +410,7 @@ fn render_beam_group(
         return;
     }
 
-    struct BeamNote { x: f64, note_y: f64, stem_x: f64 }
+    struct BeamNote { x: f64, note_y: f64, min_y: f64, max_y: f64, stem_x: f64 }
     let mut notes: Vec<BeamNote> = Vec::new();
 
     for &idx in group {
@@ -418,7 +418,19 @@ fn render_beam_group(
         let nx = note_positions[idx];
         if let Some(ref pitch) = note.pitch {
             let note_y = staff_y + pitch_to_staff_y(pitch, clef, transpose_octave);
-            notes.push(BeamNote { x: nx, note_y, stem_x: 0.0 });
+            // Find the y-range including any chord notes following this principal note
+            let mut min_y = note_y;
+            let mut max_y = note_y;
+            for j in (idx + 1)..measure.notes.len() {
+                let cn = &measure.notes[j];
+                if !cn.chord { break; }
+                if let Some(ref cp) = cn.pitch {
+                    let cy = staff_y + pitch_to_staff_y(cp, clef, transpose_octave);
+                    if cy < min_y { min_y = cy; }
+                    if cy > max_y { max_y = cy; }
+                }
+            }
+            notes.push(BeamNote { x: nx, note_y, min_y, max_y, stem_x: 0.0 });
         }
     }
     if notes.len() < 2 { return; }
@@ -437,10 +449,13 @@ fn render_beam_group(
         n.stem_x = if stem_up { n.x + NOTEHEAD_RX - 1.0 } else { n.x - NOTEHEAD_RX + 1.0 };
     }
 
-    let first_stem_end = if stem_up { notes.first().unwrap().note_y - STEM_LENGTH }
-                         else { notes.first().unwrap().note_y + STEM_LENGTH };
-    let last_stem_end  = if stem_up { notes.last().unwrap().note_y - STEM_LENGTH }
-                         else { notes.last().unwrap().note_y + STEM_LENGTH };
+    // Use outermost chord notehead for stem anchor (max_y for stem-up, min_y for stem-down)
+    let first_anchor = if stem_up { notes.first().unwrap().max_y } else { notes.first().unwrap().min_y };
+    let last_anchor  = if stem_up { notes.last().unwrap().max_y }  else { notes.last().unwrap().min_y };
+    let first_stem_end = if stem_up { first_anchor - STEM_LENGTH }
+                         else { first_anchor + STEM_LENGTH };
+    let last_stem_end  = if stem_up { last_anchor - STEM_LENGTH }
+                         else { last_anchor + STEM_LENGTH };
 
     let first_x = notes.first().unwrap().stem_x;
     let last_x  = notes.last().unwrap().stem_x;
@@ -454,8 +469,10 @@ fn render_beam_group(
     let min_stem = 18.0;
     let mut beam_shift = 0.0_f64;
     for n in &notes {
+        // Use the outermost notehead for min-stem check
+        let anchor_y = if stem_up { n.max_y } else { n.min_y };
         let by = beam_y(n.stem_x) + beam_shift;
-        let stem_len = (n.note_y - by).abs();
+        let stem_len = (anchor_y - by).abs();
         if stem_len < min_stem {
             let needed = min_stem - stem_len;
             if stem_up { beam_shift -= needed; } else { beam_shift += needed; }
@@ -466,7 +483,9 @@ fn render_beam_group(
 
     for n in &notes {
         let by = beam_y_adj(n.stem_x);
-        svg.line(n.stem_x, n.note_y, n.stem_x, by, NOTE_COLOR, STEM_WIDTH);
+        // Stem spans from outermost notehead to beam line
+        let stem_start = if stem_up { n.max_y } else { n.min_y };
+        svg.line(n.stem_x, stem_start, n.stem_x, by, NOTE_COLOR, STEM_WIDTH);
     }
 
     let by_first = beam_y_adj(first_x);

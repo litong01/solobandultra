@@ -114,6 +114,16 @@ pub fn generate_timemap(
     let mut current_time_ms: f64 = 0.0;
 
     for (i, um) in unrolled.iter().enumerate() {
+        // Safety: skip entries with out-of-range original_index to prevent
+        // panics (especially across FFI boundaries).
+        if um.original_index >= part.measures.len() || um.original_index >= states.len() {
+            eprintln!(
+                "[scorelib] WARNING: unrolled entry {} has original_index {} \
+                 but part only has {} measures — skipping",
+                i, um.original_index, part.measures.len()
+            );
+            continue;
+        }
         let measure = &part.measures[um.original_index];
         let state = &states[um.original_index];
 

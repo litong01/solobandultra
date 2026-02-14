@@ -52,6 +52,14 @@ pub fn analyze_chords(
     unrolled: &[UnrolledMeasure],
     timemap: &[TimemapEntry],
 ) -> Vec<Chord> {
+    debug_assert_eq!(
+        unrolled.len(),
+        timemap.len(),
+        "analyze_chords: unrolled ({}) and timemap ({}) must have the same length",
+        unrolled.len(),
+        timemap.len()
+    );
+
     // Check whether the score has *any* harmonies at all
     let has_harmonies = part.measures.iter().any(|m| !m.harmonies.is_empty());
 

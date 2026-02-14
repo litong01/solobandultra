@@ -84,24 +84,24 @@ pub fn unroll(score: &Score, part_idx: usize) -> Vec<UnrolledMeasure> {
     // number in its section.  This tells us how many passes to take.
     let mut section_max_passes: std::collections::HashMap<usize, i32> = std::collections::HashMap::new();
     {
-        let mut current_forward: Option<usize> = None;
+        // Start with 0 as the implicit forward repeat position (handles
+        // backward repeats that have no explicit forward repeat barline).
+        let mut current_forward: usize = 0;
         for (i, m) in measures.iter().enumerate() {
             for bl in &m.barlines {
                 if bl.location == "left" {
                     if let Some(ref rep) = bl.repeat {
                         if rep.direction == "forward" {
-                            current_forward = Some(i);
+                            current_forward = i;
                         }
                     }
                 }
             }
             if let Some(nums) = volta_map.get(&i) {
-                if let Some(fwd) = current_forward {
-                    let entry = section_max_passes.entry(fwd).or_insert(2);
-                    for &n in nums {
-                        if n > *entry {
-                            *entry = n;
-                        }
+                let entry = section_max_passes.entry(current_forward).or_insert(2);
+                for &n in nums {
+                    if n > *entry {
+                        *entry = n;
                     }
                 }
             }
@@ -114,12 +114,20 @@ pub fn unroll(score: &Score, part_idx: usize) -> Vec<UnrolledMeasure> {
     let mut repeat_start: usize = 0;
     let mut repeat_pass: i32 = 1; // 1-based pass counter (1st, 2nd, 3rd, …)
     let mut jump_taken = false;
-    let max_iterations = measures.len() * 8; // safety limit
+    // Safety limit: generous enough for scores with many volta endings.
+    // A section with N endings iterates ~N × section_length times.
+    // Use 50× raw measure count to handle up to ~50 endings comfortably.
+    let max_iterations = measures.len() * 50;
     let mut iterations = 0;
 
     while pos < measures.len() {
         iterations += 1;
         if iterations > max_iterations {
+            eprintln!(
+                "[scorelib] WARNING: unroller hit safety limit ({} iterations) — \
+                 output may be truncated. Raw measures: {}, unrolled so far: {}",
+                max_iterations, measures.len(), result.len()
+            );
             break;
         }
 
@@ -157,14 +165,19 @@ pub fn unroll(score: &Score, part_idx: usize) -> Vec<UnrolledMeasure> {
 
         // Check for "To Coda" (when we've already taken a D.S./D.C. jump)
         if jump_taken {
+            let mut goto_coda = false;
             for dir in &m.directions {
                 if dir.sound_tocoda {
                     if let Some(coda_idx) = coda_index {
                         pos = coda_idx;
                         jump_taken = false; // reset so we don't loop
-                        continue;
+                        goto_coda = true;
+                        break;
                     }
                 }
+            }
+            if goto_coda {
+                continue; // restart outer while loop at coda position
             }
         }
 
@@ -239,6 +252,10 @@ pub fn unroll(score: &Score, part_idx: usize) -> Vec<UnrolledMeasure> {
             });
             if prev_had_backward && !volta_map.contains_key(&pos) {
                 repeat_pass = 1;
+                // Reset repeat_start so any future backward repeat without
+                // an explicit forward repeat goes back to this position
+                // (not to the previous section's forward repeat).
+                repeat_start = pos;
             }
         }
     }
@@ -265,11 +282,40 @@ fn measure_has_fine(m: &crate::model::Measure) -> bool {
     })
 }
 
-/// Parse ending number string like "1", "2", "1, 2" into a vec of ints.
+/// Parse ending number string like "1", "2", "1, 2", or "1-3" into a vec of ints.
+/// Supports comma-separated values and dash-separated ranges (e.g. "1-3" → [1,2,3]).
 fn parse_ending_numbers(s: &str) -> Vec<i32> {
-    s.split(|c: char| c == ',' || c == ' ')
-        .filter_map(|part| part.trim().parse::<i32>().ok())
-        .collect()
+    let mut result = Vec::new();
+    for part in s.split(|c: char| c == ',' || c == ' ') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        // Check for range notation like "1-3"
+        if let Some(dash_pos) = part.find('-') {
+            // Only treat as range if dash is not at start (negative number)
+            if dash_pos > 0 {
+                if let (Ok(start), Ok(end)) = (
+                    part[..dash_pos].parse::<i32>(),
+                    part[dash_pos + 1..].parse::<i32>(),
+                ) {
+                    for n in start..=end {
+                        result.push(n);
+                    }
+                    continue;
+                }
+            }
+        }
+        if let Ok(n) = part.parse::<i32>() {
+            result.push(n);
+        }
+    }
+    // If nothing parsed successfully, default to [1] so the measure
+    // is at least reachable on the first pass.
+    if result.is_empty() && !s.trim().is_empty() {
+        result.push(1);
+    }
+    result
 }
 
 #[cfg(test)]

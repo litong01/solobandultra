@@ -25,6 +25,23 @@ use staff::*;
 use layout::*;
 
 // ═══════════════════════════════════════════════════════════════════════
+// Helpers
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Convert an octave-shift `size` attribute (8, 15, 22) to the number
+/// of octaves to transpose.  Uses integer-safe mapping:
+///   8 → 1, 15 → 2, 22 → 3.  Falls back to `(size + 1) / 8` for
+///   non-standard values.
+fn octave_shift_amount(size: i32) -> i32 {
+    match size {
+        8 => 1,
+        15 => 2,
+        22 => 3,
+        other => ((other.abs() + 1) / 8).max(1),
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // Public API
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -162,8 +179,8 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                     for dir in &measure.directions {
                         if let Some(ref ost) = dir.octave_shift_type {
                             match ost.as_str() {
-                                "down" => { ps.octave_shift = -(dir.octave_shift_size / 8); }
-                                "up" => { ps.octave_shift = dir.octave_shift_size / 8; }
+                                "down" => { ps.octave_shift = -octave_shift_amount(dir.octave_shift_size); }
+                                "up" => { ps.octave_shift = octave_shift_amount(dir.octave_shift_size); }
                                 "stop" => { ps.octave_shift = 0; }
                                 _ => {}
                             }
@@ -394,10 +411,10 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                     if let Some(ref ost) = dir.octave_shift_type {
                         match ost.as_str() {
                             "down" => {
-                                ps.octave_shift = -(dir.octave_shift_size / 8);
+                                ps.octave_shift = -octave_shift_amount(dir.octave_shift_size);
                             }
                             "up" => {
-                                ps.octave_shift = dir.octave_shift_size / 8;
+                                ps.octave_shift = octave_shift_amount(dir.octave_shift_size);
                             }
                             _ => {} // "stop" handled after notes
                         }
