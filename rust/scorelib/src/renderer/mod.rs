@@ -385,8 +385,11 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
 
                 // Update octave-shift state from directions in this measure.
                 // In MusicXML: type="down" → 8va (display notes lower),
-                //              type="up"   → 8vb (display notes higher),
-                //              type="stop" → end of shift.
+                //              type="up"   → 8vb (display notes higher).
+                // Start/activate shifts appear BEFORE notes in the XML,
+                // so we apply them here before rendering.
+                // Stop shifts appear AFTER notes, so we defer those to
+                // after note rendering (see below).
                 for dir in &measure.directions {
                     if let Some(ref ost) = dir.octave_shift_type {
                         match ost.as_str() {
@@ -396,10 +399,7 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                             "up" => {
                                 ps.octave_shift = dir.octave_shift_size / 8;
                             }
-                            "stop" => {
-                                ps.octave_shift = 0;
-                            }
-                            _ => {}
+                            _ => {} // "stop" handled after notes
                         }
                     }
                 }
@@ -540,6 +540,14 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                             &mut svg, measure, &note_xs,
                             lyrics_base_y, staff_filter,
                         );
+                    }
+                }
+
+                // Apply deferred octave-shift "stop" AFTER notes are rendered.
+                // In MusicXML, stop directives appear after the notes they cover.
+                for dir in &measure.directions {
+                    if dir.octave_shift_type.as_deref() == Some("stop") {
+                        ps.octave_shift = 0;
                     }
                 }
             }

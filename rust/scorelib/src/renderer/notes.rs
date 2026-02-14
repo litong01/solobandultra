@@ -95,7 +95,10 @@ pub(super) fn render_notes(
                 render_accidental(svg, nx - NOTEHEAD_RX - 4.0, note_y, acc);
             }
 
-            if !is_whole {
+            // Draw stem only for principal notes (not chord notes).
+            // For chords, the principal note draws a stem that spans
+            // from the outermost notehead to the standard stem length.
+            if !is_whole && !note.chord {
                 let in_beam = note.beams.iter().any(|b|
                     b.beam_type == "begin" || b.beam_type == "continue" || b.beam_type == "end");
 
@@ -105,6 +108,22 @@ pub(super) fn render_notes(
                         Some("down") => false,
                         _ => note_y >= staff_y + 20.0,
                     };
+
+                    // Find the y-range of all chord notes that follow this principal note
+                    let mut min_y = note_y; // topmost (smallest y)
+                    let mut max_y = note_y; // bottommost (largest y)
+                    for j in (i + 1)..measure.notes.len() {
+                        let cn = &measure.notes[j];
+                        if !cn.chord { break; }
+                        if let Some(sf) = staff_filter {
+                            if cn.staff.unwrap_or(1) != sf { continue; }
+                        }
+                        if let Some(ref cp) = cn.pitch {
+                            let cy = staff_y + pitch_to_staff_y(cp, clef, transpose_octave);
+                            if cy < min_y { min_y = cy; }
+                            if cy > max_y { max_y = cy; }
+                        }
+                    }
 
                     let flag_count = note.note_type.as_deref().map_or(0, |nt| match nt {
                         "eighth" => 1,
@@ -123,9 +142,11 @@ pub(super) fn render_notes(
                     let stem_len = STEM_LENGTH + stem_extra;
 
                     let (sx, sy1, sy2) = if stem_up {
-                        (nx + NOTEHEAD_RX - 1.0, note_y, note_y - stem_len)
+                        // Stem goes up: start from bottommost note, end above topmost
+                        (nx + NOTEHEAD_RX - 1.0, max_y, min_y - stem_len)
                     } else {
-                        (nx - NOTEHEAD_RX + 1.0, note_y, note_y + stem_len)
+                        // Stem goes down: start from topmost note, end below bottommost
+                        (nx - NOTEHEAD_RX + 1.0, min_y, max_y + stem_len)
                     };
                     svg.line(sx, sy1, sx, sy2, NOTE_COLOR, STEM_WIDTH);
 

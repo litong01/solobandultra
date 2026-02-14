@@ -12,6 +12,9 @@ pub(super) const GRACE_NOTE_WIDTH: f64 = 8.0;
 pub(super) fn compute_note_beat_times(notes: &[Note], divisions: i32) -> Vec<f64> {
     use std::collections::HashMap;
     let mut voice_times: HashMap<i32, f64> = HashMap::new();
+    // Track the beat time of the last non-chord note per voice,
+    // so chord notes can share the same beat position.
+    let mut voice_last_beat: HashMap<i32, f64> = HashMap::new();
     let mut beat_times = Vec::with_capacity(notes.len());
 
     for note in notes {
@@ -21,9 +24,13 @@ pub(super) fn compute_note_beat_times(notes: &[Note], divisions: i32) -> Vec<f64
         if note.grace {
             beat_times.push(*current);
         } else if note.chord {
-            beat_times.push(*current);
+            // Chord notes share the same beat as their principal note
+            let last = voice_last_beat.get(&voice).copied().unwrap_or(0.0);
+            beat_times.push(last);
         } else {
-            beat_times.push(*current);
+            let beat = *current;
+            voice_last_beat.insert(voice, beat);
+            beat_times.push(beat);
             let dur = note.duration as f64 / divisions.max(1) as f64;
             *current += dur;
         }

@@ -166,19 +166,21 @@ fn extract_melody(
         let quarter_notes_in_measure = entry.effective_quarters;
 
         let mut position_in_divisions: f64 = 0.0;
+        // Track the onset of the last principal (non-chord) note,
+        // so chord notes can share the same start time.
+        let mut last_onset: f64 = 0.0;
 
         for note in &measure.notes {
             if note.grace {
                 continue;
             }
-            // Chord notes share the same onset as the previous note
+            // Chord notes share the same onset as their principal note
             if note.chord {
-                // Don't advance position — use the previous position
                 if !note.rest {
                     if let Some(ref pitch) = note.pitch {
                         let midi_note = pitch.to_midi().max(0).min(127) as u8;
                         let note_time_ms = entry.timestamp_ms
-                            + (position_in_divisions / divisions / quarter_notes_in_measure)
+                            + (last_onset / divisions / quarter_notes_in_measure)
                                 * entry.duration_ms;
                         let note_dur_ms = (note.duration as f64 / divisions
                             / quarter_notes_in_measure)
@@ -210,6 +212,7 @@ fn extract_melody(
 
             if let Some(ref pitch) = note.pitch {
                 let midi_note = pitch.to_midi().max(0).min(127) as u8;
+                last_onset = position_in_divisions;
                 let note_time_ms = entry.timestamp_ms
                     + (position_in_divisions / divisions / quarter_notes_in_measure)
                         * entry.duration_ms;
