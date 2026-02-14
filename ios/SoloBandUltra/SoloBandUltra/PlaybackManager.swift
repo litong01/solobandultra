@@ -18,9 +18,13 @@ class PlaybackManager: ObservableObject {
 
     @Published var isPlaying = false
     /// Current position in *music* time (ms).
-    @Published var currentTimeMs: Double = 0
+    /// NOT @Published — updated at 60fps by CADisplayLink, but only consumed
+    /// internally (cursor updates via JS).  Making this @Published would cause
+    /// every observing SwiftUI view to re-evaluate its body 60× per second.
+    var currentTimeMs: Double = 0
     /// Total duration in *music* time (ms).  Stays constant regardless of speed.
-    @Published var durationMs: Double = 0
+    /// NOT @Published — only read internally by seek() and playbackDidFinish().
+    var durationMs: Double = 0
 
     // MARK: - Playback settings
 
@@ -219,6 +223,7 @@ class PlaybackManager: ObservableObject {
 
         let positionSec = seq.currentPositionInSeconds
         seq.stop()
+        allNotesOff()          // silence any ringing notes immediately
 
         // Preserve position after stop.
         seq.currentPositionInSeconds = positionSec
@@ -234,6 +239,7 @@ class PlaybackManager: ObservableObject {
     /// Stop playback and reset cursor to the beginning.
     func stop() {
         sequencer?.stop()
+        allNotesOff()              // free all synth voices immediately
         sequencer?.currentPositionInSeconds = 0
         isPlaying = false
         currentTimeMs = 0
@@ -257,6 +263,13 @@ class PlaybackManager: ObservableObject {
         guard let seq = sequencer else { return }
 
         let clampedMs = max(0, min(musicTimeMs, durationMs))
+
+        // Send "All Notes Off" (CC#123) on every channel before changing
+        // position.  Without this, notes that were on at the old position
+        // keep sounding (stuck notes) and compete with notes at the new
+        // position, worsening voice-stealing.
+        allNotesOff()
+
         seq.currentPositionInSeconds = clampedMs / 1000.0
         currentTimeMs = clampedMs
 
@@ -264,11 +277,34 @@ class PlaybackManager: ObservableObject {
         print("[PlaybackManager] Seeked to \(String(format: "%.1f", clampedMs / 1000.0))s")
     }
 
-    // MARK: - Display Link (60fps cursor updates)
+    /// Send CC#123 (All Notes Off) on all 16 MIDI channels.
+    /// Ensures no voices are "stuck" from a previous position.
+    private func allNotesOff() {
+        guard let au = midiSynth?.audioUnit else { return }
+        for ch: UInt32 in 0..<16 {
+            // CC#123 = All Notes Off
+            MusicDeviceMIDIEvent(au, 0xB0 | ch, 123, 0, 0)
+            // CC#120 = All Sound Off (immediate silence, no release tail)
+            MusicDeviceMIDIEvent(au, 0xB0 | ch, 120, 0, 0)
+        }
+    }
+
+    // MARK: - Display Link (cursor updates)
+
+    /// Guard: true while a `evaluateJavaScript` call is in-flight.
+    /// Prevents IPC calls from piling up if the WebView is slow.
+    private var cursorUpdateInFlight = false
 
     private func startDisplayLink() {
         stopDisplayLink()
         let link = CADisplayLink(target: self, selector: #selector(displayLinkFired))
+
+        // 20 fps is plenty for a smoothly moving cursor (movies run at 24).
+        // The default 60 fps floods the WKWebView with IPC traffic, and the
+        // accumulated load (especially on the 5 MB Chopin SVG) causes the
+        // system to throttle the audio render thread after ~20 measures.
+        link.preferredFramesPerSecond = 20
+
         link.add(to: .main, forMode: .common)
         displayLink = link
     }
@@ -300,8 +336,18 @@ class PlaybackManager: ObservableObject {
 
     private func updateCursor(timeMs: Double) {
         guard let webView = webView else { return }
+
+        // Skip this update if the previous JS call hasn't returned yet.
+        // This prevents IPC calls from piling up when the WebView is slow
+        // (e.g. large SVG DOM) — queued evaluateJavaScript calls compete
+        // with the audio system for CPU/memory and cause note dropouts.
+        guard !cursorUpdateInFlight else { return }
+        cursorUpdateInFlight = true
+
         let js = "if (typeof moveCursor === 'function') { showCursor(); moveCursor(\(timeMs)); }"
-        webView.evaluateJavaScript(js, completionHandler: nil)
+        webView.evaluateJavaScript(js) { [weak self] _, _ in
+            self?.cursorUpdateInFlight = false
+        }
     }
 
     private func hideCursor() {

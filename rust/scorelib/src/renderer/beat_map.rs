@@ -11,25 +11,28 @@ pub(super) const GRACE_NOTE_WIDTH: f64 = 8.0;
 /// using per-voice time tracking to handle MusicXML backup semantics.
 pub(super) fn compute_note_beat_times(notes: &[Note], divisions: i32) -> Vec<f64> {
     use std::collections::HashMap;
-    let mut voice_times: HashMap<i32, f64> = HashMap::new();
+    // Use (staff, voice) as the key so that overlapping voice numbers
+    // across staves (common in MuseScore exports) are tracked independently.
+    type VoiceKey = (i32, i32);
+    let mut voice_times: HashMap<VoiceKey, f64> = HashMap::new();
     // Track the beat time of the last non-chord note per voice,
     // so chord notes can share the same beat position.
-    let mut voice_last_beat: HashMap<i32, f64> = HashMap::new();
+    let mut voice_last_beat: HashMap<VoiceKey, f64> = HashMap::new();
     let mut beat_times = Vec::with_capacity(notes.len());
 
     for note in notes {
-        let voice = note.voice.unwrap_or(1);
-        let current = voice_times.entry(voice).or_insert(0.0);
+        let vk: VoiceKey = (note.staff.unwrap_or(1), note.voice.unwrap_or(1));
+        let current = voice_times.entry(vk).or_insert(0.0);
 
         if note.grace {
             beat_times.push(*current);
         } else if note.chord {
             // Chord notes share the same beat as their principal note
-            let last = voice_last_beat.get(&voice).copied().unwrap_or(0.0);
+            let last = voice_last_beat.get(&vk).copied().unwrap_or(0.0);
             beat_times.push(last);
         } else {
             let beat = *current;
-            voice_last_beat.insert(voice, beat);
+            voice_last_beat.insert(vk, beat);
             beat_times.push(beat);
             let dur = note.duration as f64 / divisions.max(1) as f64;
             *current += dur;

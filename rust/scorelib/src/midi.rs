@@ -1,9 +1,10 @@
 //! MIDI file generation from a parsed and unrolled score.
 //!
 //! Produces a Standard MIDI File (SMF) Type 1 as raw bytes.
-//! Track 0 is the tempo map; Track 1 is the melody.
-//! Additional tracks (piano, bass, strings, drums, metronome) are
-//! added by the accompaniment module.
+//! Track 0 is the tempo map; subsequent tracks are the melody (one per
+//! staff for multi-staff parts like piano — each on its own MIDI channel
+//! to prevent note-off conflicts on shared pitches).  Accompaniment
+//! tracks (piano, bass, strings, drums, metronome) follow.
 
 use crate::accompaniment;
 use crate::model::Score;
@@ -97,18 +98,52 @@ pub fn generate_midi(
     // ── Track 0: Tempo map ──────────────────────────────────────────
     tracks.push(build_tempo_track(timemap));
 
-    // ── Track 1: Melody ─────────────────────────────────────────────
+    // ── Track 1+ : Melody (one track per staff) ────────────────────
+    // For multi-staff parts (e.g. piano with treble + bass), each staff
+    // gets its own MIDI channel to prevent note-off/note-on conflicts
+    // when both staves play the same pitch at overlapping times.
     if options.include_melody {
-        let melody_events = extract_melody(part, unrolled, timemap, options.melody_channel);
-        let mut track_events = Vec::new();
-        // Program change (use part's MIDI program if available)
+        let num_staves = detect_staves(part);
         let program = part.midi_program.unwrap_or(0).max(0).min(127) as u8;
-        track_events.push(MidiEvent {
-            tick: 0,
-            bytes: vec![0xC0 | options.melody_channel, program],
-        });
-        track_events.extend(melody_events);
-        tracks.push(encode_track(&track_events, "Melody"));
+
+        if num_staves <= 1 {
+            // Single-staff part: all notes on one channel/track.
+            let melody_events = extract_melody(part, unrolled, timemap, options.melody_channel, None);
+            let mut track_events = Vec::new();
+            track_events.push(MidiEvent {
+                tick: 0,
+                bytes: vec![0xC0 | options.melody_channel, program],
+            });
+            track_events.extend(melody_events);
+            tracks.push(encode_track(&track_events, "Melody"));
+        } else {
+            // Multi-staff part: one track per staff, each on its own channel.
+            // Channels 0, 7, 8, 11, 12… (avoiding 1-3 for accompaniment, 9 for drums).
+            let staff_channels: Vec<u8> = (0..num_staves as u8)
+                .map(|s| match s {
+                    0 => options.melody_channel,
+                    1 => 7,
+                    2 => 8,
+                    3 => 11,
+                    _ => (12 + s - 4).min(15),
+                })
+                .collect();
+
+            for staff_num in 1..=num_staves {
+                let ch = staff_channels[staff_num - 1];
+                let events = extract_melody(
+                    part, unrolled, timemap, ch, Some(staff_num as i32),
+                );
+                let mut track_events = Vec::new();
+                track_events.push(MidiEvent {
+                    tick: 0,
+                    bytes: vec![0xC0 | ch, program],
+                });
+                track_events.extend(events);
+                let name = if staff_num == 1 { "Treble" } else { "Bass" };
+                tracks.push(encode_track(&track_events, name));
+            }
+        }
     }
 
     // ── Accompaniment tracks ────────────────────────────────────────
@@ -158,12 +193,18 @@ pub fn generate_midi(
 // Melody extraction
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Extract melody note events from the first part.
+/// Extract melody note events from a part, optionally filtering by staff.
+///
+/// When `staff_filter` is `None`, all notes are included (single-staff parts).
+/// When `Some(n)`, only notes belonging to staff `n` are included — used for
+/// multi-staff parts where each staff gets its own MIDI channel to prevent
+/// note-off/note-on conflicts on identical pitches.
 fn extract_melody(
     part: &crate::model::Part,
     unrolled: &[UnrolledMeasure],
     timemap: &[TimemapEntry],
     channel: u8,
+    staff_filter: Option<i32>,
 ) -> Vec<MidiEvent> {
     let mut events: Vec<MidiEvent> = Vec::new();
 
@@ -173,27 +214,36 @@ fn extract_melody(
         let divisions = entry.divisions.max(1) as f64;
         let quarter_notes_in_measure = entry.effective_quarters;
 
-        // Per-voice position tracking for correct multi-voice timing.
-        // MusicXML lists notes in document order; Voice 2 notes appear
-        // after Voice 1 notes without any explicit "backup" in our model.
+        // Per-(staff, voice) position tracking for correct multi-voice timing.
+        // MusicXML lists notes in document order; after a <backup> element
+        // (which our parser ignores), a new voice's notes appear at the same
+        // beat positions.  Using (staff, voice) as the key handles the case
+        // where voice numbers overlap across staves (common in MuseScore exports).
         use std::collections::HashMap;
-        let mut voice_positions: HashMap<i32, f64> = HashMap::new();
-        let mut voice_last_onset: HashMap<i32, f64> = HashMap::new();
+        type VoiceKey = (i32, i32); // (staff, voice)
+        let mut voice_positions: HashMap<VoiceKey, f64> = HashMap::new();
+        let mut voice_last_onset: HashMap<VoiceKey, f64> = HashMap::new();
 
         for note in &measure.notes {
             if note.grace {
                 continue;
             }
 
-            let voice = note.voice.unwrap_or(1);
-            let pos_div = voice_positions.entry(voice).or_insert(0.0);
+            let note_staff = note.staff.unwrap_or(1);
+            let vk: VoiceKey = (note_staff, note.voice.unwrap_or(1));
+            let pos_div = voice_positions.entry(vk).or_insert(0.0);
+
+            // Staff filter: always advance position tracking (so timing
+            // stays correct for notes we DO include), but only emit MIDI
+            // events for notes on the target staff.
+            let emit = staff_filter.map_or(true, |sf| note_staff == sf);
 
             // Chord notes share the same onset as their principal note
             if note.chord {
-                if !note.rest {
+                if emit && !note.rest {
                     if let Some(ref pitch) = note.pitch {
                         let midi_note = pitch.to_midi().max(0).min(127) as u8;
-                        let onset = voice_last_onset.get(&voice).copied().unwrap_or(0.0);
+                        let onset = voice_last_onset.get(&vk).copied().unwrap_or(0.0);
                         let note_time_ms = entry.timestamp_ms
                             + (onset / divisions / quarter_notes_in_measure)
                                 * entry.duration_ms;
@@ -202,8 +252,10 @@ fn extract_melody(
                             * entry.duration_ms;
                         let on_tick = ms_to_ticks(note_time_ms, timemap);
                         let off_tick = ms_to_ticks(note_time_ms + note_dur_ms, timemap);
-                        // Skip tied continuation notes
-                        if !note.tie_stop || note.tie_start {
+                        // Only emit note-on for the FIRST note in a tie chain.
+                        // Middle notes (tie_stop && tie_start) must NOT re-trigger
+                        // — that would leak a synth voice with no matching note-off.
+                        if !note.tie_stop {
                             events.push(MidiEvent {
                                 tick: on_tick,
                                 bytes: vec![0x90 | channel, midi_note, 80],
@@ -227,33 +279,35 @@ fn extract_melody(
 
             if let Some(ref pitch) = note.pitch {
                 let midi_note = pitch.to_midi().max(0).min(127) as u8;
-                voice_last_onset.insert(voice, *pos_div);
-                let note_time_ms = entry.timestamp_ms
-                    + (*pos_div / divisions / quarter_notes_in_measure)
-                        * entry.duration_ms;
-                let note_dur_ms =
-                    (note.duration as f64 / divisions / quarter_notes_in_measure)
-                        * entry.duration_ms;
+                voice_last_onset.insert(vk, *pos_div);
 
-                let on_tick = ms_to_ticks(note_time_ms, timemap);
-                let off_tick = ms_to_ticks(note_time_ms + note_dur_ms, timemap);
+                if emit {
+                    let note_time_ms = entry.timestamp_ms
+                        + (*pos_div / divisions / quarter_notes_in_measure)
+                            * entry.duration_ms;
+                    let note_dur_ms =
+                        (note.duration as f64 / divisions / quarter_notes_in_measure)
+                            * entry.duration_ms;
 
-                // For tied notes: only emit note-on for the first note in
-                // a tie chain (not tie_stop-only), and only emit note-off
-                // for the last (not tie_start).
-                if !note.tie_stop || note.tie_start {
-                    // This is either the start of a tie or a standalone note
-                    events.push(MidiEvent {
-                        tick: on_tick,
-                        bytes: vec![0x90 | channel, midi_note, 80],
-                    });
-                }
-                if !note.tie_start {
-                    // This is either the end of a tie or a standalone note
-                    events.push(MidiEvent {
-                        tick: off_tick,
-                        bytes: vec![0x80 | channel, midi_note, 0],
-                    });
+                    let on_tick = ms_to_ticks(note_time_ms, timemap);
+                    let off_tick = ms_to_ticks(note_time_ms + note_dur_ms, timemap);
+
+                    // For tied notes: only emit note-on for the FIRST note in
+                    // a tie chain (!tie_stop), and note-off for the LAST
+                    // (!tie_start).  Middle notes (tie_stop && tie_start)
+                    // emit neither — the pitch sustains through.
+                    if !note.tie_stop {
+                        events.push(MidiEvent {
+                            tick: on_tick,
+                            bytes: vec![0x90 | channel, midi_note, 80],
+                        });
+                    }
+                    if !note.tie_start {
+                        events.push(MidiEvent {
+                            tick: off_tick,
+                            bytes: vec![0x80 | channel, midi_note, 0],
+                        });
+                    }
                 }
             }
 
@@ -402,6 +456,24 @@ pub fn ms_to_ticks(target_ms: f64, timemap: &[TimemapEntry]) -> u32 {
     let ticks_per_ms = (TICKS_PER_QUARTER as f64 * prev_tempo) / 60_000.0;
     ticks += remaining * ticks_per_ms;
     ticks.round() as u32
+}
+
+/// Detect the number of staves in a part by scanning attributes and note staff numbers.
+fn detect_staves(part: &crate::model::Part) -> usize {
+    let mut max_staff = 1usize;
+    for measure in &part.measures {
+        if let Some(ref attrs) = measure.attributes {
+            if let Some(s) = attrs.staves {
+                max_staff = max_staff.max(s as usize);
+            }
+        }
+        for note in &measure.notes {
+            if let Some(s) = note.staff {
+                max_staff = max_staff.max(s as usize);
+            }
+        }
+    }
+    max_staff
 }
 
 #[cfg(test)]

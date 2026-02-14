@@ -91,13 +91,14 @@ struct SheetMusicView: View {
                     loadScore(width: newWidth)
                 }
             }
-            .onReceive(midiSettings.objectWillChange) { _ in
-                // When MIDI settings change, regenerate MIDI with new options.
-                // Use a small delay so the published value has landed.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    regenerateMidi()
-                }
-            }
+            // ── Accompaniment toggles → regenerate MIDI (track selection changed) ──
+            .onChange(of: midiSettings.includeMelody) { _ in regenerateMidi() }
+            .onChange(of: midiSettings.includePiano) { _ in regenerateMidi() }
+            .onChange(of: midiSettings.includeBass) { _ in regenerateMidi() }
+            .onChange(of: midiSettings.includeStrings) { _ in regenerateMidi() }
+            .onChange(of: midiSettings.includeDrums) { _ in regenerateMidi() }
+            .onChange(of: midiSettings.includeMetronome) { _ in regenerateMidi() }
+            .onChange(of: midiSettings.energy) { _ in regenerateMidi() }
             // ── Playback settings → PlaybackManager (no MIDI regen) ──
             .onChange(of: midiSettings.playbackSpeed) { newSpeed in
                 playbackManager.speed = newSpeed
@@ -292,6 +293,20 @@ struct SVGWebView: UIViewRepresentable {
 
         // Ensure the webView reference is current
         playbackManager.webView = webView
+
+        // Only reload the WebView when the SVG or playback map actually changed.
+        // Without this guard, SwiftUI calls updateUIView on every body re-evaluation
+        // (e.g. 60fps during playback due to @Published changes), which would
+        // rebuild + reload the entire HTML document each time — destroying the
+        // JavaScript state (cursor, playback map) and wasting CPU/memory.
+        let svgHash = svgString.hashValue
+        let pmapHash = (playbackMapJson ?? "").hashValue
+        guard svgHash != context.coordinator.lastLoadedSvgHash
+           || pmapHash != context.coordinator.lastLoadedPmapHash else {
+            return
+        }
+        context.coordinator.lastLoadedSvgHash = svgHash
+        context.coordinator.lastLoadedPmapHash = pmapHash
 
         let html = Self.buildHTML(svg: svgString, playbackMapJson: playbackMapJson)
         webView.loadHTMLString(html, baseURL: nil)
@@ -574,6 +589,9 @@ struct SVGWebView: UIViewRepresentable {
 
     class Coordinator: NSObject, WKScriptMessageHandler {
         var playbackManager: PlaybackManager
+        /// Track the last loaded content to avoid redundant WebView reloads.
+        var lastLoadedSvgHash: Int = 0
+        var lastLoadedPmapHash: Int = 0
 
         init(playbackManager: PlaybackManager) {
             self.playbackManager = playbackManager

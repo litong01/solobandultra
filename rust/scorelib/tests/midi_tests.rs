@@ -297,8 +297,8 @@ fn midi_chopin_melody_only() {
 
     assert_eq!(&midi[0..4], b"MThd");
     let track_count = u16::from_be_bytes([midi[10], midi[11]]);
-    // tempo + melody = 2 tracks
-    assert_eq!(track_count, 2, "Expected 2 tracks (melody only), got {}", track_count);
+    // tempo + treble + bass = 3 tracks (piano piece has 2 staves, each on its own channel)
+    assert_eq!(track_count, 3, "Expected 3 tracks (tempo + treble + bass), got {}", track_count);
 
     let output_path = "test_output/chopin-trois-valses.mid";
     write_test_output(output_path, &midi);
@@ -331,8 +331,8 @@ fn midi_chopin_with_inferred_accompaniment() {
 
     assert_eq!(&midi[0..4], b"MThd");
     let track_count = u16::from_be_bytes([midi[10], midi[11]]);
-    // All 7 tracks should be present even without explicit chords
-    assert_eq!(track_count, 7, "Expected 7 tracks (all enabled with inferred chords), got {}", track_count);
+    // All 8 tracks: tempo + treble + bass + piano + bass_acc + strings + drums + metronome
+    assert_eq!(track_count, 8, "Expected 8 tracks (2 staves + 5 accompaniment + tempo), got {}", track_count);
 
     // The file should be larger than melody-only version (has accompaniment data)
     assert!(midi.len() > 43000, "Full accompaniment MIDI should be larger than melody-only");
