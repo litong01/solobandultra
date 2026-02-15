@@ -4,7 +4,6 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
-import android.os.Build
 import android.util.Log
 
 /**
@@ -19,7 +18,13 @@ import android.util.Log
  * By using AudioAttributes with USAGE_MEDIA, our audio plays through the
  * media stream and is unaffected by the ringer/silent switch.
  */
-class AudioSessionManager(private val context: Context) {
+class AudioSessionManager(
+    private val context: Context,
+    /** Called when audio focus is lost — the app should pause/stop playback. */
+    private val onFocusLost: () -> Unit = {},
+    /** Called when audio focus is regained — the app may resume playback. */
+    private val onFocusGained: () -> Unit = {},
+) {
 
     companion object {
         private const val TAG = "AudioSessionManager"
@@ -41,21 +46,22 @@ class AudioSessionManager(private val context: Context) {
             AudioManager.AUDIOFOCUS_GAIN -> {
                 Log.d(TAG, "Audio focus gained")
                 hasAudioFocus = true
-                // Resume playback at normal volume
+                onFocusGained()
             }
             AudioManager.AUDIOFOCUS_LOSS -> {
                 Log.d(TAG, "Audio focus lost permanently")
                 hasAudioFocus = false
-                // Stop playback
+                onFocusLost()
             }
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
                 Log.d(TAG, "Audio focus lost temporarily")
                 hasAudioFocus = false
-                // Pause playback
+                onFocusLost()
             }
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
                 Log.d(TAG, "Audio focus lost temporarily, can duck")
-                // Lower volume
+                // We don't duck — just keep playing at current volume.
+                // The system will duck our audio if needed.
             }
         }
     }
@@ -84,6 +90,9 @@ class AudioSessionManager(private val context: Context) {
      * Returns true if focus was granted.
      */
     fun requestAudioFocus(): Boolean {
+        // Abandon any previous request first to avoid leaking focus requests.
+        abandonAudioFocus()
+
         val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
             .setAudioAttributes(audioAttributes)
             .setOnAudioFocusChangeListener(focusChangeListener)
@@ -113,6 +122,7 @@ class AudioSessionManager(private val context: Context) {
             hasAudioFocus = false
             Log.d(TAG, "Audio focus abandoned")
         }
+        audioFocusRequest = null
     }
 
     /**
@@ -126,6 +136,5 @@ class AudioSessionManager(private val context: Context) {
      */
     fun release() {
         abandonAudioFocus()
-        audioFocusRequest = null
     }
 }

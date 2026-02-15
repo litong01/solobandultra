@@ -1129,7 +1129,11 @@ private fun SvgWebView(
 private class PlaybackJsInterface(private val playbackManager: PlaybackManager?) {
     @JavascriptInterface
     fun seekTo(timeMs: Double) {
-        playbackManager?.seekTo(timeMs)
+        // JavascriptInterface methods run on a WebView background thread.
+        // MediaPlayer requires main-thread access, so post to the main looper.
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            playbackManager?.seekTo(timeMs)
+        }
     }
 }
 

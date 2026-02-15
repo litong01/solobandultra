@@ -111,12 +111,13 @@ class PlaybackManager(
             return
         }
 
-        // Set remaining repeats at the start of a fresh play (position near 0).
-        if (_currentTimeMs.value < 1.0) {
-            remainingRepeats = repeatCount
+        remainingRepeats = repeatCount
+
+        if (!audioSessionManager.requestAudioFocus()) {
+            Log.w(TAG, "Audio focus denied, not starting playback")
+            return
         }
 
-        audioSessionManager.requestAudioFocus()
         applyMuteVolume(player)
         applyPlaybackSpeed(player)
         player.start()
@@ -131,10 +132,16 @@ class PlaybackManager(
      */
     fun pause() {
         val player = mediaPlayer ?: return
-        player.pause()
+        try {
+            if (player.isPlaying) player.pause()
+        } catch (_: IllegalStateException) {
+            // Player may be in Error state
+        }
         _isPlaying.value = false
         // With PlaybackParams, currentPosition is in media time (music time).
-        _currentTimeMs.value = player.currentPosition.toDouble()
+        try {
+            _currentTimeMs.value = player.currentPosition.toDouble()
+        } catch (_: IllegalStateException) { /* ignore */ }
         stopChoreographer()
 
         // Keep cursor at the paused position
@@ -148,14 +155,20 @@ class PlaybackManager(
      */
     fun stop() {
         mediaPlayer?.let { player ->
-            if (player.isPlaying) player.stop()
-            player.release()
+            try {
+                if (player.isPlaying) player.stop()
+            } catch (_: IllegalStateException) {
+                // Player may be in Error state
+            } finally {
+                player.release()
+            }
         }
         mediaPlayer = null
         _isPlaying.value = false
         _currentTimeMs.value = 0.0
         remainingRepeats = 0
         stopChoreographer()
+        audioSessionManager.abandonAudioFocus()
 
         // Reset cursor to the beginning (keep it visible)
         updateCursor(0.0)
@@ -180,12 +193,17 @@ class PlaybackManager(
 
     /**
      * Seek to a specific *music* time in milliseconds.
+     * MUST be called on the main thread.
      */
     fun seekTo(musicTimeMs: Double) {
         val player = mediaPlayer ?: return
 
         val clampedMs = musicTimeMs.coerceIn(0.0, _durationMs.value)
-        player.seekTo(clampedMs.toInt())
+        try {
+            player.seekTo(clampedMs.toInt())
+        } catch (_: IllegalStateException) {
+            return
+        }
         _currentTimeMs.value = clampedMs
 
         // Update cursor immediately at the seek position
@@ -199,6 +217,7 @@ class PlaybackManager(
      */
     fun release() {
         stop()
+        webView = null
         audioSessionManager.release()
     }
 
@@ -212,9 +231,11 @@ class PlaybackManager(
                     val player = mediaPlayer ?: return
                     // With PlaybackParams speed control, currentPosition is in media time
                     // (i.e. music time) — it advances through the original timeline.
-                    val musicMs = player.currentPosition.toDouble()
-                    _currentTimeMs.value = musicMs
-                    updateCursor(musicMs)
+                    try {
+                        val musicMs = player.currentPosition.toDouble()
+                        _currentTimeMs.value = musicMs
+                        updateCursor(musicMs)
+                    } catch (_: IllegalStateException) { /* ignore */ }
                     Choreographer.getInstance().postFrameCallback(this)
                 }
             }
@@ -267,6 +288,12 @@ class PlaybackManager(
 
             player.setOnCompletionListener {
                 playbackDidFinish()
+            }
+
+            player.setOnErrorListener { _, what, extra ->
+                Log.e(TAG, "MediaPlayer error: what=$what extra=$extra")
+                stop()
+                true // error handled
             }
 
             mediaPlayer = player
@@ -325,10 +352,14 @@ class PlaybackManager(
         if (remainingRepeats > 0) {
             // ── More repeats to go — restart from the beginning ──
             Log.d(TAG, "Repeat ${repeatCount - remainingRepeats}/$repeatCount")
-            mediaPlayer?.seekTo(0)
-            _currentTimeMs.value = 0.0
-            mediaPlayer?.let { applyPlaybackSpeed(it) }
-            mediaPlayer?.start()
+            try {
+                mediaPlayer?.seekTo(0)
+                _currentTimeMs.value = 0.0
+                mediaPlayer?.let { applyPlaybackSpeed(it) }
+                mediaPlayer?.start()
+            } catch (_: IllegalStateException) {
+                stop()
+            }
             return
         }
 

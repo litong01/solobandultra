@@ -84,11 +84,28 @@ class PlaybackManager: ObservableObject {
 
     private var remainingRepeats: Int = 0
 
+    // MARK: - Generation counter (prevents stale completion handlers)
+
+    /// Incremented every time `startPlayback()` schedules new audio.
+    /// The completion handler captures this value and is ignored if it
+    /// no longer matches — preventing a stale handler from killing
+    /// newly started playback after seek/resume/repeat.
+    private var playbackGeneration: Int = 0
+
+    // MARK: - Interruption handling
+
+    private var interruptionObserver: Any?
+    private var routeChangeObserver: Any?
+    /// Whether playback was active when an interruption began (used to
+    /// decide whether to auto-resume when the interruption ends).
+    private var wasPlayingBeforeInterruption = false
+
     // MARK: - Lifecycle
 
     init(audioSessionManager: AudioSessionManager) {
         self.audioSessionManager = audioSessionManager
         setupAudioEngine()
+        setupInterruptionHandling()
     }
 
     deinit {
@@ -96,6 +113,8 @@ class PlaybackManager: ObservableObject {
         playerNode.stop()
         engine.stop()
         cleanupTempFile()
+        if let obs = interruptionObserver { NotificationCenter.default.removeObserver(obs) }
+        if let obs = routeChangeObserver { NotificationCenter.default.removeObserver(obs) }
     }
 
     // MARK: - Audio engine setup
@@ -118,6 +137,68 @@ class PlaybackManager: ObservableObject {
         }
     }
 
+    // MARK: - Interruption & route-change handling
+
+    private func setupInterruptionHandling() {
+        interruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            self?.handleInterruption(notification)
+        }
+
+        routeChangeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            self?.handleRouteChange(notification)
+        }
+    }
+
+    private func handleInterruption(_ notification: Notification) {
+        guard let info = notification.userInfo,
+              let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+
+        switch type {
+        case .began:
+            wasPlayingBeforeInterruption = isPlaying
+            if isPlaying { pause() }
+            print("[PlaybackManager] Interruption began")
+
+        case .ended:
+            // Check if we should resume.
+            if let optionsValue = info[AVAudioSessionInterruptionOptionKey] as? UInt {
+                let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+                if options.contains(.shouldResume) && wasPlayingBeforeInterruption {
+                    try? ensureEngineRunning()
+                    play()
+                    print("[PlaybackManager] Interruption ended — resuming")
+                }
+            }
+            wasPlayingBeforeInterruption = false
+
+        @unknown default:
+            break
+        }
+    }
+
+    private func handleRouteChange(_ notification: Notification) {
+        guard let info = notification.userInfo,
+              let reasonValue = info[AVAudioSessionRouteChangeReasonKey] as? UInt,
+              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
+
+        if reason == .oldDeviceUnavailable {
+            // Headphones unplugged — pause to avoid blasting audio through speaker.
+            if isPlaying {
+                pause()
+                print("[PlaybackManager] Headphones disconnected — paused")
+            }
+        }
+    }
+
     // MARK: - Public API
 
     /// Prepare WAV audio data for playback (does not start playing).
@@ -133,8 +214,8 @@ class PlaybackManager: ObservableObject {
             cleanupTempFile()
             let url = FileManager.default.temporaryDirectory
                 .appendingPathComponent("soloband_playback_\(UUID().uuidString).wav")
+            tempFileURL = url  // Set first so cleanup can find it on failure
             try wavData.write(to: url)
-            tempFileURL = url
 
             let file = try AVAudioFile(forReading: url)
             audioFile = file
@@ -159,9 +240,7 @@ class PlaybackManager: ObservableObject {
 
     /// Start or resume playback.
     func play() {
-        if currentTimeMs < 1.0 {
-            remainingRepeats = repeatCount
-        }
+        remainingRepeats = repeatCount
         startPlayback()
     }
 
@@ -187,6 +266,10 @@ class PlaybackManager: ObservableObject {
             // Stop any previous scheduling.
             playerNode.stop()
 
+            // Bump generation so any in-flight completion handler is ignored.
+            playbackGeneration += 1
+            let thisGeneration = playbackGeneration
+
             // Schedule the segment from the current position.
             playerNode.scheduleSegment(
                 file,
@@ -196,7 +279,8 @@ class PlaybackManager: ObservableObject {
             ) { [weak self] in
                 // Completion fires on a background thread.
                 DispatchQueue.main.async {
-                    self?.playbackDidFinish()
+                    guard let self = self, self.playbackGeneration == thisGeneration else { return }
+                    self.playbackDidFinish()
                 }
             }
 
@@ -235,6 +319,9 @@ class PlaybackManager: ObservableObject {
 
     /// Stop playback and reset cursor to the beginning.
     func stop() {
+        // Bump generation to invalidate any pending completion handlers.
+        playbackGeneration += 1
+
         playerNode.stop()
         isPlaying = false
         currentTimeMs = 0
@@ -323,7 +410,7 @@ class PlaybackManager: ObservableObject {
     // MARK: - Repeat / finish
 
     private func playbackDidFinish() {
-        guard isPlaying || remainingRepeats > 0 else { return }
+        guard isPlaying else { return }
 
         playerNode.stop()
         isPlaying = false

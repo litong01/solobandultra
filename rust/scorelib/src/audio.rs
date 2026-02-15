@@ -20,6 +20,9 @@ const BLOCK_SIZE: usize = 8192;
 /// Target peak level for normalization (0.95 = 5% headroom to avoid DAC clipping).
 const NORMALIZE_TARGET: f32 = 0.95;
 
+/// Maximum allowed MIDI duration in seconds (safety cap against malformed files).
+const MAX_DURATION_SECS: f64 = 3600.0; // 1 hour
+
 /// Render MIDI data to a WAV file using the provided SoundFont.
 ///
 /// Returns a complete WAV file (header + PCM data) as bytes.
@@ -52,7 +55,17 @@ pub fn render_audio(midi_data: &[u8], soundfont_data: &[u8]) -> Result<Vec<u8>, 
 
     // Total samples = MIDI duration + 1 s for release tails.
     let duration_secs = midi_file.get_length() + 1.0;
+    if !duration_secs.is_finite() || duration_secs <= 0.0 {
+        return Err("Invalid MIDI duration".to_string());
+    }
+    let duration_secs = duration_secs.min(MAX_DURATION_SECS);
     let total_samples = (SAMPLE_RATE as f64 * duration_secs) as usize;
+
+    // Guard against overflow in buffer allocation.
+    let float_cap = total_samples.checked_mul(2)
+        .ok_or("Audio buffer size overflow (f32)")?;
+    let pcm_cap = total_samples.checked_mul(4)
+        .ok_or("Audio buffer size overflow (pcm)")?;
 
     // Start playback.
     sequencer.play(&midi_file, false);
@@ -62,7 +75,7 @@ pub fn render_audio(midi_data: &[u8], soundfont_data: &[u8]) -> Result<Vec<u8>, 
     let mut right = vec![0f32; BLOCK_SIZE];
 
     // Store interleaved f32 samples for normalization.
-    let mut float_buf: Vec<f32> = Vec::with_capacity(total_samples * 2);
+    let mut float_buf: Vec<f32> = Vec::with_capacity(float_cap);
     let mut peak: f32 = 0.0;
     let mut rendered: usize = 0;
 
@@ -71,8 +84,8 @@ pub fn render_audio(midi_data: &[u8], soundfont_data: &[u8]) -> Result<Vec<u8>, 
         sequencer.render(&mut left[..count], &mut right[..count]);
 
         for i in 0..count {
-            let l = left[i];
-            let r = right[i];
+            let l = if left[i].is_finite() { left[i] } else { 0.0 };
+            let r = if right[i].is_finite() { right[i] } else { 0.0 };
             float_buf.push(l);
             float_buf.push(r);
             let abs_l = l.abs();
@@ -86,7 +99,7 @@ pub fn render_audio(midi_data: &[u8], soundfont_data: &[u8]) -> Result<Vec<u8>, 
     // ── Pass 2: Normalize and convert f32 → i16 ──
     let gain = if peak > 0.0001 { NORMALIZE_TARGET / peak } else { 1.0 };
 
-    let mut pcm_data: Vec<u8> = Vec::with_capacity(total_samples * 4);
+    let mut pcm_data: Vec<u8> = Vec::with_capacity(pcm_cap);
     for sample in &float_buf {
         let normalized = (sample * gain * 32767.0).clamp(-32768.0, 32767.0) as i16;
         pcm_data.extend_from_slice(&normalized.to_le_bytes());
@@ -95,7 +108,7 @@ pub fn render_audio(midi_data: &[u8], soundfont_data: &[u8]) -> Result<Vec<u8>, 
     // Drop float buffer to free memory before building WAV.
     drop(float_buf);
 
-    let wav = build_wav(SAMPLE_RATE as u32, 2, 16, &pcm_data);
+    let wav = build_wav(SAMPLE_RATE as u32, 2, 16, &pcm_data)?;
 
     #[cfg(debug_assertions)]
     eprintln!(
@@ -112,11 +125,14 @@ pub fn render_audio(midi_data: &[u8], soundfont_data: &[u8]) -> Result<Vec<u8>, 
 }
 
 /// Build a complete WAV file from raw PCM data.
-fn build_wav(sample_rate: u32, channels: u16, bits_per_sample: u16, pcm_data: &[u8]) -> Vec<u8> {
+fn build_wav(sample_rate: u32, channels: u16, bits_per_sample: u16, pcm_data: &[u8]) -> Result<Vec<u8>, String> {
     let byte_rate = sample_rate * channels as u32 * bits_per_sample as u32 / 8;
     let block_align = channels * bits_per_sample / 8;
-    let data_size = pcm_data.len() as u32;
-    let file_size = 36 + data_size;
+
+    let data_size: u32 = pcm_data.len().try_into()
+        .map_err(|_| format!("PCM data too large for WAV format: {} bytes (max ~4 GB)", pcm_data.len()))?;
+    let file_size = 36u32.checked_add(data_size)
+        .ok_or("WAV file size overflow")?;
 
     let mut wav = Vec::with_capacity(44 + pcm_data.len());
 
@@ -140,7 +156,7 @@ fn build_wav(sample_rate: u32, channels: u16, bits_per_sample: u16, pcm_data: &[
     wav.extend_from_slice(&data_size.to_le_bytes());
     wav.extend_from_slice(pcm_data);
 
-    wav
+    Ok(wav)
 }
 
 #[cfg(test)]
@@ -151,7 +167,7 @@ mod tests {
     fn test_build_wav_header() {
         // 1 second of silence, mono, 16-bit, 44100 Hz
         let pcm = vec![0u8; 44100 * 2]; // 1 second mono 16-bit
-        let wav = build_wav(44100, 1, 16, &pcm);
+        let wav = build_wav(44100, 1, 16, &pcm).unwrap();
 
         // Check RIFF header
         assert_eq!(&wav[0..4], b"RIFF");

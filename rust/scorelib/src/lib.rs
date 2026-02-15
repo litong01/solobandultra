@@ -435,27 +435,36 @@ pub unsafe extern "C" fn scorelib_generate_midi(
 
     let options = parse_midi_options_json(options_json);
 
-    match generate_midi_from_file(path_str, &options) {
-        Ok(midi_bytes) => {
-            let len = midi_bytes.len();
-            let ptr = midi_bytes.leak().as_mut_ptr();
+    unsafe { *out_len = 0; }
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        generate_midi_from_file(path_str, &options)
+    }));
+
+    match result {
+        Ok(Ok(midi_bytes)) if !midi_bytes.is_empty() => {
+            let boxed = midi_bytes.into_boxed_slice();
+            let len = boxed.len();
+            let ptr = Box::into_raw(boxed) as *mut u8;
             unsafe { *out_len = len; }
             ptr
         }
-        Err(_) => std::ptr::null_mut(),
+        _ => std::ptr::null_mut(),
     }
 }
 
-/// Free MIDI bytes previously returned by `scorelib_generate_midi`.
+/// Free a buffer previously returned by a scorelib FFI function.
 ///
 /// # Safety
-/// `ptr` must be a buffer previously returned by a scorelib MIDI function,
+/// `ptr` must be a buffer previously returned by a scorelib function,
 /// or null. `len` must be the length returned via `out_len`.
 #[no_mangle]
 pub unsafe extern "C" fn scorelib_free_midi(ptr: *mut u8, len: usize) {
     if !ptr.is_null() && len > 0 {
         unsafe {
-            let _ = Vec::from_raw_parts(ptr, len, len);
+            // Reconstruct the Box<[u8]> that was leaked via Box::into_raw.
+            let slice = std::slice::from_raw_parts_mut(ptr, len);
+            let _ = Box::from_raw(slice as *mut [u8]);
         }
     }
 }
@@ -526,14 +535,21 @@ pub unsafe extern "C" fn scorelib_generate_midi_from_bytes(
 
     let options = parse_midi_options_json(options_json);
 
-    match generate_midi_from_bytes(bytes, ext, &options) {
-        Ok(midi_bytes) => {
-            let len = midi_bytes.len();
-            let ptr = midi_bytes.leak().as_mut_ptr();
+    unsafe { *out_len = 0; }
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        generate_midi_from_bytes(bytes, ext, &options)
+    }));
+
+    match result {
+        Ok(Ok(midi_bytes)) if !midi_bytes.is_empty() => {
+            let boxed = midi_bytes.into_boxed_slice();
+            let len = boxed.len();
+            let ptr = Box::into_raw(boxed) as *mut u8;
             unsafe { *out_len = len; }
             ptr
         }
-        Err(_) => std::ptr::null_mut(),
+        _ => std::ptr::null_mut(),
     }
 }
 
@@ -574,17 +590,25 @@ pub unsafe extern "C" fn scorelib_render_audio_from_bytes(
 
     let options = parse_midi_options_json(options_json);
 
-    match render_audio_from_bytes(bytes, ext, &options, sf_bytes) {
-        Ok(wav_bytes) => {
-            let wav_len = wav_bytes.len();
-            let ptr = wav_bytes.leak().as_mut_ptr();
-            unsafe { *out_len = wav_len; }
+    unsafe { *out_len = 0; }
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        render_audio_from_bytes(bytes, ext, &options, sf_bytes)
+    }));
+
+    match result {
+        Ok(Ok(wav_bytes)) if !wav_bytes.is_empty() => {
+            let boxed = wav_bytes.into_boxed_slice();
+            let len = boxed.len();
+            let ptr = Box::into_raw(boxed) as *mut u8;
+            unsafe { *out_len = len; }
             ptr
         }
-        Err(e) => {
+        Ok(Err(e)) => {
             eprintln!("[scorelib FFI] render_audio error: {e}");
             std::ptr::null_mut()
         }
+        _ => std::ptr::null_mut(),
     }
 }
 

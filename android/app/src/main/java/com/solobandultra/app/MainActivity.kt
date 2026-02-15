@@ -45,11 +45,16 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Initialize audio session manager for silent mode audio playback
-        audioSessionManager = AudioSessionManager(this)
+        // Initialize playback manager (created first so focus callbacks can reference it)
+        // We use a lateinit pattern: create AudioSessionManager with focus callbacks
+        // that delegate to playbackManager, which is assigned immediately after.
+        audioSessionManager = AudioSessionManager(
+            context = this,
+            onFocusLost = { playbackManager.pause() },
+            onFocusGained = { /* don't auto-resume — let user tap play */ },
+        )
         audioSessionManager.configureAudioSession()
 
-        // Initialize playback manager
         playbackManager = PlaybackManager(this, audioSessionManager)
 
         // Initialize Kinde authentication SDK (gracefully handle misconfiguration)
