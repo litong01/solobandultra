@@ -257,6 +257,11 @@ pub struct Harmony {
     pub kind: String,
     /// Bass note (for slash chords)
     pub bass: Option<HarmonyRoot>,
+    /// Beat offset within the measure, in divisions (quarter-note subdivisions).
+    /// Derived from the position of the `<harmony>` element relative to notes
+    /// in the MusicXML document order.  0 = start of measure.
+    #[serde(default)]
+    pub offset_divisions: i32,
 }
 
 /// Root or bass note of a harmony.

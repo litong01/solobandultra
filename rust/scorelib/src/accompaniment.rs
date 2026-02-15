@@ -71,6 +71,10 @@ pub fn analyze_chords(
 }
 
 /// Use explicit `<harmony>` elements from the MusicXML.
+///
+/// Supports multiple chord symbols per measure: if a measure has N harmonies
+/// at different beat offsets, N chords are emitted with durations that span
+/// from one harmony to the next (or to the end of the measure).
 fn analyze_chords_from_harmonies(
     part: &Part,
     unrolled: &[UnrolledMeasure],
@@ -81,6 +85,8 @@ fn analyze_chords_from_harmonies(
     for (i, um) in unrolled.iter().enumerate() {
         let measure = &part.measures[um.original_index];
         let entry = &timemap[i];
+        let divisions = entry.divisions.max(1) as f64;
+        let ms_per_division = entry.duration_ms / (entry.effective_quarters * divisions);
 
         if measure.harmonies.is_empty() {
             // No chord symbol in this measure — repeat the previous chord
@@ -102,16 +108,30 @@ fn analyze_chords_from_harmonies(
             continue;
         }
 
-        let h = &measure.harmonies[0];
-        let root = step_to_pitch_class(&h.root.step, h.root.alter.unwrap_or(0.0));
-        let kind = parse_chord_kind(&h.kind);
+        // Process all harmonies in this measure, splitting the measure
+        // duration among them based on their beat offsets.
+        let n = measure.harmonies.len();
+        for (j, h) in measure.harmonies.iter().enumerate() {
+            let root = step_to_pitch_class(&h.root.step, h.root.alter.unwrap_or(0.0));
+            let kind = parse_chord_kind(&h.kind);
 
-        chords.push(Chord {
-            root,
-            kind,
-            time_ms: entry.timestamp_ms,
-            duration_ms: entry.duration_ms,
-        });
+            let offset_ms = h.offset_divisions as f64 * ms_per_division;
+            // Duration runs until the next harmony's offset, or end of measure
+            let end_ms = if j + 1 < n {
+                let next_offset = measure.harmonies[j + 1].offset_divisions as f64;
+                next_offset * ms_per_division
+            } else {
+                entry.duration_ms
+            };
+            let dur_ms = (end_ms - offset_ms).max(1.0);
+
+            chords.push(Chord {
+                root,
+                kind,
+                time_ms: entry.timestamp_ms + offset_ms,
+                duration_ms: dur_ms,
+            });
+        }
     }
 
     chords
@@ -136,10 +156,13 @@ fn analyze_chords_from_melody(
         let measure = &part.measures[um.original_index];
         let entry = &timemap[i];
 
-        // Collect unique pitch classes from all sounding notes in this measure
+        // Collect unique pitch classes from all sounding notes in this measure.
+        // Include chord notes (simultaneous notes marked with <chord/>) — these
+        // carry the intervals that define chord quality (e.g. C-E-G written out
+        // as a chordal texture).  Only skip grace notes and rests.
         let mut pitch_classes: Vec<u8> = Vec::new();
         for note in &measure.notes {
-            if note.rest || note.grace || note.chord {
+            if note.rest || note.grace {
                 continue;
             }
             if let Some(ref pitch) = note.pitch {
@@ -234,9 +257,9 @@ fn find_most_likely_root(pitches: &[u8], key_root: u8) -> u8 {
 
 /// Infer the chord quality from the pitch classes present relative to the root.
 ///
-/// Checks for triad patterns by looking at intervals above the root.
-/// Note: we check dominant7 BEFORE major (unlike the TypeScript version which
-/// had a bug where dominant7 was unreachable).
+/// Checks for triad and seventh-chord patterns by looking at intervals above
+/// the root.  Ordered from most specific (4-note) to least specific (2-note)
+/// to avoid false matches.
 fn infer_chord_kind(pitches: &[u8], root: u8) -> ChordKind {
     let intervals: Vec<u8> = pitches
         .iter()
@@ -245,27 +268,47 @@ fn infer_chord_kind(pitches: &[u8], root: u8) -> ChordKind {
 
     let has = |interval: u8| intervals.contains(&interval);
 
-    // Check for dominant 7th first (0, 4, 7, 10) — BEFORE major
+    // ── 4-note chords (check first for specificity) ──────────────
+
+    // Major seventh (0, 4, 7, 11)
+    if has(4) && has(7) && has(11) {
+        return ChordKind::MajorSeventh;
+    }
+    // Dominant seventh (0, 4, 7, 10)
     if has(4) && has(7) && has(10) {
         return ChordKind::Dominant7;
     }
+    // Minor seventh (0, 3, 7, 10)
+    if has(3) && has(7) && has(10) {
+        return ChordKind::MinorSeventh;
+    }
+    // Half-diminished seventh (0, 3, 6, 10)
+    if has(3) && has(6) && has(10) {
+        return ChordKind::HalfDiminished;
+    }
 
-    // Check for diminished (0, 3, 6)
+    // ── 3-note chords (triads) ───────────────────────────────────
+
+    // Augmented triad (0, 4, 8)
+    if has(4) && has(8) && !has(7) {
+        return ChordKind::Augmented;
+    }
+    // Diminished triad (0, 3, 6)
     if has(3) && has(6) {
         return ChordKind::Diminished;
     }
-
-    // Check for minor triad (0, 3, 7)
+    // Minor triad (0, 3, 7)
     if has(3) && has(7) {
         return ChordKind::Minor;
     }
-
-    // Check for major triad (0, 4, 7)
+    // Major triad (0, 4, 7)
     if has(4) && has(7) {
         return ChordKind::Major;
     }
 
-    // Check for just a minor 3rd present (lean toward minor)
+    // ── Partial matches ──────────────────────────────────────────
+
+    // Just a minor 3rd → lean toward minor
     if has(3) {
         return ChordKind::Minor;
     }
@@ -335,6 +378,9 @@ fn add_seventh(voicing: &[u8], kind: ChordKind) -> Vec<u8> {
 
 /// Find the smoothest inversion of `voicing` relative to `previous`.
 /// Tries all rotations and picks the one with minimum total pitch movement.
+///
+/// When voicings have different lengths (e.g. triad → 7th chord), we compare
+/// only the overlapping positions to avoid garbage comparisons from `.cycle()`.
 fn get_smoother_voicing(voicing: &[u8], previous: &[u8]) -> Vec<u8> {
     if previous.is_empty() || voicing.is_empty() {
         return voicing.to_vec();
@@ -344,13 +390,16 @@ fn get_smoother_voicing(voicing: &[u8], previous: &[u8]) -> Vec<u8> {
     let mut best_distance = i32::MAX;
 
     let n = voicing.len();
+    let compare_len = n.min(previous.len());
     let mut current = voicing.to_vec();
 
     for _ in 0..n {
-        // Compute total distance
+        // Compare only the overlapping positions — don't .cycle() the shorter
+        // voicing, which would wrap around and produce meaningless comparisons.
         let dist: i32 = current
             .iter()
-            .zip(previous.iter().cycle())
+            .take(compare_len)
+            .zip(previous.iter().take(compare_len))
             .map(|(&a, &b)| (a as i32 - b as i32).abs())
             .sum();
         if dist < best_distance {
@@ -360,7 +409,7 @@ fn get_smoother_voicing(voicing: &[u8], previous: &[u8]) -> Vec<u8> {
         // Rotate: move lowest note up an octave
         if let Some(&lowest) = current.first() {
             current.remove(0);
-            current.push(lowest + 12);
+            current.push(lowest.saturating_add(12));
         }
     }
 
@@ -400,19 +449,32 @@ const CLICK_LO: u8 = 77; // Lo Wood Block — other beats
 #[allow(dead_code)]
 const DRUM_CHANNEL: u8 = 9;
 
+/// Determine the number of "felt" beats for a time signature.
+///
+/// Compound meters (6/8, 9/8, 12/8) are felt in groups of 3 eighth notes,
+/// so 6/8 has 2 felt beats, 9/8 has 3, 12/8 has 4.
+/// Simple meters use the numerator directly: 4/4 = 4 beats, 3/4 = 3 beats.
+fn felt_beats(beats: i32, beat_type: i32) -> i32 {
+    // Compound: numerator divisible by 3, denominator is 8, and more than 3
+    // (3/8 is simple — 3 eighth-note beats, not 1 dotted-quarter beat)
+    if beat_type == 8 && beats > 3 && beats % 3 == 0 {
+        beats / 3
+    } else {
+        beats
+    }
+}
+
 /// Generate metronome click events from the timemap.
 pub fn generate_metronome(timemap: &[TimemapEntry]) -> Vec<MidiEvent> {
     let mut events = Vec::new();
     let click_dur_ms = 100.0; // each click lasts 100ms
 
     for entry in timemap.iter() {
-        let beat_type = entry.time_sig.1.max(1) as f64;
-        // Number of beats: effective_quarters scaled by beat type
-        // e.g. 4/4 with 1 quarter note → 1 beat; 6/8 with 1.5 quarters → 3 beats
-        let actual_beats = (entry.effective_quarters * beat_type / 4.0).round().max(1.0) as i32;
-        let beat_dur_ms = entry.duration_ms / actual_beats as f64;
+        let (beats, beat_type) = entry.time_sig;
+        let num_clicks = felt_beats(beats, beat_type).max(1);
+        let beat_dur_ms = entry.duration_ms / num_clicks as f64;
 
-        for b in 0..actual_beats {
+        for b in 0..num_clicks {
             let beat_time_ms = entry.timestamp_ms + b as f64 * beat_dur_ms;
             let note = if b == 0 { CLICK_HI } else { CLICK_LO };
             let vel = if b == 0 { 127 } else { 100 };
@@ -620,22 +682,28 @@ const KICK: u8 = 36;
 const SNARE: u8 = 38;
 const HIHAT_CLOSED: u8 = 42;
 
-/// Generate drum pattern events.
-pub fn generate_drums(chords: &[Chord], energy: Energy, timemap: &[TimemapEntry]) -> Vec<MidiEvent> {
+/// Generate drum pattern events using the timemap's time signature to derive
+/// the correct number of beats per measure (instead of the old hardcoded 500ms
+/// that only worked at 120 BPM).
+///
+/// Drums play a steady pattern per measure regardless of chord changes, so this
+/// iterates over timemap entries — not chords.
+pub fn generate_drums(_chords: &[Chord], energy: Energy, timemap: &[TimemapEntry]) -> Vec<MidiEvent> {
     let em = energy_multipliers(energy);
     let mut events = Vec::new();
 
-    for chord in chords {
-        let beats = (chord.duration_ms / 500.0).round().max(2.0) as i32;
-        let beat_dur_ms = chord.duration_ms / beats as f64;
+    for entry in timemap.iter() {
+        let (ts_beats, ts_beat_type) = entry.time_sig;
+        let beats = felt_beats(ts_beats, ts_beat_type).max(1);
+        let beat_dur_ms = entry.duration_ms / beats as f64;
 
         for b in 0..beats {
-            let beat_time = chord.time_ms + b as f64 * beat_dur_ms;
+            let beat_time = entry.timestamp_ms + b as f64 * beat_dur_ms;
             let on_tick = ms_to_ticks(beat_time, timemap);
             let dur_ticks = (TICKS_PER_QUARTER as f64 * 0.25) as u32;
             let off_tick = on_tick + dur_ticks;
 
-            // Kick on beat 1 and 3
+            // Kick on beat 1 and 3 (or beat 1 only if < 4 beats)
             if b == 0 || (beats >= 4 && b == 2) {
                 let vel = velocity(100.0, em.drums);
                 events.push(MidiEvent {
@@ -672,7 +740,8 @@ pub fn generate_drums(chords: &[Chord], energy: Energy, timemap: &[TimemapEntry]
                 bytes: vec![0x89, HIHAT_CLOSED, 0],
             });
 
-            // Hi-hat eighth notes between beats
+            // Hi-hat eighth notes between beats (only if the beat is long enough
+            // to hear the subdivision, i.e. > 300ms per beat)
             if beat_dur_ms > 300.0 {
                 let eighth_time = beat_time + beat_dur_ms * 0.5;
                 let eighth_tick = ms_to_ticks(eighth_time, timemap);

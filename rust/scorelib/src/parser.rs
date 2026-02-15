@@ -308,11 +308,43 @@ fn parse_measure(node: &Node) -> Measure {
         new_page: false,
     };
 
+    // Track the running beat position (in divisions) to assign offsets to
+    // harmony elements.  In MusicXML, `<harmony>` appears before the note
+    // it applies to, so we record the current position when we see one.
+    let mut beat_offset: i32 = 0;
+
     for child in node.children().filter(|n| n.is_element()) {
         match child.tag_name().name() {
             "attributes" => measure.attributes = Some(parse_attributes(&child)),
-            "note" => measure.notes.push(parse_note(&child)),
-            "harmony" => measure.harmonies.push(parse_harmony(&child)),
+            "note" => {
+                let note = parse_note(&child);
+                // Chord notes share time with the previous note — don't advance
+                if !note.chord && !note.grace {
+                    beat_offset += note.duration;
+                }
+                measure.notes.push(note);
+            }
+            "forward" => {
+                // <forward> advances the beat position without a note
+                for fc in child.children().filter(|n| n.is_element()) {
+                    if fc.tag_name().name() == "duration" {
+                        beat_offset += parse_i32(&fc).unwrap_or(0);
+                    }
+                }
+            }
+            "backup" => {
+                // <backup> moves the beat position backwards (for multi-voice)
+                for bc in child.children().filter(|n| n.is_element()) {
+                    if bc.tag_name().name() == "duration" {
+                        beat_offset -= parse_i32(&bc).unwrap_or(0);
+                    }
+                }
+            }
+            "harmony" => {
+                let mut h = parse_harmony(&child);
+                h.offset_divisions = beat_offset.max(0);
+                measure.harmonies.push(h);
+            }
             "barline" => measure.barlines.push(parse_barline(&child)),
             "direction" => {
                 if let Some(dir) = parse_direction(&child) {
@@ -639,7 +671,7 @@ fn parse_harmony(node: &Node) -> Harmony {
         }
     }
 
-    Harmony { root, kind, bass }
+    Harmony { root, kind, bass, offset_divisions: 0 }
 }
 
 // ─── Barline ─────────────────────────────────────────────────────────
