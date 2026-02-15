@@ -47,6 +47,12 @@ android {
         kotlinCompilerExtensionVersion = "1.5.10"
     }
 
+    androidResources {
+        // Don't compress the SoundFont — it's a 31 MB binary blob that doesn't
+        // benefit from AAPT2 compression, and reading it uncompressed is faster.
+        noCompress += "sf2"
+    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"

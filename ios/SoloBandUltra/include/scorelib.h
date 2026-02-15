@@ -58,6 +58,22 @@ uint8_t* scorelib_generate_midi_from_bytes(const uint8_t* data, size_t len,
 uint8_t* scorelib_generate_midi(const char* path, const char* options_json, size_t* out_len);
 
 /**
+ * Render MusicXML data to WAV audio using a SoundFont.
+ * Internally generates MIDI and synthesizes it offline.
+ * `extension` is an optional format hint, may be NULL.
+ * `options_json` is a JSON string with generation options, may be NULL for defaults.
+ * `sf_data` points to the SoundFont (SF2) bytes, `sf_len` is its length.
+ * `out_len` receives the length of the returned WAV data.
+ * Returns a pointer to the WAV bytes, or NULL on error.
+ * The caller must free the returned buffer with scorelib_free_midi().
+ */
+uint8_t* scorelib_render_audio_from_bytes(const uint8_t* data, size_t len,
+                                          const char* extension,
+                                          const char* options_json,
+                                          const uint8_t* sf_data, size_t sf_len,
+                                          size_t* out_len);
+
+/**
  * Free a string previously returned by scorelib functions.
  * Safe to call with NULL.
  */

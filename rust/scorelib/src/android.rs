@@ -6,7 +6,7 @@ use jni::objects::{JByteArray, JClass, JString};
 use jni::sys::{jfloat, jint, jstring};
 use jni::JNIEnv;
 
-use crate::{render_bytes_to_svg, render_file_to_svg, playback_map_from_bytes, generate_midi_from_bytes, MidiOptions, Energy};
+use crate::{render_bytes_to_svg, render_file_to_svg, playback_map_from_bytes, generate_midi_from_bytes, render_audio_from_bytes, MidiOptions, Energy};
 
 /// Render a MusicXML file at the given path to SVG.
 ///
@@ -141,6 +141,55 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_generateMidi(
     match generate_midi_from_bytes(&bytes, ext.as_deref(), &options) {
         Ok(midi_bytes) => {
             match env.byte_array_from_slice(&midi_bytes) {
+                Ok(arr) => arr.into_raw(),
+                Err(_) => std::ptr::null_mut() as jni::sys::jbyteArray,
+            }
+        }
+        Err(_) => std::ptr::null_mut() as jni::sys::jbyteArray,
+    }
+}
+
+/// Render MusicXML bytes to WAV audio using a SoundFont.
+///
+/// Called from Kotlin as:
+///   external fun renderAudio(data: ByteArray, extension: String?, optionsJson: String?, soundfontData: ByteArray): ByteArray?
+#[no_mangle]
+pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderAudio(
+    mut env: JNIEnv,
+    _class: JClass,
+    data: JByteArray,
+    extension: JString,
+    options_json: JString,
+    soundfont_data: JByteArray,
+) -> jni::sys::jbyteArray {
+    let bytes = match env.convert_byte_array(&data) {
+        Ok(b) => b,
+        Err(_) => return std::ptr::null_mut() as jni::sys::jbyteArray,
+    };
+
+    let sf_bytes = match env.convert_byte_array(&soundfont_data) {
+        Ok(b) => b,
+        Err(_) => return std::ptr::null_mut() as jni::sys::jbyteArray,
+    };
+
+    let ext: Option<String> = if extension.is_null() {
+        None
+    } else {
+        env.get_string(&extension).ok().map(|s| s.into())
+    };
+
+    let options = if options_json.is_null() {
+        MidiOptions::default()
+    } else {
+        match env.get_string(&options_json) {
+            Ok(s) => parse_midi_options_str(&String::from(s)),
+            Err(_) => MidiOptions::default(),
+        }
+    };
+
+    match render_audio_from_bytes(&bytes, ext.as_deref(), &options, &sf_bytes) {
+        Ok(wav_bytes) => {
+            match env.byte_array_from_slice(&wav_bytes) {
                 Ok(arr) => arr.into_raw(),
                 Err(_) => std::ptr::null_mut() as jni::sys::jbyteArray,
             }

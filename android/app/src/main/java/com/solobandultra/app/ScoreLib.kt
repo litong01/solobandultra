@@ -105,4 +105,49 @@ object ScoreLib {
     ): ByteArray? {
         return generateMidi(data, ext.ifEmpty { null }, optionsJson)
     }
+
+    // ── Audio Rendering (offline MIDI→WAV) ──────────────────────────────
+
+    /**
+     * Render MusicXML bytes to WAV audio using a SoundFont.
+     * Returns a complete WAV file as a byte array, or null on error.
+     * @param data MusicXML file bytes.
+     * @param extension File extension hint (e.g. "musicxml", "mxl"), or null.
+     * @param optionsJson JSON string with MIDI options, or null for defaults.
+     * @param soundfontData SoundFont (.sf2) file bytes.
+     */
+    external fun renderAudio(
+        data: ByteArray,
+        extension: String?,
+        optionsJson: String?,
+        soundfontData: ByteArray
+    ): ByteArray?
+
+    /**
+     * Render a MusicXML asset to WAV audio.
+     * Loads the SoundFont from assets as well.
+     */
+    fun renderAudioFromAsset(
+        context: Context,
+        assetPath: String,
+        soundfontAssetPath: String,
+        optionsJson: String? = null
+    ): ByteArray? {
+        val extension = assetPath.substringAfterLast('.', "")
+        val bytes = context.assets.open(assetPath).use { it.readBytes() }
+        val sfBytes = context.assets.open(soundfontAssetPath).use { it.readBytes() }
+        return renderAudio(bytes, extension.ifEmpty { null }, optionsJson, sfBytes)
+    }
+
+    /**
+     * Render pre-loaded MusicXML bytes to WAV audio.
+     */
+    fun renderAudioFromData(
+        data: ByteArray,
+        ext: String,
+        soundfontData: ByteArray,
+        optionsJson: String? = null
+    ): ByteArray? {
+        return renderAudio(data, ext.ifEmpty { null }, optionsJson, soundfontData)
+    }
 }

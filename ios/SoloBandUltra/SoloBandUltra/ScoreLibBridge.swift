@@ -112,4 +112,85 @@ enum ScoreLib {
         scorelib_free_midi(ptr, outLen)
         return midiData
     }
+
+    // MARK: - Audio Rendering
+
+    /// Cached SoundFont data — loaded once from the app bundle.
+    private static let soundfontData: Data? = {
+        guard let url = Bundle.main.url(forResource: "GeneralUser_GS", withExtension: "sf2") else {
+            print("[ScoreLib] WARNING: GeneralUser_GS.sf2 not found in bundle")
+            return nil
+        }
+        return try? Data(contentsOf: url)
+    }()
+
+    /// Render MusicXML data to WAV audio using the bundled SoundFont.
+    ///
+    /// Internally generates MIDI and synthesizes it offline via rustysynth.
+    /// Returns a complete WAV file (44100 Hz, stereo, 16-bit) as Data.
+    static func renderAudio(_ data: Data, extension ext: String? = nil, optionsJson: String? = nil) -> Data? {
+        guard let sfData = soundfontData else {
+            print("[ScoreLib] Cannot render audio: no SoundFont available")
+            return nil
+        }
+
+        var outLen: Int = 0
+        let result: UnsafeMutablePointer<UInt8>? = data.withUnsafeBytes { xmlBuf in
+            guard let xmlBase = xmlBuf.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+                return nil
+            }
+            return sfData.withUnsafeBytes { sfBuf in
+                guard let sfBase = sfBuf.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+                    return nil
+                }
+
+                if let ext = ext {
+                    return ext.withCString { extPtr in
+                        if let opts = optionsJson {
+                            return opts.withCString { optsPtr in
+                                scorelib_render_audio_from_bytes(
+                                    xmlBase, xmlBuf.count,
+                                    extPtr, optsPtr,
+                                    sfBase, sfBuf.count,
+                                    &outLen
+                                )
+                            }
+                        } else {
+                            return scorelib_render_audio_from_bytes(
+                                xmlBase, xmlBuf.count,
+                                extPtr, nil,
+                                sfBase, sfBuf.count,
+                                &outLen
+                            )
+                        }
+                    }
+                } else {
+                    if let opts = optionsJson {
+                        return opts.withCString { optsPtr in
+                            scorelib_render_audio_from_bytes(
+                                xmlBase, xmlBuf.count,
+                                nil, optsPtr,
+                                sfBase, sfBuf.count,
+                                &outLen
+                            )
+                        }
+                    } else {
+                        return scorelib_render_audio_from_bytes(
+                            xmlBase, xmlBuf.count,
+                            nil, nil,
+                            sfBase, sfBuf.count,
+                            &outLen
+                        )
+                    }
+                }
+            }
+        }
+
+        guard let ptr = result, outLen > 0 else {
+            return nil
+        }
+        let wavData = Data(bytes: ptr, count: outLen)
+        scorelib_free_midi(ptr, outLen)  // Same dealloc pattern as MIDI bytes
+        return wavData
+    }
 }

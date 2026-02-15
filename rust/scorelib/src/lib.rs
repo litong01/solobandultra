@@ -21,6 +21,7 @@ pub mod timemap;
 pub mod midi;
 pub mod accompaniment;
 pub mod playback;
+pub mod audio;
 
 #[cfg(target_os = "android")]
 pub mod android;
@@ -275,6 +276,23 @@ pub fn generate_midi_from_bytes(
     Ok(generate_midi_from_score(&score, options))
 }
 
+/// Parse MusicXML bytes, generate MIDI internally, and render to WAV audio
+/// using the provided SoundFont.
+///
+/// Returns a complete WAV file (44 100 Hz, stereo, 16-bit) as raw bytes.
+/// The MIDI is an internal intermediate — it is never returned to the caller.
+pub fn render_audio_from_bytes(
+    data: &[u8],
+    extension: Option<&str>,
+    options: &MidiOptions,
+    soundfont_data: &[u8],
+) -> Result<Vec<u8>, String> {
+    let mut score = parse_bytes(data, extension)?;
+    transpose_score(&mut score, options.transpose);
+    let midi_bytes = generate_midi_from_score(&score, options);
+    audio::render_audio(&midi_bytes, soundfont_data)
+}
+
 /// Generate a playback map from a parsed score (JSON string).
 ///
 /// The playback map contains measure positions, system positions and the
@@ -516,6 +534,57 @@ pub unsafe extern "C" fn scorelib_generate_midi_from_bytes(
             ptr
         }
         Err(_) => std::ptr::null_mut(),
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Audio rendering FFI
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Render MusicXML bytes to WAV audio using a SoundFont.
+///
+/// Internally generates MIDI and synthesizes it offline via rustysynth.
+/// Returns a pointer to WAV data and writes the length to `out_len`.
+/// The caller must free the returned buffer with `scorelib_free_midi`.
+///
+/// # Safety
+/// `data` must point to `len` valid bytes. `sf_data` must point to `sf_len`
+/// valid bytes. `extension` and `options_json` may be null.
+/// `out_len` must point to valid writable memory.
+#[no_mangle]
+pub unsafe extern "C" fn scorelib_render_audio_from_bytes(
+    data: *const u8,
+    len: usize,
+    extension: *const c_char,
+    options_json: *const c_char,
+    sf_data: *const u8,
+    sf_len: usize,
+    out_len: *mut usize,
+) -> *mut u8 {
+    if data.is_null() || len == 0 || sf_data.is_null() || sf_len == 0 || out_len.is_null() {
+        return std::ptr::null_mut();
+    }
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    let sf_bytes = unsafe { std::slice::from_raw_parts(sf_data, sf_len) };
+    let ext = if extension.is_null() {
+        None
+    } else {
+        unsafe { CStr::from_ptr(extension) }.to_str().ok()
+    };
+
+    let options = parse_midi_options_json(options_json);
+
+    match render_audio_from_bytes(bytes, ext, &options, sf_bytes) {
+        Ok(wav_bytes) => {
+            let wav_len = wav_bytes.len();
+            let ptr = wav_bytes.leak().as_mut_ptr();
+            unsafe { *out_len = wav_len; }
+            ptr
+        }
+        Err(e) => {
+            eprintln!("[scorelib FFI] render_audio error: {e}");
+            std::ptr::null_mut()
+        }
     }
 }
 

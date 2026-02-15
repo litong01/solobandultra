@@ -306,19 +306,20 @@ fun SheetMusicScreen(
             val currentTranspose = transpose
             val result = withContext(Dispatchers.IO) {
                 try {
+                    val sfBytes = context.assets.open("GeneralUser_GS.sf2").use { it.readBytes() }
                     if (isExternal && extBytes != null) {
                         val ext = filePath.substringAfterLast('.', "")
                         val svg = ScoreLib.renderData(extBytes, ext, pageWidth, currentTranspose)
                         val pmap = ScoreLib.playbackMapFromData(extBytes, ext, pageWidth, currentTranspose)
-                        val midi = ScoreLib.generateMidiFromData(extBytes, ext, currentOptionsJson)
-                        Triple(svg, pmap, midi)
+                        val audio = ScoreLib.renderAudioFromData(extBytes, ext, sfBytes, currentOptionsJson)
+                        Triple(svg, pmap, audio)
                     } else {
                         val svg = ScoreLib.renderAsset(context, filePath, pageWidth, currentTranspose)
                         val pmap = ScoreLib.playbackMapFromAsset(context, filePath, pageWidth, currentTranspose)
-                        val midi = ScoreLib.generateMidiFromAsset(
-                            context, filePath, currentOptionsJson
+                        val audio = ScoreLib.renderAudioFromAsset(
+                            context, filePath, "GeneralUser_GS.sf2", currentOptionsJson
                         )
-                        Triple(svg, pmap, midi)
+                        Triple(svg, pmap, audio)
                     }
                 } catch (e: Exception) {
                     Triple(null, null, null)
@@ -329,14 +330,14 @@ fun SheetMusicScreen(
             if (thisGeneration != loadGeneration) return@launch
 
             isLoading = false
-            val (svg, pmap, midi) = result
+            val (svg, pmap, audio) = result
             if (svg != null) {
                 svgContent = svg
                 playbackMapJson = pmap
 
-                // Prepare the playback manager with the MIDI data
-                if (midi != null) {
-                    playbackManager?.prepareMidi(midi)
+                // Prepare the playback manager with the rendered WAV audio
+                if (audio != null) {
+                    playbackManager?.prepareAudio(audio)
                 }
             } else {
                 errorMessage = "Failed to render $filePath"
@@ -363,7 +364,7 @@ fun SheetMusicScreen(
         playbackManager?.repeatCount = repeatCount
     }
 
-    // Regenerate MIDI when settings change (no need to re-render SVG)
+    // Regenerate audio when settings change (no need to re-render SVG)
     LaunchedEffect(optionsJson) {
         // Skip the initial launch (already handled by the loadScore above)
         if (svgContent == null) return@LaunchedEffect
@@ -378,20 +379,23 @@ fun SheetMusicScreen(
 
         val currentOptionsJson = optionsJson
         val extBytes = if (isExternal) externalFileData else null
-        val midi = withContext(Dispatchers.IO) {
+        val audio = withContext(Dispatchers.IO) {
             try {
+                val sfBytes = context.assets.open("GeneralUser_GS.sf2").use { it.readBytes() }
                 if (isExternal && extBytes != null) {
                     val ext = filePath.substringAfterLast('.', "")
-                    ScoreLib.generateMidiFromData(extBytes, ext, currentOptionsJson)
+                    ScoreLib.renderAudioFromData(extBytes, ext, sfBytes, currentOptionsJson)
                 } else {
-                    ScoreLib.generateMidiFromAsset(context, filePath, currentOptionsJson)
+                    ScoreLib.renderAudioFromAsset(
+                        context, filePath, "GeneralUser_GS.sf2", currentOptionsJson
+                    )
                 }
             } catch (_: Exception) {
                 null
             }
         }
-        if (midi != null) {
-            playbackManager?.prepareMidi(midi)
+        if (audio != null) {
+            playbackManager?.prepareAudio(audio)
         }
     }
 

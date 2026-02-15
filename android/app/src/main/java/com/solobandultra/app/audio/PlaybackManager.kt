@@ -2,6 +2,7 @@ package com.solobandultra.app.audio
 
 import android.content.Context
 import android.media.MediaPlayer
+import android.media.PlaybackParams
 import android.util.Log
 import android.view.Choreographer
 import android.webkit.WebView
@@ -11,13 +12,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
 
 /**
- * Manages MIDI playback and cursor synchronization on Android.
+ * Manages offline-rendered WAV audio playback and cursor synchronization on Android.
  *
- * Uses MediaPlayer for native MIDI playback (no audio through WebView)
- * and Choreographer for frame-accurate cursor position updates.
+ * Uses MediaPlayer with PlaybackParams for native WAV playback with speed control
+ * (time-stretch without pitch change) and Choreographer for frame-accurate cursor
+ * position updates.
  *
  * Supports:
- * - **Speed** — scales MIDI tempo events so the player runs faster/slower.
+ * - **Speed** — uses PlaybackParams for time-stretch speed control.
  * - **Mute** — sets MediaPlayer volume to zero; player still runs for cursor sync.
  * - **Repeat** — replays the piece N times automatically.
  */
@@ -27,34 +29,6 @@ class PlaybackManager(
 ) {
     companion object {
         private const val TAG = "PlaybackManager"
-
-        /**
-         * Scale every tempo meta-event (`FF 51 03 tt tt tt`) in the MIDI data
-         * by dividing the microseconds-per-quarter value by [speed].
-         */
-        fun scaleMidiTempo(data: ByteArray, speed: Double): ByteArray {
-            if (speed <= 0.0 || speed == 1.0) return data
-            val bytes = data.copyOf()
-            var i = 0
-            while (i < bytes.size - 5) {
-                if (bytes[i] == 0xFF.toByte() &&
-                    bytes[i + 1] == 0x51.toByte() &&
-                    bytes[i + 2] == 0x03.toByte()
-                ) {
-                    val uspq = ((bytes[i + 3].toInt() and 0xFF) shl 16) or
-                               ((bytes[i + 4].toInt() and 0xFF) shl 8) or
-                               (bytes[i + 5].toInt() and 0xFF)
-                    val newUspq = maxOf(1, (uspq.toDouble() / speed).toInt())
-                    bytes[i + 3] = ((newUspq shr 16) and 0xFF).toByte()
-                    bytes[i + 4] = ((newUspq shr 8) and 0xFF).toByte()
-                    bytes[i + 5] = (newUspq and 0xFF).toByte()
-                    i += 6
-                } else {
-                    i++
-                }
-            }
-            return bytes
-        }
     }
 
     // ── Observable state ────────────────────────────────────────────────
@@ -93,13 +67,10 @@ class PlaybackManager(
     // ── Internal state ──────────────────────────────────────────────────
 
     private var mediaPlayer: MediaPlayer? = null
-    private var midiTempFile: File? = null
+    private var wavTempFile: File? = null
     var webView: WebView? = null
 
     private var choreographerCallback: Choreographer.FrameCallback? = null
-
-    /** Original (un-scaled) MIDI bytes. Kept for re-scaling when speed changes. */
-    private var originalMidiData: ByteArray? = null
 
     /** Remaining repeats (decremented on each finish). */
     private var remainingRepeats: Int = 0
@@ -107,12 +78,14 @@ class PlaybackManager(
     // ── Public API ──────────────────────────────────────────────────────
 
     /**
-     * Prepare MIDI data for playback (does not start playing).
+     * Prepare WAV audio data for playback (does not start playing).
+     *
+     * The WAV data should be a complete WAV file as returned by
+     * ScoreLib.renderAudio().
      */
-    fun prepareMidi(midiBytes: ByteArray) {
+    fun prepareAudio(wavBytes: ByteArray) {
         stop()
-        originalMidiData = midiBytes
-        rebuildPlayer()
+        loadWav(wavBytes)
     }
 
     /**
@@ -120,7 +93,7 @@ class PlaybackManager(
      */
     fun play() {
         val player = mediaPlayer ?: run {
-            Log.w(TAG, "No MIDI data loaded")
+            Log.w(TAG, "No audio data loaded")
             return
         }
 
@@ -130,8 +103,8 @@ class PlaybackManager(
         }
 
         audioSessionManager.requestAudioFocus()
-        // Apply current mute state
         applyMuteVolume(player)
+        applyPlaybackSpeed(player)
         player.start()
         _isPlaying.value = true
         startChoreographer()
@@ -146,14 +119,14 @@ class PlaybackManager(
         val player = mediaPlayer ?: return
         player.pause()
         _isPlaying.value = false
-        val playerMs = player.currentPosition.toDouble()
-        _currentTimeMs.value = playerMs * speed
+        // With PlaybackParams, currentPosition is in media time (music time).
+        _currentTimeMs.value = player.currentPosition.toDouble()
         stopChoreographer()
 
         // Keep cursor at the paused position
         updateCursor(_currentTimeMs.value)
 
-        Log.d(TAG, "Paused at ${_currentTimeMs.value / 1000.0}s (music time)")
+        Log.d(TAG, "Paused at ${_currentTimeMs.value / 1000.0}s")
     }
 
     /**
@@ -174,8 +147,8 @@ class PlaybackManager(
         updateCursor(0.0)
 
         // Clean up temp file
-        midiTempFile?.delete()
-        midiTempFile = null
+        wavTempFile?.delete()
+        wavTempFile = null
 
         Log.d(TAG, "Stopped")
     }
@@ -198,15 +171,13 @@ class PlaybackManager(
         val player = mediaPlayer ?: return
 
         val clampedMs = musicTimeMs.coerceIn(0.0, _durationMs.value)
-        // Convert music time to player time
-        val playerMs = (clampedMs / speed).toInt()
-        player.seekTo(playerMs)
+        player.seekTo(clampedMs.toInt())
         _currentTimeMs.value = clampedMs
 
         // Update cursor immediately at the seek position
         updateCursor(clampedMs)
 
-        Log.d(TAG, "Seeked to ${clampedMs / 1000.0}s (music time)")
+        Log.d(TAG, "Seeked to ${clampedMs / 1000.0}s")
     }
 
     /**
@@ -214,7 +185,6 @@ class PlaybackManager(
      */
     fun release() {
         stop()
-        originalMidiData = null
         audioSessionManager.release()
     }
 
@@ -226,8 +196,9 @@ class PlaybackManager(
             override fun doFrame(frameTimeNanos: Long) {
                 if (_isPlaying.value) {
                     val player = mediaPlayer ?: return
-                    // Player position is in wall-clock time; multiply by speed to get music time.
-                    val musicMs = player.currentPosition.toDouble() * speed
+                    // With PlaybackParams speed control, currentPosition is in media time
+                    // (i.e. music time) — it advances through the original timeline.
+                    val musicMs = player.currentPosition.toDouble()
                     _currentTimeMs.value = musicMs
                     updateCursor(musicMs)
                     Choreographer.getInstance().postFrameCallback(this)
@@ -268,17 +239,14 @@ class PlaybackManager(
     // ── Private helpers ─────────────────────────────────────────────────
 
     /**
-     * Re-create the MediaPlayer from [originalMidiData] using the current [speed].
+     * Load WAV data into a MediaPlayer.
      */
-    private fun rebuildPlayer() {
-        val original = originalMidiData ?: return
-        val scaled = scaleMidiTempo(original, speed)
-
+    private fun loadWav(wavBytes: ByteArray) {
         try {
-            // MediaPlayer requires a file, so write MIDI data to a temp file
-            val tempFile = File.createTempFile("playback", ".mid", context.cacheDir)
-            tempFile.writeBytes(scaled)
-            midiTempFile = tempFile
+            // MediaPlayer requires a file, so write WAV data to a temp file
+            val tempFile = File.createTempFile("playback", ".wav", context.cacheDir)
+            tempFile.writeBytes(wavBytes)
+            wavTempFile = tempFile
 
             val player = MediaPlayer()
             player.setAudioAttributes(audioSessionManager.getAudioAttributes())
@@ -290,33 +258,39 @@ class PlaybackManager(
             }
 
             mediaPlayer = player
-            // Duration in music time = player wall-clock duration * speed
-            _durationMs.value = player.duration.toDouble() * speed
+            // Duration is the full length of the WAV (music time)
+            _durationMs.value = player.duration.toDouble()
 
             // Show cursor at the beginning
             updateCursor(0.0)
 
-            Log.d(TAG, "MIDI prepared: ${_durationMs.value / 1000.0}s (music time), speed=$speed")
+            Log.d(TAG, "Audio prepared: ${_durationMs.value / 1000.0}s, speed=$speed")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to prepare MIDI: ${e.message}")
+            Log.e(TAG, "Failed to prepare audio: ${e.message}")
             mediaPlayer = null
             _durationMs.value = 0.0
         }
     }
 
+    /** Apply playback speed via PlaybackParams (time-stretch, no pitch change). */
+    private fun applyPlaybackSpeed(player: MediaPlayer) {
+        try {
+            val params = PlaybackParams()
+                .setSpeed(speed.toFloat())
+                .setPitch(1.0f) // Keep original pitch
+            player.playbackParams = params
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to set playback speed: ${e.message}")
+        }
+    }
+
     /** Called when speed changes at runtime. */
     private fun applySpeedChange() {
-        val original = originalMidiData ?: return
-        val wasPlaying = _isPlaying.value
-        val savedMusicTimeMs = _currentTimeMs.value
-
-        if (wasPlaying) pause()
-        rebuildPlayer()
-
-        if (savedMusicTimeMs > 0.0) {
-            seekTo(savedMusicTimeMs)
+        val player = mediaPlayer ?: return
+        if (_isPlaying.value) {
+            applyPlaybackSpeed(player)
         }
-        if (wasPlaying) play()
+        // If paused, speed will be applied on next play()
     }
 
     /** Apply mute volume to the current MediaPlayer. */
@@ -341,6 +315,7 @@ class PlaybackManager(
             Log.d(TAG, "Repeat ${repeatCount - remainingRepeats}/$repeatCount")
             mediaPlayer?.seekTo(0)
             _currentTimeMs.value = 0.0
+            mediaPlayer?.let { applyPlaybackSpeed(it) }
             mediaPlayer?.start()
             return
         }

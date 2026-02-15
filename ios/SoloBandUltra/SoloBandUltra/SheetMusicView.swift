@@ -183,8 +183,8 @@ struct SheetMusicView: View {
             // Generate playback map
             let pmap = ScoreLib.playbackMap(data, extension: ext, pageWidth: pageWidth, transpose: transposeVal)
 
-            // Generate MIDI data for playback with current settings
-            let midi = ScoreLib.generateMidi(data, extension: ext, optionsJson: optionsJson)
+            // Render audio (MIDI→WAV) for playback with current settings
+            let audio = ScoreLib.renderAudio(data, extension: ext, optionsJson: optionsJson)
 
             DispatchQueue.main.async {
                 // Discard this result if a newer loadScore was started while we were working.
@@ -195,9 +195,9 @@ struct SheetMusicView: View {
                     svgContent = svg
                     playbackMapJson = pmap
 
-                    // Prepare the playback manager with the MIDI data
-                    if let midiData = midi {
-                        playbackManager.prepareMidi(midiData)
+                    // Prepare the playback manager with the rendered audio
+                    if let wavData = audio {
+                        playbackManager.prepareAudio(wavData)
                     }
                 } else {
                     errorMessage = "Failed to render '\(filename)'"
@@ -206,13 +206,14 @@ struct SheetMusicView: View {
         }
     }
 
-    /// Regenerate only the MIDI data when settings change (no need to re-render SVG).
+    /// Regenerate only the audio when accompaniment/energy settings change
+    /// (no need to re-render SVG).
     private func regenerateMidi() {
         let optionsJson = midiSettings.toJson()
         guard optionsJson != lastOptionsJson else { return }
         lastOptionsJson = optionsJson
 
-        // Bump the MIDI generation counter so any in-flight regen is discarded.
+        // Bump the generation counter so any in-flight regen is discarded.
         midiGeneration += 1
         let thisMidiGen = midiGeneration
 
@@ -242,13 +243,13 @@ struct SheetMusicView: View {
                 data = bundleData
             }
 
-            let midi = ScoreLib.generateMidi(data, extension: ext, optionsJson: optionsJson)
+            let audio = ScoreLib.renderAudio(data, extension: ext, optionsJson: optionsJson)
 
             DispatchQueue.main.async {
                 // Discard if a newer regeneration was started while we were working.
                 guard thisMidiGen == midiGeneration else { return }
-                if let midiData = midi {
-                    playbackManager.prepareMidi(midiData)
+                if let wavData = audio {
+                    playbackManager.prepareAudio(wavData)
                 }
             }
         }
