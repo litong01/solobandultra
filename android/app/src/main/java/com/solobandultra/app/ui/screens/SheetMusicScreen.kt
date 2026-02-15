@@ -784,75 +784,101 @@ private fun SettingsSheetContent(
 
         // ── 1. Music Source ──────────────────────────────────────
         SettingsCard("Music Source") {
-            // Source dropdown
+            // Playlist row: label on left, dropdown on right (matches iOS layout)
             var sourceExpanded by remember { mutableStateOf(false) }
             val selectedSource = musicSources.firstOrNull { it.id == selectedSourceId }
 
-            ExposedDropdownMenuBox(
-                expanded = sourceExpanded,
-                onExpandedChange = { sourceExpanded = it }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
             ) {
-                OutlinedTextField(
-                    value = selectedSource?.name ?: "",
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Playlist") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = sourceExpanded) },
-                    modifier = Modifier
-                        .menuAnchor()
-                        .fillMaxWidth(),
-                    textStyle = MaterialTheme.typography.bodyMedium
+                Text(
+                    "Playlist",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.width(72.dp)
                 )
-                ExposedDropdownMenu(
+                Spacer(modifier = Modifier.weight(1f))
+                ExposedDropdownMenuBox(
                     expanded = sourceExpanded,
-                    onDismissRequest = { sourceExpanded = false }
+                    onExpandedChange = { sourceExpanded = it }
                 ) {
-                    musicSources.forEach { source ->
-                        DropdownMenuItem(
-                            text = { Text(source.name) },
-                            onClick = {
-                                selectedSourceId = source.id
-                                sourceExpanded = false
-                            }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .menuAnchor()
+                            .clickable { sourceExpanded = true }
+                    ) {
+                        Text(
+                            selectedSource?.name ?: "",
+                            style = MaterialTheme.typography.bodyMedium
                         )
+                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = sourceExpanded)
+                    }
+                    ExposedDropdownMenu(
+                        expanded = sourceExpanded,
+                        onDismissRequest = { sourceExpanded = false }
+                    ) {
+                        musicSources.forEach { source ->
+                            DropdownMenuItem(
+                                text = { Text(source.name) },
+                                onClick = {
+                                    selectedSourceId = source.id
+                                    sourceExpanded = false
+                                }
+                            )
+                        }
                     }
                 }
             }
 
-            // File picker (shown when a source with items is selected)
+            // Music row: label on left, dropdown on right (matches iOS layout)
             if (selectedSource != null && selectedSource.items.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 var fileExpanded by remember { mutableStateOf(false) }
                 val selectedFile = selectedSource.items.firstOrNull { it.url == selectedFileUrl }
 
-                ExposedDropdownMenuBox(
-                    expanded = fileExpanded,
-                    onExpandedChange = { fileExpanded = it }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    OutlinedTextField(
-                        value = selectedFile?.name ?: "",
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Music") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = fileExpanded) },
-                        modifier = Modifier
-                            .menuAnchor()
-                            .fillMaxWidth(),
-                        textStyle = MaterialTheme.typography.bodyMedium
+                    Text(
+                        "Music",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.width(72.dp)
                     )
-                    ExposedDropdownMenu(
+                    Spacer(modifier = Modifier.weight(1f))
+                    ExposedDropdownMenuBox(
                         expanded = fileExpanded,
-                        onDismissRequest = { fileExpanded = false }
+                        onExpandedChange = { fileExpanded = it }
                     ) {
-                        selectedSource.items.forEach { item ->
-                            DropdownMenuItem(
-                                text = { Text(item.name) },
-                                onClick = {
-                                    selectedFileUrl = item.url
-                                    fileExpanded = false
-                                }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .menuAnchor()
+                                .clickable { fileExpanded = true }
+                        ) {
+                            Text(
+                                selectedFile?.name ?: "",
+                                style = MaterialTheme.typography.bodyMedium
                             )
+                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = fileExpanded)
+                        }
+                        ExposedDropdownMenu(
+                            expanded = fileExpanded,
+                            onDismissRequest = { fileExpanded = false }
+                        ) {
+                            selectedSource.items.forEach { item ->
+                                DropdownMenuItem(
+                                    text = { Text(item.name) },
+                                    onClick = {
+                                        selectedFileUrl = item.url
+                                        fileExpanded = false
+                                    }
+                                )
+                            }
                         }
                     }
                 }

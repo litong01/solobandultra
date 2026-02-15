@@ -11,7 +11,7 @@ use jni::objects::{JByteArray, JClass, JString};
 use jni::sys::{jfloat, jint, jstring};
 use jni::JNIEnv;
 
-use crate::{render_bytes_to_svg, render_file_to_svg, playback_map_from_bytes, generate_midi_from_bytes, render_audio_from_bytes, MidiOptions, Energy};
+use crate::{render_bytes_to_svg, render_file_to_svg, playback_map_from_bytes, generate_midi_from_bytes, render_audio_from_bytes, parse_midi_options_from_json_str, MidiOptions};
 
 /// Render a MusicXML file at the given path to SVG.
 ///
@@ -151,7 +151,7 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_generateMidi(
         MidiOptions::default()
     } else {
         match env.get_string(&options_json) {
-            Ok(s) => parse_midi_options_str(&String::from(s)),
+            Ok(s) => parse_midi_options_from_json_str(&String::from(s)),
             Err(_) => MidiOptions::default(),
         }
     };
@@ -204,7 +204,7 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderAudio(
         MidiOptions::default()
     } else {
         match env.get_string(&options_json) {
-            Ok(s) => parse_midi_options_str(&String::from(s)),
+            Ok(s) => parse_midi_options_from_json_str(&String::from(s)),
             Err(_) => MidiOptions::default(),
         }
     };
@@ -224,42 +224,3 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderAudio(
     }
 }
 
-/// Simple MIDI options parser from a JSON string (mirrors lib.rs helper).
-fn parse_midi_options_str(json_str: &str) -> MidiOptions {
-    let mut opts = MidiOptions::default();
-    if json_str.contains("\"include_melody\":false") || json_str.contains("\"include_melody\": false") {
-        opts.include_melody = false;
-    }
-    if json_str.contains("\"include_piano\":true") || json_str.contains("\"include_piano\": true") {
-        opts.include_piano = true;
-    }
-    if json_str.contains("\"include_bass\":true") || json_str.contains("\"include_bass\": true") {
-        opts.include_bass = true;
-    }
-    if json_str.contains("\"include_strings\":true") || json_str.contains("\"include_strings\": true") {
-        opts.include_strings = true;
-    }
-    if json_str.contains("\"include_drums\":true") || json_str.contains("\"include_drums\": true") {
-        opts.include_drums = true;
-    }
-    if json_str.contains("\"include_metronome\":false") || json_str.contains("\"include_metronome\": false") {
-        opts.include_metronome = false;
-    }
-    if json_str.contains("\"energy\":\"soft\"") || json_str.contains("\"energy\": \"soft\"") {
-        opts.energy = Energy::Soft;
-    }
-    if json_str.contains("\"energy\":\"strong\"") || json_str.contains("\"energy\": \"strong\"") {
-        opts.energy = Energy::Strong;
-    }
-    // Parse "transpose":N — extract the integer value after the key
-    if let Some(pos) = json_str.find("\"transpose\":") {
-        let after = &json_str[pos + "\"transpose\":".len()..];
-        let num_str: String = after.trim().chars()
-            .take_while(|c| *c == '-' || c.is_ascii_digit())
-            .collect();
-        if let Ok(val) = num_str.parse::<i32>() {
-            opts.transpose = val;
-        }
-    }
-    opts
-}

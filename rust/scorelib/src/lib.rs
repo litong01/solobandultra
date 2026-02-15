@@ -624,19 +624,12 @@ pub unsafe extern "C" fn scorelib_render_audio_from_bytes(
     }
 }
 
-/// Parse MidiOptions from a JSON C string (internal helper).
-unsafe fn parse_midi_options_json(json_ptr: *const c_char) -> MidiOptions {
-    if json_ptr.is_null() {
-        return MidiOptions::default();
-    }
-    let c_str = unsafe { CStr::from_ptr(json_ptr) };
-    let json_str = match c_str.to_str() {
-        Ok(s) => s,
-        Err(_) => return MidiOptions::default(),
-    };
-
-    // Simple JSON parsing without serde_json::Value dependency overhead.
-    // We look for known keys with simple string matching.
+/// Parse MidiOptions from a JSON string.
+///
+/// Simple string-matching parser (no serde_json::Value overhead).
+/// Handles both compact (`"key":value`) and spaced (`"key": value`) JSON.
+/// Used by both the C FFI layer and the Android JNI layer.
+pub fn parse_midi_options_from_json_str(json_str: &str) -> MidiOptions {
     let mut opts = MidiOptions::default();
     if json_str.contains("\"include_melody\":false") || json_str.contains("\"include_melody\": false") {
         opts.include_melody = false;
@@ -681,4 +674,16 @@ unsafe fn parse_midi_options_json(json_ptr: *const c_char) -> MidiOptions {
         }
     }
     opts
+}
+
+/// Parse MidiOptions from a JSON C string (C FFI helper).
+unsafe fn parse_midi_options_json(json_ptr: *const c_char) -> MidiOptions {
+    if json_ptr.is_null() {
+        return MidiOptions::default();
+    }
+    let c_str = unsafe { CStr::from_ptr(json_ptr) };
+    match c_str.to_str() {
+        Ok(s) => parse_midi_options_from_json_str(s),
+        Err(_) => MidiOptions::default(),
+    }
 }
