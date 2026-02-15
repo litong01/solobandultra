@@ -373,7 +373,9 @@ struct SVGWebView: UIViewRepresentable {
     /// The shared cursor JavaScript (ported from mysoloband).
     static let cursorJavaScript: String = """
     // ─── Playback cursor synchronization ───────────────────────────────
-    // Ported from mysoloband's VerovioRendererBase._move() and Player.play()
+    // Cursor animation runs entirely inside the WebView via
+    // requestAnimationFrame — NO cross-process IPC during playback.
+    // Swift sends one-shot commands: startCursorAnimation / stopCursorAnimation.
 
     var _measures = [];      // {measure_idx, x, width, system_idx}
     var _systems = [];       // {y, height}
@@ -385,6 +387,13 @@ struct SVGWebView: UIViewRepresentable {
     var _svgEl = null;
     var _containerEl = null;
     var _totalDurationMs = 0;
+
+    // ─── Self-driven animation state ──────────────────────────────────
+    var _animating = false;       // true while requestAnimationFrame loop is active
+    var _animStartWallMs = 0;     // performance.now() at which animation started
+    var _animStartMusicMs = 0;    // music-time (ms) at which animation started
+    var _animSpeed = 1.0;         // playback speed multiplier
+    var _animFrameId = null;      // requestAnimationFrame handle
 
     function initPlayback(playbackMap) {
         _measures = playbackMap.measures || [];
@@ -407,6 +416,42 @@ struct SVGWebView: UIViewRepresentable {
         }
 
         _isInitialized = true;
+    }
+
+    /// Called once by Swift when playback starts (or after seek/speed change).
+    /// The WebView then drives the cursor via requestAnimationFrame — zero IPC.
+    function startCursorAnimation(musicMs, speed) {
+        _animStartMusicMs = musicMs;
+        _animStartWallMs = performance.now();
+        _animSpeed = speed;
+        showCursor();
+        if (!_animating) {
+            _animating = true;
+            _animFrameId = requestAnimationFrame(_animLoop);
+        }
+    }
+
+    /// Called by Swift on pause/stop.  Positions the cursor and halts animation.
+    function stopCursorAnimation(musicMs) {
+        _animating = false;
+        if (_animFrameId) {
+            cancelAnimationFrame(_animFrameId);
+            _animFrameId = null;
+        }
+        if (musicMs <= 0) {
+            moveCursor(0);
+        } else {
+            moveCursor(musicMs);
+        }
+    }
+
+    /// Internal animation loop — runs via requestAnimationFrame, no IPC.
+    function _animLoop() {
+        if (!_animating) return;
+        var elapsed = performance.now() - _animStartWallMs;
+        var musicMs = _animStartMusicMs + elapsed * _animSpeed;
+        moveCursor(musicMs);
+        _animFrameId = requestAnimationFrame(_animLoop);
     }
 
     function showCursor() {

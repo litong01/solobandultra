@@ -201,11 +201,14 @@ struct ContentView: View {
 
     /// Check if the clipboard probably contains a web URL (without triggering the paste prompt).
     private func checkClipboardForUrl() {
-        UIPasteboard.general.detectPatterns(for: [.probableWebURL]) { result in
-            DispatchQueue.main.async {
-                if case .success(let patterns) = result {
-                    clipboardHasUrl = patterns.contains(.probableWebURL)
-                } else {
+        Task {
+            do {
+                let patterns = try await UIPasteboard.general.detectedPatterns(for: [\.probableWebURL])
+                await MainActor.run {
+                    clipboardHasUrl = patterns.contains(\.probableWebURL)
+                }
+            } catch {
+                await MainActor.run {
                     clipboardHasUrl = false
                 }
             }
