@@ -798,20 +798,28 @@ private fun SettingsSheetContent(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.width(72.dp)
                 )
-                Spacer(modifier = Modifier.weight(1f))
                 ExposedDropdownMenuBox(
                     expanded = sourceExpanded,
-                    onExpandedChange = { sourceExpanded = it }
+                    onExpandedChange = { sourceExpanded = it },
+                    modifier = Modifier.weight(1f)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .menuAnchor()
-                            .clickable { sourceExpanded = true }
+                            .fillMaxWidth()
+                            .border(
+                                1.dp,
+                                MaterialTheme.colorScheme.outline,
+                                RoundedCornerShape(8.dp)
+                            )
+                            .clip(RoundedCornerShape(8.dp))
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
                     ) {
                         Text(
                             selectedSource?.name ?: "",
-                            style = MaterialTheme.typography.bodyMedium
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f)
                         )
                         ExposedDropdownMenuDefaults.TrailingIcon(expanded = sourceExpanded)
                     }
@@ -821,11 +829,13 @@ private fun SettingsSheetContent(
                     ) {
                         musicSources.forEach { source ->
                             DropdownMenuItem(
-                                text = { Text(source.name) },
+                                text = { Text(source.name, style = MaterialTheme.typography.bodyMedium) },
                                 onClick = {
                                     selectedSourceId = source.id
                                     sourceExpanded = false
-                                }
+                                },
+                                modifier = Modifier.defaultMinSize(minHeight = 36.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                             )
                         }
                     }
@@ -849,20 +859,28 @@ private fun SettingsSheetContent(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.width(72.dp)
                     )
-                    Spacer(modifier = Modifier.weight(1f))
                     ExposedDropdownMenuBox(
                         expanded = fileExpanded,
-                        onExpandedChange = { fileExpanded = it }
+                        onExpandedChange = { fileExpanded = it },
+                        modifier = Modifier.weight(1f)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .menuAnchor()
-                                .clickable { fileExpanded = true }
+                                .fillMaxWidth()
+                                .border(
+                                    1.dp,
+                                    MaterialTheme.colorScheme.outline,
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .clip(RoundedCornerShape(8.dp))
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
                         ) {
                             Text(
                                 selectedFile?.name ?: "",
-                                style = MaterialTheme.typography.bodyMedium
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f)
                             )
                             ExposedDropdownMenuDefaults.TrailingIcon(expanded = fileExpanded)
                         }
@@ -872,11 +890,13 @@ private fun SettingsSheetContent(
                         ) {
                             selectedSource.items.forEach { item ->
                                 DropdownMenuItem(
-                                    text = { Text(item.name) },
+                                    text = { Text(item.name, style = MaterialTheme.typography.bodyMedium) },
                                     onClick = {
                                         selectedFileUrl = item.url
                                         fileExpanded = false
-                                    }
+                                    },
+                                    modifier = Modifier.defaultMinSize(minHeight = 36.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                                 )
                             }
                         }
