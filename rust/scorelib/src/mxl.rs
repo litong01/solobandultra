@@ -27,14 +27,30 @@ pub fn extract_musicxml_from_mxl(data: &[u8]) -> Result<String, String> {
     let root_file_path = read_container_xml(&mut archive)?;
 
     // Step 2: Read the root MusicXML file
-    let mut root_file = archive
+    let root_file = archive
         .by_name(&root_file_path)
         .map_err(|e| format!("Root file '{root_file_path}' not found in archive: {e}"))?;
 
+    // Guard against zip bombs: reject files claiming >100 MB uncompressed.
+    const MAX_UNCOMPRESSED_SIZE: u64 = 100 * 1024 * 1024;
+    if root_file.size() > MAX_UNCOMPRESSED_SIZE {
+        return Err(format!(
+            "MXL root file too large ({} bytes, max {})",
+            root_file.size(),
+            MAX_UNCOMPRESSED_SIZE
+        ));
+    }
+
+    // Also cap actual bytes read as a secondary defence (ZIP header size
+    // can be spoofed), using a Read adapter with a limit.
+    let mut limited = root_file.take(MAX_UNCOMPRESSED_SIZE + 1);
     let mut xml = String::new();
-    root_file
+    limited
         .read_to_string(&mut xml)
         .map_err(|e| format!("Failed to read '{root_file_path}': {e}"))?;
+    if xml.len() as u64 > MAX_UNCOMPRESSED_SIZE {
+        return Err("MXL root file exceeds maximum allowed size".to_string());
+    }
 
     Ok(xml)
 }
@@ -44,9 +60,11 @@ fn read_container_xml(archive: &mut ZipArchive<Cursor<&[u8]>>) -> Result<String,
     // First, try to read container.xml
     let container_xml = {
         match archive.by_name("META-INF/container.xml") {
-            Ok(mut container_file) => {
+            Ok(container_file) => {
+                // container.xml should be tiny; cap at 1 MB as a safety measure.
+                let mut limited = container_file.take(1_024 * 1_024);
                 let mut xml = String::new();
-                container_file
+                limited
                     .read_to_string(&mut xml)
                     .map_err(|e| format!("Failed to read container.xml: {e}"))?;
                 Some(xml)

@@ -70,7 +70,7 @@ pub(super) fn compute_beat_x_map(
             }
         }
     }
-    unique_beats.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    unique_beats.sort_by(|a, b| a.total_cmp(b));
 
     if unique_beats.is_empty() {
         return vec![];

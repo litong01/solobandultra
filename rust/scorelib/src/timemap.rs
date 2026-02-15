@@ -133,8 +133,11 @@ pub fn generate_timemap(
 
         // ── Compute measure duration ────────────────────────────────
         // quarter_notes = (beats / beat_type) * 4
-        let nominal_quarters = (time_sig.0 as f64 / time_sig.1 as f64) * 4.0;
-        let ms_per_quarter = 60_000.0 / tempo;
+        // Guard against malformed input: beat_type=0 → Infinity, tempo=0 → Infinity.
+        let safe_beat_type = if time_sig.1 > 0 { time_sig.1 } else { 4 };
+        let safe_tempo = if tempo > 0.0 { tempo } else { DEFAULT_TEMPO };
+        let nominal_quarters = (time_sig.0 as f64 / safe_beat_type as f64) * 4.0;
+        let ms_per_quarter = 60_000.0 / safe_tempo;
 
         // Handle pickup measures: if this is an implicit measure (anacrusis),
         // compute duration from actual note content instead.

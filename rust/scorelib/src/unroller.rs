@@ -299,7 +299,10 @@ fn parse_ending_numbers(s: &str) -> Vec<i32> {
                     part[..dash_pos].parse::<i32>(),
                     part[dash_pos + 1..].parse::<i32>(),
                 ) {
-                    for n in start..=end {
+                    // Cap range expansion to prevent OOM from malicious input
+                    // (e.g. "1-100000000"). No real score needs >20 volta endings.
+                    let capped_end = end.min(start.saturating_add(20));
+                    for n in start..=capped_end {
                         result.push(n);
                     }
                     continue;

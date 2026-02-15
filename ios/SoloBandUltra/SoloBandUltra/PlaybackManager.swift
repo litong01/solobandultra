@@ -129,7 +129,7 @@ class PlaybackManager: ObservableObject {
 
     /// Ensure the audio session is configured and the engine is running.
     private func ensureEngineRunning() throws {
-        audioSessionManager.ensureSessionActive()
+        try audioSessionManager.ensureSessionActive()
 
         if !engine.isRunning {
             try engine.start()
@@ -240,7 +240,11 @@ class PlaybackManager: ObservableObject {
 
     /// Start or resume playback.
     func play() {
-        remainingRepeats = repeatCount
+        // Only reset the repeat counter when starting fresh, not when resuming
+        // from a paused state mid-repeat.
+        if !isPlaying && currentTimeMs == 0 {
+            remainingRepeats = repeatCount
+        }
         startPlayback()
     }
 
@@ -401,9 +405,11 @@ class PlaybackManager: ObservableObject {
         guard isPlaying else { return }
         updateCurrentTime()
 
-        // Detect end of playback.
-        if currentTimeMs >= durationMs - 50 {
-            playbackDidFinish()
+        // End-of-playback is detected by the scheduleSegment completion handler,
+        // not here. The poll timer only drives cursor position updates.
+        // Clamp so the UI doesn't overshoot the duration.
+        if currentTimeMs > durationMs {
+            currentTimeMs = durationMs
         }
     }
 

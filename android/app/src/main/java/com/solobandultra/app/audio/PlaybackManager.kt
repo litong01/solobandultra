@@ -111,7 +111,11 @@ class PlaybackManager(
             return
         }
 
-        remainingRepeats = repeatCount
+        // Only reset the repeat counter when starting fresh, not when resuming
+        // from a paused state mid-repeat.
+        if (!_isPlaying.value && _currentTimeMs.value == 0.0) {
+            remainingRepeats = repeatCount
+        }
 
         if (!audioSessionManager.requestAudioFocus()) {
             Log.w(TAG, "Audio focus denied, not starting playback")
@@ -120,7 +124,13 @@ class PlaybackManager(
 
         applyMuteVolume(player)
         applyPlaybackSpeed(player)
-        player.start()
+        try {
+            player.start()
+        } catch (e: IllegalStateException) {
+            Log.e(TAG, "Failed to start playback: ${e.message}")
+            audioSessionManager.abandonAudioFocus()
+            return
+        }
         _isPlaying.value = true
         startChoreographer()
 
@@ -254,17 +264,19 @@ class PlaybackManager(
     // ── WebView cursor communication ────────────────────────────────────
 
     private fun updateCursor(timeMs: Double) {
-        webView?.post {
-            webView?.evaluateJavascript(
-                "if (typeof moveCursor === 'function') { showCursor(); moveCursor($timeMs); }",
+        val wv = webView ?: return
+        wv.post {
+            wv.evaluateJavascript(
+                "if (typeof moveCursor === 'function') { moveCursor($timeMs); }",
                 null
             )
         }
     }
 
     private fun hideCursor() {
-        webView?.post {
-            webView?.evaluateJavascript(
+        val wv = webView ?: return
+        wv.post {
+            wv.evaluateJavascript(
                 "if (typeof hideCursor === 'function') { hideCursor(); }",
                 null
             )

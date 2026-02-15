@@ -288,8 +288,9 @@ fun SheetMusicScreen(
     }
 
     fun loadScore(filePath: String, pageWidth: Float) {
-        // Bump the generation counter so any in-flight load is discarded.
+        // Bump generation counters so any in-flight load or audio re-render is discarded.
         loadGeneration++
+        audioGeneration++
         val thisGeneration = loadGeneration
 
         isLoading = true
@@ -1131,6 +1132,11 @@ private fun SvgWebView(
 
             val html = buildHtml(svg, playbackMapJson)
             webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+        },
+        onRelease = {
+            // Clear the stale reference when the WebView leaves composition,
+            // so PlaybackManager doesn't post to a destroyed WebView.
+            playbackManager?.webView = null
         },
         modifier = Modifier.fillMaxSize()
     )

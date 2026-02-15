@@ -138,7 +138,8 @@ pub(super) fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], pag
 
         if let Some(ref attrs) = measure.attributes {
             if let Some(ref ts) = attrs.time {
-                let new_beats = ts.beats as f64 * 4.0 / ts.beat_type as f64;
+                let safe_beat_type = if ts.beat_type > 0 { ts.beat_type } else { 4 };
+                let new_beats = ts.beats as f64 * 4.0 / safe_beat_type as f64;
                 if current_time.as_ref().map_or(false, |ct| ct.beats != ts.beats || ct.beat_type != ts.beat_type) {
                     time_changed = true;
                 }
@@ -337,7 +338,10 @@ pub(super) fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], pag
             let lyric_evts = collect_lyric_events(&score.parts, mi, &divisions_per_part);
             let nominal_quarters = running_times[mi]
                 .as_ref()
-                .map(|ts| ts.beats as f64 * 4.0 / ts.beat_type as f64)
+                .map(|ts| {
+                    let safe_bt = if ts.beat_type > 0 { ts.beat_type } else { 4 };
+                    ts.beats as f64 * 4.0 / safe_bt as f64
+                })
                 .unwrap_or(4.0);
             // For pickup/implicit measures, use the actual note content duration
             // so notes are spaced the same as in full measures.

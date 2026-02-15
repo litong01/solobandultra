@@ -73,7 +73,7 @@ pub(super) fn collect_lyric_events(parts: &[Part], mi: usize, divisions_map: &[i
 
     if events.is_empty() { return vec![]; }
 
-    events.sort_by(|a, b| a.beat_time.partial_cmp(&b.beat_time).unwrap());
+    events.sort_by(|a, b| a.beat_time.total_cmp(&b.beat_time));
     let mut merged: Vec<LyricEvent> = Vec::new();
     for ev in &events {
         if let Some(last) = merged.last_mut() {

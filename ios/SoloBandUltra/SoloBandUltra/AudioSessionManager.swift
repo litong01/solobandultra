@@ -25,21 +25,17 @@ class AudioSessionManager: ObservableObject {
 
     /// Ensures the audio session is active with the playback category.
     /// Call this before starting any audio playback.
-    func ensureSessionActive() {
-        do {
-            let session = AVAudioSession.sharedInstance()
+    /// Throws if the session cannot be activated.
+    func ensureSessionActive() throws {
+        let session = AVAudioSession.sharedInstance()
 
-            // Set category to playback - this overrides the silent switch
-            try session.setCategory(.playback, mode: .default, options: [])
-            try session.setActive(true)
+        // Set category to playback - this overrides the silent switch
+        try session.setCategory(.playback, mode: .default, options: [])
+        try session.setActive(true)
 
-            isSessionActive = true
-            updateRouteInfo()
-            print("[AudioSessionManager] Session activated successfully")
-        } catch {
-            isSessionActive = false
-            print("[AudioSessionManager] Failed to activate session: \(error.localizedDescription)")
-        }
+        isSessionActive = true
+        updateRouteInfo()
+        print("[AudioSessionManager] Session activated successfully")
     }
 
     /// Deactivates the audio session.
@@ -86,7 +82,7 @@ class AudioSessionManager: ObservableObject {
         case .oldDeviceUnavailable:
             print("[AudioSessionManager] Audio device disconnected")
             // Re-activate session when headphones are unplugged
-            ensureSessionActive()
+            try? ensureSessionActive()
         default:
             break
         }
@@ -109,7 +105,7 @@ class AudioSessionManager: ObservableObject {
             if let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt {
                 let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
                 if options.contains(.shouldResume) {
-                    ensureSessionActive()
+                    try? ensureSessionActive()
                     print("[AudioSessionManager] Audio session interruption ended, resuming")
                 }
             }
