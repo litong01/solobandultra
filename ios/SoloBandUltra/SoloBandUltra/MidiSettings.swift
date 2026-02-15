@@ -40,6 +40,11 @@ class MidiSettings: ObservableObject {
     @Published var muteMusic: Bool = false
     @Published var repeatCount: Int = 1
 
+    // ── Cursor ──
+    /// Whether to show the playback cursor overlay on the sheet music.
+    /// This is a pure UI toggle — no MIDI or SVG regeneration required.
+    @Published var showCursor: Bool = true
+
     // ── Transpose (semitones) ──
     @Published var transpose: Int = 0
 

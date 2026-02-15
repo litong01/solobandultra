@@ -54,6 +54,16 @@ class PlaybackManager: ObservableObject {
     /// Total number of times to play (1 = play once, 2 = play twice, …).
     var repeatCount: Int = 1
 
+    /// Whether to show the orange cursor bar overlay during playback.
+    /// When false, the bar is invisible but position tracking and auto-scroll
+    /// continue working — the score still "turns pages" with the music.
+    /// This is a pure visual toggle — audio and scrolling are unaffected.
+    var showCursorEnabled: Bool = true {
+        didSet {
+            sendJS("if (typeof setCursorBarVisible === 'function') { setCursorBarVisible(\(showCursorEnabled)); }")
+        }
+    }
+
     // MARK: - Dependencies
 
     private let audioSessionManager: AudioSessionManager
@@ -227,7 +237,7 @@ class PlaybackManager: ObservableObject {
             engine.mainMixerNode.outputVolume = isMuted ? 0 : 1
 
             // Show cursor at the beginning.
-            sendJS("if (typeof moveCursor === 'function') { showCursor(); moveCursor(0); }")
+            sendJS("showCursor(); moveCursor(0);")
 
             print("[PlaybackManager] Audio prepared: \(String(format: "%.1f", durationMs / 1000.0))s, "
                 + "\(file.length) frames, speed=\(speed)")
@@ -386,6 +396,7 @@ class PlaybackManager: ObservableObject {
         guard let webView = webView else { return }
         webView.evaluateJavaScript(js, completionHandler: nil)
     }
+
 
     // MARK: - Poll timer (end-of-playback detection, ~4 Hz)
 

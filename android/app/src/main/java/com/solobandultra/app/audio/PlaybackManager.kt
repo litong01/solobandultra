@@ -64,6 +64,18 @@ class PlaybackManager(
     /** Total number of plays (1 = play once, 2 = play twice, …). */
     var repeatCount: Int = 1
 
+    /**
+     * Whether to show the orange cursor bar overlay during playback.
+     * When false, the bar is invisible but position tracking and auto-scroll
+     * continue working — the score still "turns pages" with the music.
+     * This is a pure visual toggle — audio and scrolling are unaffected.
+     */
+    var showCursorEnabled: Boolean = true
+        set(value) {
+            field = value
+            setCursorBarVisible(value)
+        }
+
     // ── Internal state ──────────────────────────────────────────────────
 
     private var mediaPlayer: MediaPlayer? = null
@@ -278,6 +290,17 @@ class PlaybackManager(
         wv.post {
             wv.evaluateJavascript(
                 "if (typeof hideCursor === 'function') { hideCursor(); }",
+                null
+            )
+        }
+    }
+
+    /** Toggle the orange cursor bar visibility via JS. Auto-scroll keeps working. */
+    private fun setCursorBarVisible(visible: Boolean) {
+        val wv = webView ?: return
+        wv.post {
+            wv.evaluateJavascript(
+                "if (typeof setCursorBarVisible === 'function') { setCursorBarVisible($visible); }",
                 null
             )
         }

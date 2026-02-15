@@ -71,6 +71,7 @@ struct SheetMusicView: View {
                 playbackManager.speed = midiSettings.playbackSpeed
                 playbackManager.isMuted = midiSettings.muteMusic
                 playbackManager.repeatCount = midiSettings.repeatCount
+                playbackManager.showCursorEnabled = midiSettings.showCursor
                 loadScore(width: geometry.size.width)
             }
             .onChange(of: midiSettings.selectedFileUrl) { _ in
@@ -108,6 +109,9 @@ struct SheetMusicView: View {
             }
             .onChange(of: midiSettings.repeatCount) { newRepeat in
                 playbackManager.repeatCount = newRepeat
+            }
+            .onChange(of: midiSettings.showCursor) { newShowCursor in
+                playbackManager.showCursorEnabled = newShowCursor
             }
         }
     }
@@ -471,13 +475,28 @@ struct SVGWebView: UIViewRepresentable {
         _animFrameId = requestAnimationFrame(_animLoop);
     }
 
+    var _cursorBarVisible = true;  // whether the orange bar is drawn
+
     function showCursor() {
         if (_cursorEl) _cursorEl.style.display = 'block';
+        if (_cursorBarVisible) {
+            _cursorEl.style.opacity = '0.85';
+        }
     }
 
     function hideCursor() {
         if (_cursorEl) _cursorEl.style.display = 'none';
         _currentSystemIdx = -1;
+    }
+
+    /// Toggle the orange cursor bar on/off without affecting position
+    /// tracking or auto-scroll.  When hidden, moveCursor() still runs
+    /// (so the score scrolls with the music) but the bar is invisible.
+    function setCursorBarVisible(visible) {
+        _cursorBarVisible = visible;
+        if (_cursorEl) {
+            _cursorEl.style.opacity = visible ? '0.85' : '0';
+        }
     }
 
     // Binary search: find the timemap entry for a given time in ms

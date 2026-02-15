@@ -144,6 +144,7 @@ fun SheetMusicScreen(
     var muteMusic by remember { mutableStateOf(false) }
     var repeatCount by remember { mutableIntStateOf(1) }
     var transpose by remember { mutableIntStateOf(0) }
+    var showCursor by remember { mutableStateOf(true) }
 
     // Music source selection
     var selectedSourceId by remember { mutableStateOf("bundled") }
@@ -370,10 +371,11 @@ fun SheetMusicScreen(
     }
 
     // ── Wire playback settings to PlaybackManager (no MIDI regen) ──
-    LaunchedEffect(playbackSpeed, muteMusic, repeatCount) {
+    LaunchedEffect(playbackSpeed, muteMusic, repeatCount, showCursor) {
         playbackManager?.speed = playbackSpeed
         playbackManager?.isMuted = muteMusic
         playbackManager?.repeatCount = repeatCount
+        playbackManager?.showCursorEnabled = showCursor
     }
 
     // Regenerate audio when settings change (no need to re-render SVG)
@@ -630,7 +632,8 @@ fun SheetMusicScreen(
                 initialMuteMusic = muteMusic,
                 initialRepeatCount = repeatCount,
                 initialTranspose = transpose,
-                onDone = { src, file, mel, pia, bas, str, drm, met, spd, mute, rep, trans ->
+                initialShowCursor = showCursor,
+                onDone = { src, file, mel, pia, bas, str, drm, met, spd, mute, rep, trans, cursor ->
                     selectedSourceId = src
                     selectedFileUrl = file
                     includeMelody = mel
@@ -643,6 +646,7 @@ fun SheetMusicScreen(
                     muteMusic = mute
                     repeatCount = rep
                     transpose = trans
+                    showCursor = cursor
                     showSettings = false
                 }
             )
@@ -729,7 +733,8 @@ private fun SettingsSheetContent(
     initialMuteMusic: Boolean,
     initialRepeatCount: Int,
     initialTranspose: Int,
-    onDone: (String, String, Boolean, Boolean, Boolean, Boolean, Boolean, Boolean, Double, Boolean, Int, Int) -> Unit
+    initialShowCursor: Boolean,
+    onDone: (String, String, Boolean, Boolean, Boolean, Boolean, Boolean, Boolean, Double, Boolean, Int, Int, Boolean) -> Unit
 ) {
     // Local working copies (only applied when Apply is tapped)
     var selectedSourceId by remember { mutableStateOf(initialSelectedSourceId) }
@@ -744,6 +749,7 @@ private fun SettingsSheetContent(
     var muteMusic by remember { mutableStateOf(initialMuteMusic) }
     var repeatCount by remember { mutableIntStateOf(initialRepeatCount) }
     var transpose by remember { mutableIntStateOf(initialTranspose) }
+    var showCursor by remember { mutableStateOf(initialShowCursor) }
 
     Column(
         modifier = Modifier
@@ -768,7 +774,7 @@ private fun SettingsSheetContent(
                     selectedSourceId, selectedFileUrl,
                     includeMelody, includePiano, includeBass, includeStrings,
                     includeDrums, includeMetronome, playbackSpeed,
-                    muteMusic, repeatCount, transpose
+                    muteMusic, repeatCount, transpose, showCursor
                 )
             }) {
                 Text("Apply", style = MaterialTheme.typography.bodySmall)
@@ -881,18 +887,19 @@ private fun SettingsSheetContent(
         }
 
         // ── 3. Playback ─────────────────────────────────────────
+        // Adaptive: single row on tablets (>= 600dp), two rows on phones.
         SettingsCard("Playback") {
+            val isNarrow = LocalConfiguration.current.screenWidthDp < 600
             var speedText by remember(playbackSpeed) {
                 mutableStateOf(
                     playbackSpeed.toBigDecimal().stripTrailingZeros().toPlainString()
                 )
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Speed input
+            // ── Reusable pieces ──
+
+            @Composable
+            fun SpeedInput() {
                 Text(
                     text = "Speed",
                     style = MaterialTheme.typography.bodySmall,
@@ -921,10 +928,10 @@ private fun SettingsSheetContent(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
 
-                Spacer(modifier = Modifier.weight(1f))
-
-                // Mute checkbox (text before checkbox)
+            @Composable
+            fun MuteCheckbox() {
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
@@ -932,21 +939,29 @@ private fun SettingsSheetContent(
                         .padding(vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Mute",
-                        style = MaterialTheme.typography.bodySmall
-                    )
+                    Text(text = "Mute", style = MaterialTheme.typography.bodySmall)
                     Spacer(modifier = Modifier.width(4.dp))
-                    Checkbox(
-                        checked = muteMusic,
-                        onCheckedChange = null,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    Checkbox(checked = muteMusic, onCheckedChange = null, modifier = Modifier.size(20.dp))
                 }
+            }
 
-                Spacer(modifier = Modifier.weight(1f))
+            @Composable
+            fun CursorCheckbox() {
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable { showCursor = !showCursor }
+                        .padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = "Cursor", style = MaterialTheme.typography.bodySmall)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Checkbox(checked = showCursor, onCheckedChange = null, modifier = Modifier.size(20.dp))
+                }
+            }
 
-                // Repeat stepper
+            @Composable
+            fun RepeatStepper() {
                 Text(
                     text = "Repeat",
                     style = MaterialTheme.typography.bodySmall,
@@ -958,29 +973,57 @@ private fun SettingsSheetContent(
                     enabled = repeatCount > 1,
                     modifier = Modifier.size(28.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Remove,
-                        contentDescription = "Decrease",
-                        modifier = Modifier.size(14.dp)
-                    )
+                    Icon(Icons.Default.Remove, "Decrease", Modifier.size(14.dp))
                 }
-
                 Text(
                     text = "${repeatCount}×",
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.width(28.dp)
                 )
-
                 FilledTonalIconButton(
                     onClick = { repeatCount += 1 },
                     modifier = Modifier.size(28.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Increase",
-                        modifier = Modifier.size(14.dp)
-                    )
+                    Icon(Icons.Default.Add, "Increase", Modifier.size(14.dp))
+                }
+            }
+
+            // ── Layout ──
+
+            if (isNarrow) {
+                // Phone: two rows
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        SpeedInput()
+                        Spacer(modifier = Modifier.weight(1f))
+                        RepeatStepper()
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        MuteCheckbox()
+                        Spacer(modifier = Modifier.width(24.dp))
+                        CursorCheckbox()
+                    }
+                }
+            } else {
+                // Tablet / wide: single row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SpeedInput()
+                    Spacer(modifier = Modifier.weight(1f))
+                    MuteCheckbox()
+                    Spacer(modifier = Modifier.weight(1f))
+                    CursorCheckbox()
+                    Spacer(modifier = Modifier.weight(1f))
+                    RepeatStepper()
                 }
             }
         }
@@ -1334,13 +1377,28 @@ function initPlayback(playbackMap) {
     _isInitialized = true;
 }
 
+var _cursorBarVisible = true;  // whether the orange bar is drawn
+
 function showCursor() {
     if (_cursorEl) _cursorEl.style.display = 'block';
+    if (_cursorBarVisible) {
+        _cursorEl.style.opacity = '0.85';
+    }
 }
 
 function hideCursor() {
     if (_cursorEl) _cursorEl.style.display = 'none';
     _currentSystemIdx = -1;
+}
+
+// Toggle the orange cursor bar on/off without affecting position
+// tracking or auto-scroll.  When hidden, moveCursor() still runs
+// (so the score scrolls with the music) but the bar is invisible.
+function setCursorBarVisible(visible) {
+    _cursorBarVisible = visible;
+    if (_cursorEl) {
+        _cursorEl.style.opacity = visible ? '0.85' : '0';
+    }
 }
 
 function findTimemapEntry(timeMs) {

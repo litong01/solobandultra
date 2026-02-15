@@ -326,6 +326,7 @@ struct SettingsSheet: View {
     @State private var muteMusic: Bool = false
     @State private var repeatCount: Int = 1
     @State private var transpose: Int = 0
+    @State private var showCursor: Bool = true
 
     /// Available music sources (currently just bundled files).
     private var musicSources: [MusicSource] {
@@ -417,46 +418,12 @@ struct SettingsSheet: View {
 
                     // ── 3. Playback ──────────────────────────────
                     SettingsSection("Playback") {
-                        HStack(alignment: .center) {
-                            // Speed input
-                            Text("Speed")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            TextField("1.0", value: $playbackSpeed, format: .number)
-                                .textFieldStyle(.roundedBorder)
-                                .keyboardType(.decimalPad)
-                                .frame(width: 40)
-                                .font(.subheadline)
-
-                            Spacer()
-
-                            // Mute
-                            Button {
-                                muteMusic.toggle()
-                            } label: {
-                                HStack(spacing: 3) {
-                                    Text("Mute")
-                                        .font(.subheadline)
-                                        .foregroundStyle(.primary)
-                                    Image(systemName: muteMusic ? "checkmark.square.fill" : "square")
-                                        .foregroundStyle(muteMusic ? Color.accentColor : .secondary)
-                                        .font(.callout)
-                                }
-                            }
-                            .buttonStyle(.plain)
-
-                            Spacer()
-
-                            // Repeat input
-                            Text("Repeat")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            TextField("1", value: $repeatCount, format: .number)
-                                .textFieldStyle(.roundedBorder)
-                                .keyboardType(.numberPad)
-                                .frame(width: 40)
-                                .font(.subheadline)
-                        }
+                        PlaybackSettingsContent(
+                            playbackSpeed: $playbackSpeed,
+                            muteMusic: $muteMusic,
+                            showCursor: $showCursor,
+                            repeatCount: $repeatCount
+                        )
                     }
 
                     // ── 4. Transpose ─────────────────────────────
@@ -520,6 +487,7 @@ struct SettingsSheet: View {
         muteMusic = midiSettings.muteMusic
         repeatCount = midiSettings.repeatCount
         transpose = midiSettings.transpose
+        showCursor = midiSettings.showCursor
     }
 
     /// Write local working copies back to midiSettings and dismiss.
@@ -536,6 +504,7 @@ struct SettingsSheet: View {
         midiSettings.muteMusic = muteMusic
         midiSettings.repeatCount = repeatCount
         midiSettings.transpose = transpose
+        midiSettings.showCursor = showCursor
         isPresented = false
     }
 }
@@ -593,6 +562,104 @@ private struct CheckboxToggle: View {
             }
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Adaptive playback settings layout:
+/// - **Narrow** (compact horizontal size class, e.g. iPhone portrait): two rows
+///   so nothing gets squeezed.
+/// - **Wide** (regular horizontal size class, e.g. iPad / landscape): single row.
+private struct PlaybackSettingsContent: View {
+    @Binding var playbackSpeed: Double
+    @Binding var muteMusic: Bool
+    @Binding var showCursor: Bool
+    @Binding var repeatCount: Int
+
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    var body: some View {
+        if sizeClass == .compact {
+            // Phone — two rows to avoid squeezing
+            VStack(spacing: 12) {
+                HStack(alignment: .center) {
+                    speedControl
+                    Spacer()
+                    repeatControl
+                }
+                HStack(alignment: .center) {
+                    muteToggle
+                    Spacer()
+                    cursorToggle
+                }
+            }
+        } else {
+            // Tablet / wide — single row with more breathing room
+            HStack(alignment: .center) {
+                speedControl
+                Spacer()
+                muteToggle
+                Spacer()
+                cursorToggle
+                Spacer()
+                repeatControl
+            }
+        }
+    }
+
+    // MARK: - Subviews
+
+    private var speedControl: some View {
+        HStack(spacing: 4) {
+            Text("Speed")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            TextField("1.0", value: $playbackSpeed, format: .number)
+                .textFieldStyle(.roundedBorder)
+                .keyboardType(.decimalPad)
+                .frame(width: 40)
+                .font(.subheadline)
+        }
+    }
+
+    private var muteToggle: some View {
+        Button { muteMusic.toggle() } label: {
+            HStack(spacing: 3) {
+                Text("Mute")
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                Image(systemName: muteMusic ? "checkmark.square.fill" : "square")
+                    .foregroundStyle(muteMusic ? Color.accentColor : .secondary)
+                    .font(.callout)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var cursorToggle: some View {
+        Button { showCursor.toggle() } label: {
+            HStack(spacing: 3) {
+                Text("Cursor")
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                Image(systemName: showCursor ? "checkmark.square.fill" : "square")
+                    .foregroundStyle(showCursor ? Color.accentColor : .secondary)
+                    .font(.callout)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var repeatControl: some View {
+        HStack(spacing: 4) {
+            Text("Repeat")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            TextField("1", value: $repeatCount, format: .number)
+                .textFieldStyle(.roundedBorder)
+                .keyboardType(.numberPad)
+                .frame(width: 40)
+                .font(.subheadline)
+        }
     }
 }
 
