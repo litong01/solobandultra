@@ -189,21 +189,51 @@ jobs:
         working-directory: android
         run: gradle wrapper
 
-      - name: Build Android release APK (unsigned)
-        working-directory: android
-        run: ./gradlew assembleRelease
+      - name: Setup Android Keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          # Decode the release keystore from the base64-encoded secret
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/release.keystore
+          ls -lh android/release.keystore
 
-      - name: Build Android release AAB (unsigned)
+      - name: Build Android release APK (signed)
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         working-directory: android
-        run: ./gradlew bundleRelease
+        run: |
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file=$PWD/release.keystore \
+            -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+
+      - name: Build Android release AAB (signed)
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        working-directory: android
+        run: |
+          ./gradlew bundleRelease \
+            -Pandroid.injected.signing.store.file=$PWD/release.keystore \
+            -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+
+      - name: Clean up keystore
+        if: always()
+        run: rm -f android/release.keystore
 
       - name: Rename build outputs
         run: |
-          # Release APK (unsigned, ready to install on device)
-          cp android/app/build/outputs/apk/release/app-release-unsigned.apk \
+          # Signed release APK — installable on any Android device
+          cp android/app/build/outputs/apk/release/app-release.apk \
             SoloBandUltra-Android-release.apk
 
-          # Release AAB (for Play Store upload, needs signing for production)
+          # Signed release AAB — for Google Play upload
           cp android/app/build/outputs/bundle/release/app-release.aab \
             SoloBandUltra-Android-release.aab
 
@@ -298,8 +328,8 @@ jobs:
             | Platform | File | Description |
             |----------|------|-------------|
             | iOS | `SoloBandUltra-iOS-Simulator.zip` | iOS Simulator build (unsigned) |
-            | Android | `SoloBandUltra-Android-release.apk` | Release APK (unsigned) — install directly on device |
-            | Android | `SoloBandUltra-Android-release.aab` | Release AAB — for Google Play upload |
+            | Android | `SoloBandUltra-Android-release.apk` | Signed release APK — install directly on device |
+            | Android | `SoloBandUltra-Android-release.aab` | Signed release AAB — for Google Play upload |
 
             ### Installation
 
