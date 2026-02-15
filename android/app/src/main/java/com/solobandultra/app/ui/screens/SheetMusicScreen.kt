@@ -581,7 +581,8 @@ fun SheetMusicScreen(
                         SvgWebView(
                             svg = svgContent!!,
                             playbackMapJson = playbackMapJson,
-                            playbackManager = playbackManager
+                            playbackManager = playbackManager,
+                            cursorBarVisible = showCursor
                         )
                     }
                 }
@@ -1148,7 +1149,8 @@ private data class WebViewContentTag(val svgHash: Int, val pmapHash: Int)
 private fun SvgWebView(
     svg: String,
     playbackMapJson: String?,
-    playbackManager: PlaybackManager?
+    playbackManager: PlaybackManager?,
+    cursorBarVisible: Boolean = true
 ) {
     AndroidView(
         factory = { context ->
@@ -1187,7 +1189,7 @@ private fun SvgWebView(
             if (newTag == currentTag) return@AndroidView
 
             webView.tag = newTag
-            val html = buildHtml(svg, playbackMapJson)
+            val html = buildHtml(svg, playbackMapJson, cursorBarVisible)
             webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
         },
         onRelease = {
@@ -1216,7 +1218,7 @@ private class PlaybackJsInterface(private val playbackManager: PlaybackManager?)
 /**
  * Build the complete HTML document with SVG, cursor div, and playback JavaScript.
  */
-private fun buildHtml(svg: String, playbackMapJson: String?): String {
+private fun buildHtml(svg: String, playbackMapJson: String?, cursorBarVisible: Boolean = true): String {
     // Escape "</script>" sequences so they don't prematurely close the
     // <script> block when the JSON contains that literal string.
     val pmapJS = (playbackMapJson ?: "null").replace("</", "<\\/")
@@ -1268,7 +1270,9 @@ private fun buildHtml(svg: String, playbackMapJson: String?): String {
         </div>
         <script>
         ${CURSOR_JAVASCRIPT}
-        // Initialize playback map and show cursor at the beginning
+        // Apply cursor bar visibility from the native setting before init
+        _cursorBarVisible = $cursorBarVisible;
+        // Initialize playback map and position cursor at the beginning
         var _pmapData = $pmapJS;
         if (_pmapData) { initPlayback(_pmapData); showCursor(); moveCursor(0); }
         </script>
@@ -1380,9 +1384,9 @@ function initPlayback(playbackMap) {
 var _cursorBarVisible = true;  // whether the orange bar is drawn
 
 function showCursor() {
-    if (_cursorEl) _cursorEl.style.display = 'block';
-    if (_cursorBarVisible) {
-        _cursorEl.style.opacity = '0.85';
+    if (_cursorEl) {
+        _cursorEl.style.display = 'block';
+        _cursorEl.style.opacity = _cursorBarVisible ? '0.85' : '0';
     }
 }
 

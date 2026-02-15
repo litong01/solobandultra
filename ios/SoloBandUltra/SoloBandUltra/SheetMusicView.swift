@@ -321,12 +321,16 @@ struct SVGWebView: UIViewRepresentable {
         context.coordinator.lastLoadedSvgHash = svgHash
         context.coordinator.lastLoadedPmapHash = pmapHash
 
-        let html = Self.buildHTML(svg: svgString, playbackMapJson: playbackMapJson)
+        let html = Self.buildHTML(
+            svg: svgString,
+            playbackMapJson: playbackMapJson,
+            cursorBarVisible: playbackManager.showCursorEnabled
+        )
         webView.loadHTMLString(html, baseURL: nil)
     }
 
     /// Build the complete HTML document with SVG, cursor div, and playback JavaScript.
-    static func buildHTML(svg: String, playbackMapJson: String?) -> String {
+    static func buildHTML(svg: String, playbackMapJson: String?, cursorBarVisible: Bool = true) -> String {
         // Escape "</script>" sequences so they don't prematurely close the
         // <script> block when the JSON or SVG contains that literal string.
         let pmapJS = (playbackMapJson ?? "null").replacingOccurrences(of: "</", with: "<\\/")
@@ -382,7 +386,9 @@ struct SVGWebView: UIViewRepresentable {
         </div>
         <script>
         \(Self.cursorJavaScript)
-        // Initialize playback map and show cursor at the beginning
+        // Apply cursor bar visibility from the native setting before init
+        _cursorBarVisible = \(cursorBarVisible);
+        // Initialize playback map and position cursor at the beginning
         var _pmapData = \(pmapJS);
         if (_pmapData) { initPlayback(_pmapData); showCursor(); moveCursor(0); }
         </script>
@@ -478,9 +484,9 @@ struct SVGWebView: UIViewRepresentable {
     var _cursorBarVisible = true;  // whether the orange bar is drawn
 
     function showCursor() {
-        if (_cursorEl) _cursorEl.style.display = 'block';
-        if (_cursorBarVisible) {
-            _cursorEl.style.opacity = '0.85';
+        if (_cursorEl) {
+            _cursorEl.style.display = 'block';
+            _cursorEl.style.opacity = _cursorBarVisible ? '0.85' : '0';
         }
     }
 
