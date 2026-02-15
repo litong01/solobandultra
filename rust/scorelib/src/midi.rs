@@ -85,7 +85,7 @@ pub fn generate_midi(
         None => return Vec::new(),
     };
 
-    debug_assert_eq!(
+    assert_eq!(
         unrolled.len(),
         timemap.len(),
         "unrolled ({}) and timemap ({}) must have the same length",
@@ -105,14 +105,17 @@ pub fn generate_midi(
     if options.include_melody {
         let num_staves = detect_staves(part);
         let program = part.midi_program.unwrap_or(0).max(0).min(127) as u8;
+        // Mask melody channel to valid MIDI range (0-15) and avoid the drum
+        // channel (9) and accompaniment channels (1, 2, 3) to prevent conflicts.
+        let melody_ch = options.melody_channel & 0x0F;
 
         if num_staves <= 1 {
             // Single-staff part: all notes on one channel/track.
-            let melody_events = extract_melody(part, unrolled, timemap, options.melody_channel, None);
+            let melody_events = extract_melody(part, unrolled, timemap, melody_ch, None);
             let mut track_events = Vec::new();
             track_events.push(MidiEvent {
                 tick: 0,
-                bytes: vec![0xC0 | options.melody_channel, program],
+                bytes: vec![0xC0 | melody_ch, program],
             });
             track_events.extend(melody_events);
             tracks.push(encode_track(&track_events, "Melody"));
@@ -121,7 +124,7 @@ pub fn generate_midi(
             // Channels 0, 7, 8, 11, 12… (avoiding 1-3 for accompaniment, 9 for drums).
             let staff_channels: Vec<u8> = (0..num_staves as u8)
                 .map(|s| match s {
-                    0 => options.melody_channel,
+                    0 => melody_ch,
                     1 => 7,
                     2 => 8,
                     3 => 11,
@@ -465,17 +468,24 @@ pub fn ms_to_ticks(target_ms: f64, timemap: &[TimemapEntry]) -> u32 {
 }
 
 /// Detect the number of staves in a part by scanning attributes and note staff numbers.
+/// Clamped to [1, 8] to prevent OOM from malformed input (negative values wrapping
+/// to huge usize, or absurdly large stave counts).
 fn detect_staves(part: &crate::model::Part) -> usize {
+    const MAX_STAVES: usize = 8;
     let mut max_staff = 1usize;
     for measure in &part.measures {
         if let Some(ref attrs) = measure.attributes {
             if let Some(s) = attrs.staves {
-                max_staff = max_staff.max(s as usize);
+                if s > 0 {
+                    max_staff = max_staff.max((s as usize).min(MAX_STAVES));
+                }
             }
         }
         for note in &measure.notes {
             if let Some(s) = note.staff {
-                max_staff = max_staff.max(s as usize);
+                if s > 0 {
+                    max_staff = max_staff.max((s as usize).min(MAX_STAVES));
+                }
             }
         }
     }

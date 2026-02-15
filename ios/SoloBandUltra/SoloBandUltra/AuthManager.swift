@@ -66,6 +66,8 @@ class AuthManager: ObservableObject {
 
     // MARK: - Logout
 
+    @Published var logoutFailed: Bool = false
+
     /// Log the user out of Kinde.
     func logout() {
         KindeSDKAPI.auth.logout { [weak self] success in
@@ -73,6 +75,11 @@ class AuthManager: ObservableObject {
                 if success {
                     self?.isAuthenticated = false
                     self?.pendingAction = nil
+                    self?.logoutFailed = false
+                } else {
+                    // Surface the failure so the UI can inform the user.
+                    print("[Auth] Logout failed — session may still be active")
+                    self?.logoutFailed = true
                 }
             }
         }

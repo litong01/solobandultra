@@ -52,7 +52,7 @@ pub fn analyze_chords(
     unrolled: &[UnrolledMeasure],
     timemap: &[TimemapEntry],
 ) -> Vec<Chord> {
-    debug_assert_eq!(
+    assert_eq!(
         unrolled.len(),
         timemap.len(),
         "analyze_chords: unrolled ({}) and timemap ({}) must have the same length",
@@ -588,8 +588,10 @@ pub fn generate_strings(chords: &[Chord], energy: Energy, timemap: &[TimemapEntr
         let raw_voicing = get_chord_voicing(chord.root, chord.kind);
         let voicing = get_smoother_voicing(&raw_voicing, &prev_voicing);
 
-        // Sustained pad: play all notes for the chord duration (slight overlap)
-        let dur_ms = chord.duration_ms * 1.05;
+        // Sustained pad: play all notes for nearly the full chord duration.
+        // Use 98% to avoid MIDI note-on collision — if we overlap into the next
+        // chord, a shared pitch gets its note-off from chord N killing chord N+1.
+        let dur_ms = chord.duration_ms * 0.98;
         let on_tick = ms_to_ticks(chord.time_ms, timemap);
         let off_tick = ms_to_ticks(chord.time_ms + dur_ms, timemap);
 
