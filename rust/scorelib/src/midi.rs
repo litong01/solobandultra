@@ -212,7 +212,13 @@ fn extract_melody(
         let measure = &part.measures[um.original_index];
         let entry = &timemap[i];
         let divisions = entry.divisions.max(1) as f64;
-        let quarter_notes_in_measure = entry.effective_quarters;
+        // Guard against zero/negative effective_quarters from degenerate measures
+        // to prevent NaN/Infinity propagation into MIDI tick calculations.
+        let quarter_notes_in_measure = if entry.effective_quarters > 0.0 {
+            entry.effective_quarters
+        } else {
+            4.0 // default to 4/4
+        };
 
         // Per-(staff, voice) position tracking for correct multi-voice timing.
         // MusicXML lists notes in document order; after a <backup> element

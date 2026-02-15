@@ -272,9 +272,14 @@ jobs:
 
       - name: Determine release tag
         id: tag
+        # Use environment variables instead of inline ${{ }} interpolation
+        # to prevent script injection from workflow_dispatch inputs.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ github.event.inputs.release_tag }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "tag=$INPUT_TAG" >> "$GITHUB_OUTPUT"
           else
             echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
           fi
@@ -304,7 +309,7 @@ jobs:
                — or install via CLI: `xcrun simctl install booted SoloBandUltra.app`
 
             **Android:**
-            1. Download `SoloBandUltra-Android-debug.apk` to your device
+            1. Download `SoloBandUltra-Android-release.apk` to your device
             2. Open the file and allow installation from unknown sources when prompted
 
             > **Note:** The iOS build is for Simulator only. A signed IPA for physical devices requires Apple Developer certificates configured in the workflow.

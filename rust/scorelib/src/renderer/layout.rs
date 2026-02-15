@@ -54,19 +54,28 @@ pub(super) struct MeasureLayout {
 
 /// Detect the number of staves in a part.
 pub(super) fn detect_staves(part: &Part) -> usize {
+    // Cap at 8 staves to prevent OOM from malformed input (e.g. negative
+    // values wrapping to huge usize, or absurdly large stave counts).
+    const MAX_STAVES: usize = 8;
     let mut max_staff = 1usize;
     for measure in &part.measures {
         if let Some(ref attrs) = measure.attributes {
             if let Some(s) = attrs.staves {
-                max_staff = max_staff.max(s as usize);
+                if s > 0 {
+                    max_staff = max_staff.max((s as usize).min(MAX_STAVES));
+                }
             }
             for clef in &attrs.clefs {
-                max_staff = max_staff.max(clef.number as usize);
+                if clef.number > 0 {
+                    max_staff = max_staff.max((clef.number as usize).min(MAX_STAVES));
+                }
             }
         }
         for note in &measure.notes {
             if let Some(s) = note.staff {
-                max_staff = max_staff.max(s as usize);
+                if s > 0 {
+                    max_staff = max_staff.max((s as usize).min(MAX_STAVES));
+                }
             }
         }
     }

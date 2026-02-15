@@ -78,8 +78,9 @@ check_docker() {
 
 ensure_image() {
     echo "═══ Ensuring Docker build image ($DOCKER_IMAGE)... ═══"
-    docker build --platform linux/amd64 -t "$DOCKER_IMAGE" -f Dockerfile.build . \
-        | grep -E "^(Step|Successfully|CACHED)" || true
+    # Don't swallow build failures — pipe through grep for cleaner output
+    # but let a non-zero exit code from docker build propagate (pipefail is on).
+    docker build --platform linux/amd64 -t "$DOCKER_IMAGE" -f Dockerfile.build .
     echo ""
 }
 
@@ -92,7 +93,7 @@ docker_cargo() {
         -v scorelib-cargo-registry:/usr/local/cargo/registry \
         -v scorelib-cargo-git:/usr/local/cargo/git \
         "$DOCKER_IMAGE" \
-        bash -c "$1"
+        bash -c "set -euo pipefail; $1"
 }
 
 # ─── iOS build ──────────────────────────────────────────────────────
@@ -108,6 +109,8 @@ build_ios() {
     docker_cargo '
         echo "→ Adjusting Cargo.toml for iOS staticlib build..."
         cp Cargo.toml Cargo.toml.orig
+        # Ensure Cargo.toml is restored even if a build step fails.
+        trap "mv Cargo.toml.orig Cargo.toml 2>/dev/null || true" EXIT
         sed -i '\''s/crate-type = .*/crate-type = ["lib", "staticlib"]/'\'' Cargo.toml
 
         echo "→ Building aarch64-apple-ios-sim (ARM64 Simulator)..."
@@ -119,7 +122,7 @@ build_ios() {
         echo "→ Building aarch64-apple-ios (ARM64 Device)..."
         cargo build --release --target aarch64-apple-ios 2>&1
 
-        mv Cargo.toml.orig Cargo.toml
+        # trap will restore Cargo.toml on exit
         echo "✓ iOS Rust compilation complete"
     '
 

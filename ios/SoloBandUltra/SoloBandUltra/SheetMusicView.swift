@@ -288,6 +288,14 @@ struct SVGWebView: UIViewRepresentable {
         return webView
     }
 
+    static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
+        // Remove the script message handler to break the retain cycle:
+        // WebView -> UserContentController -> Coordinator -> PlaybackManager.
+        // Without this, the WKWebView and Coordinator are never deallocated.
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "playback")
+        coordinator.playbackManager.webView = nil
+    }
+
     func updateUIView(_ webView: WKWebView, context: Context) {
         // Update coordinator's reference to playback manager
         context.coordinator.playbackManager = playbackManager
@@ -315,7 +323,15 @@ struct SVGWebView: UIViewRepresentable {
 
     /// Build the complete HTML document with SVG, cursor div, and playback JavaScript.
     static func buildHTML(svg: String, playbackMapJson: String?) -> String {
-        let pmapJS = playbackMapJson ?? "null"
+        // Escape "</script>" sequences so they don't prematurely close the
+        // <script> block when the JSON or SVG contains that literal string.
+        let pmapJS = (playbackMapJson ?? "null").replacingOccurrences(of: "</", with: "<\\/")
+        // Strip any <script> tags from SVG to prevent XSS from external MusicXML files.
+        let safeSvg = svg.replacingOccurrences(
+            of: "<script[^>]*>[\\s\\S]*?</script>",
+            with: "",
+            options: .regularExpression
+        )
         return """
         <!DOCTYPE html>
         <html>
@@ -357,7 +373,7 @@ struct SVGWebView: UIViewRepresentable {
         </head>
         <body>
         <div id="score-container">
-            \(svg)
+            \(safeSvg)
             <div id="cursor"></div>
         </div>
         <script>
@@ -524,7 +540,8 @@ struct SVGWebView: UIViewRepresentable {
             if (lo === hi) {
                 cursorX_svg = np[lo][1];
             } else {
-                var segRatio = (ratio - np[lo][0]) / (np[hi][0] - np[lo][0]);
+                var denom = np[hi][0] - np[lo][0];
+                var segRatio = denom > 0 ? (ratio - np[lo][0]) / denom : 0;
                 cursorX_svg = np[lo][1] + segRatio * (np[hi][1] - np[lo][1]);
             }
         } else {
@@ -611,7 +628,8 @@ struct SVGWebView: UIViewRepresentable {
             if (!tmEntry) return;
 
             // Compute proportional offset within the measure
-            var offsetRatio = (svgX - clickedMeasure.x) / clickedMeasure.width;
+            var offsetRatio = clickedMeasure.width > 0
+                ? (svgX - clickedMeasure.x) / clickedMeasure.width : 0;
             if (offsetRatio < 0) offsetRatio = 0;
             if (offsetRatio > 1) offsetRatio = 1;
 

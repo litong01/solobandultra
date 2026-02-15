@@ -1095,6 +1095,12 @@ private fun CompactCheckbox(
 // SVG WebView
 // ═══════════════════════════════════════════════════════════════════════
 
+/**
+ * Holder for tracking what content is currently loaded in the WebView,
+ * so we can skip redundant HTML reloads during recomposition.
+ */
+private data class WebViewContentTag(val svgHash: Int, val pmapHash: Int)
+
 @Composable
 private fun SvgWebView(
     svg: String,
@@ -1130,6 +1136,14 @@ private fun SvgWebView(
             // Update the playback manager's WebView reference
             playbackManager?.webView = webView
 
+            // Skip redundant HTML reloads — the update block fires on every
+            // recomposition (e.g. play/pause state change), but we only need
+            // to reload when the SVG or playback map actually changed.
+            val newTag = WebViewContentTag(svg.hashCode(), (playbackMapJson ?: "").hashCode())
+            val currentTag = webView.tag as? WebViewContentTag
+            if (newTag == currentTag) return@AndroidView
+
+            webView.tag = newTag
             val html = buildHtml(svg, playbackMapJson)
             webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
         },
@@ -1160,7 +1174,11 @@ private class PlaybackJsInterface(private val playbackManager: PlaybackManager?)
  * Build the complete HTML document with SVG, cursor div, and playback JavaScript.
  */
 private fun buildHtml(svg: String, playbackMapJson: String?): String {
-    val pmapJS = playbackMapJson ?: "null"
+    // Escape "</script>" sequences so they don't prematurely close the
+    // <script> block when the JSON contains that literal string.
+    val pmapJS = (playbackMapJson ?: "null").replace("</", "<\\/")
+    // Strip any <script> tags from SVG to prevent XSS from external MusicXML files.
+    val safeSvg = svg.replace(Regex("<script[^>]*>[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
     return """
         <!DOCTYPE html>
         <html>
@@ -1202,7 +1220,7 @@ private fun buildHtml(svg: String, playbackMapJson: String?): String {
         </head>
         <body>
         <div id="score-container">
-            $svg
+            $safeSvg
             <div id="cursor"></div>
         </div>
         <script>
@@ -1381,7 +1399,8 @@ function moveCursor(timeMs) {
         if (lo === hi) {
             cursorX_svg = np[lo][1];
         } else {
-            var segRatio = (ratio - np[lo][0]) / (np[hi][0] - np[lo][0]);
+            var denom = np[hi][0] - np[lo][0];
+            var segRatio = denom > 0 ? (ratio - np[lo][0]) / denom : 0;
             cursorX_svg = np[lo][1] + segRatio * (np[hi][1] - np[lo][1]);
         }
     } else {
@@ -1456,7 +1475,8 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         if (!tmEntry) return;
 
-        var offsetRatio = (svgX - clickedMeasure.x) / clickedMeasure.width;
+        var offsetRatio = clickedMeasure.width > 0
+            ? (svgX - clickedMeasure.x) / clickedMeasure.width : 0;
         if (offsetRatio < 0) offsetRatio = 0;
         if (offsetRatio > 1) offsetRatio = 1;
 

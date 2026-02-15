@@ -94,7 +94,11 @@ impl SvgBuilder {
             x, y, size, weight, fill, anchor
         );
         if let Some(family) = font_family {
-            let esc_family = family.replace('"', "&quot;");
+            let esc_family = family
+                .replace('&', "&amp;")
+                .replace('<', "&lt;")
+                .replace('>', "&gt;")
+                .replace('"', "&quot;");
             attrs.push_str(&format!(r#" font-family="{}""#, esc_family));
         }
         if let Some(style) = font_style {
@@ -411,10 +415,14 @@ pub(super) fn vf_outline_to_svg(outline: &str, scale: f64) -> String {
 // ═══════════════════════════════════════════════════════════════════════
 
 pub(super) fn empty_svg(message: &str) -> String {
+    let escaped = message
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;");
     format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 400 100\">\
          <text x=\"200\" y=\"50\" text-anchor=\"middle\" font-size=\"14\" fill=\"gray\">{}</text>\
          </svg>",
-        message
+        escaped
     )
 }

@@ -26,8 +26,10 @@ pub(super) const MAX_LYRICS_ELONGATION_FACTOR: f64 = 2.5;
 // ── Text width helpers ──────────────────────────────────────────────
 
 /// Estimate the rendered width of a text string in pixels for a given font size.
+/// Uses character count (not byte length) so CJK and other multibyte characters
+/// are measured correctly.
 pub(super) fn estimate_text_width(text: &str, font_size: f64) -> f64 {
-    text.len() as f64 * font_size * LYRICS_CHAR_WIDTH_FACTOR
+    text.chars().count() as f64 * font_size * LYRICS_CHAR_WIDTH_FACTOR
 }
 
 // ── LyricEvent ──────────────────────────────────────────────────────
