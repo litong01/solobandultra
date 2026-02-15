@@ -348,9 +348,13 @@ pub unsafe extern "C" fn scorelib_render_file(
 
     let pw = if page_width > 0.0 { Some(page_width) } else { None };
 
-    match render_file_to_svg(path_str, pw, transpose) {
-        Ok(svg) => CString::new(svg).unwrap_or_default().into_raw(),
-        Err(_) => std::ptr::null_mut(),
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        render_file_to_svg(path_str, pw, transpose)
+    }));
+
+    match result {
+        Ok(Ok(svg)) => CString::new(svg).unwrap_or_default().into_raw(),
+        _ => std::ptr::null_mut(),
     }
 }
 
@@ -381,9 +385,13 @@ pub unsafe extern "C" fn scorelib_render_bytes(
 
     let pw = if page_width > 0.0 { Some(page_width) } else { None };
 
-    match render_bytes_to_svg(bytes, ext, pw, transpose) {
-        Ok(svg) => CString::new(svg).unwrap_or_default().into_raw(),
-        Err(_) => std::ptr::null_mut(),
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        render_bytes_to_svg(bytes, ext, pw, transpose)
+    }));
+
+    match result {
+        Ok(Ok(svg)) => CString::new(svg).unwrap_or_default().into_raw(),
+        _ => std::ptr::null_mut(),
     }
 }
 
@@ -501,9 +509,13 @@ pub unsafe extern "C" fn scorelib_playback_map(
 
     let pw = if page_width > 0.0 { Some(page_width) } else { None };
 
-    match playback_map_from_bytes(bytes, ext, pw, transpose) {
-        Ok(json) => CString::new(json).unwrap_or_default().into_raw(),
-        Err(_) => std::ptr::null_mut(),
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        playback_map_from_bytes(bytes, ext, pw, transpose)
+    }));
+
+    match result {
+        Ok(Ok(json)) => CString::new(json).unwrap_or_default().into_raw(),
+        _ => std::ptr::null_mut(),
     }
 }
 

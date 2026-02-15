@@ -1,6 +1,11 @@
 //! JNI bindings for Android.
 //!
 //! These functions are called from Kotlin via the JNI bridge.
+//!
+//! Each function extracts data from JNIEnv first (which cannot panic across
+//! FFI), then wraps the core Rust computation in `catch_unwind` to prevent
+//! panics from unwinding through the JNI boundary (which is undefined
+//! behavior and would crash the ART VM).
 
 use jni::objects::{JByteArray, JClass, JString};
 use jni::sys::{jfloat, jint, jstring};
@@ -27,12 +32,17 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderFile(
 
     let pw = if page_width > 0.0 { Some(page_width as f64) } else { None };
 
-    match render_file_to_svg(&path_str, pw, transpose) {
-        Ok(svg) => match env.new_string(&svg) {
+    // catch_unwind around the core computation to prevent panics crossing JNI.
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        render_file_to_svg(&path_str, pw, transpose)
+    }));
+
+    match result {
+        Ok(Ok(svg)) => match env.new_string(&svg) {
             Ok(js) => js.into_raw(),
             Err(_) => std::ptr::null_mut(),
         },
-        Err(_) => std::ptr::null_mut(),
+        _ => std::ptr::null_mut(),
     }
 }
 
@@ -62,12 +72,16 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderBytes(
 
     let pw = if page_width > 0.0 { Some(page_width as f64) } else { None };
 
-    match render_bytes_to_svg(&bytes, ext.as_deref(), pw, transpose) {
-        Ok(svg) => match env.new_string(&svg) {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        render_bytes_to_svg(&bytes, ext.as_deref(), pw, transpose)
+    }));
+
+    match result {
+        Ok(Ok(svg)) => match env.new_string(&svg) {
             Ok(js) => js.into_raw(),
             Err(_) => std::ptr::null_mut(),
         },
-        Err(_) => std::ptr::null_mut(),
+        _ => std::ptr::null_mut(),
     }
 }
 
@@ -97,12 +111,16 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_playbackMap(
 
     let pw = if page_width > 0.0 { Some(page_width as f64) } else { None };
 
-    match playback_map_from_bytes(&bytes, ext.as_deref(), pw, transpose) {
-        Ok(json) => match env.new_string(&json) {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        playback_map_from_bytes(&bytes, ext.as_deref(), pw, transpose)
+    }));
+
+    match result {
+        Ok(Ok(json)) => match env.new_string(&json) {
             Ok(js) => js.into_raw(),
             Err(_) => std::ptr::null_mut(),
         },
-        Err(_) => std::ptr::null_mut(),
+        _ => std::ptr::null_mut(),
     }
 }
 
@@ -138,14 +156,18 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_generateMidi(
         }
     };
 
-    match generate_midi_from_bytes(&bytes, ext.as_deref(), &options) {
-        Ok(midi_bytes) => {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        generate_midi_from_bytes(&bytes, ext.as_deref(), &options)
+    }));
+
+    match result {
+        Ok(Ok(midi_bytes)) => {
             match env.byte_array_from_slice(&midi_bytes) {
                 Ok(arr) => arr.into_raw(),
                 Err(_) => std::ptr::null_mut() as jni::sys::jbyteArray,
             }
         }
-        Err(_) => std::ptr::null_mut() as jni::sys::jbyteArray,
+        _ => std::ptr::null_mut() as jni::sys::jbyteArray,
     }
 }
 
@@ -187,14 +209,18 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderAudio(
         }
     };
 
-    match render_audio_from_bytes(&bytes, ext.as_deref(), &options, &sf_bytes) {
-        Ok(wav_bytes) => {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        render_audio_from_bytes(&bytes, ext.as_deref(), &options, &sf_bytes)
+    }));
+
+    match result {
+        Ok(Ok(wav_bytes)) => {
             match env.byte_array_from_slice(&wav_bytes) {
                 Ok(arr) => arr.into_raw(),
                 Err(_) => std::ptr::null_mut() as jni::sys::jbyteArray,
             }
         }
-        Err(_) => std::ptr::null_mut() as jni::sys::jbyteArray,
+        _ => std::ptr::null_mut() as jni::sys::jbyteArray,
     }
 }
 
@@ -228,14 +254,6 @@ fn parse_midi_options_str(json_str: &str) -> MidiOptions {
     // Parse "transpose":N — extract the integer value after the key
     if let Some(pos) = json_str.find("\"transpose\":") {
         let after = &json_str[pos + "\"transpose\":".len()..];
-        let num_str: String = after.trim().chars()
-            .take_while(|c| *c == '-' || c.is_ascii_digit())
-            .collect();
-        if let Ok(val) = num_str.parse::<i32>() {
-            opts.transpose = val;
-        }
-    } else if let Some(pos) = json_str.find("\"transpose\": ") {
-        let after = &json_str[pos + "\"transpose\": ".len()..];
         let num_str: String = after.trim().chars()
             .take_while(|c| *c == '-' || c.is_ascii_digit())
             .collect();

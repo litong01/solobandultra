@@ -422,8 +422,13 @@ class PlaybackManager: ObservableObject {
             print("[PlaybackManager] Repeat \(repeatCount - remainingRepeats)/\(repeatCount)")
             currentTimeMs = 0
 
+            // Capture generation so the delayed restart is cancelled if the user
+            // stops, starts a new play, loads a new score, or an interruption occurs
+            // during the 150 ms gap between repeats.
+            let gen = playbackGeneration
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-                self?.startPlayback()
+                guard let self = self, self.playbackGeneration == gen else { return }
+                self.startPlayback()
             }
             return
         }

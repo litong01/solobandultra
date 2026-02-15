@@ -271,6 +271,8 @@ fun SheetMusicScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     /** Monotonically increasing counter to detect stale loadScore results. */
     var loadGeneration by remember { mutableIntStateOf(0) }
+    /** Counter to detect stale audio-only re-renders (optionsJson changes). */
+    var audioGeneration by remember { mutableIntStateOf(0) }
 
     val screenWidthDp = LocalConfiguration.current.screenWidthDp.toFloat()
 
@@ -341,6 +343,9 @@ fun SheetMusicScreen(
                     val tempFile = withContext(Dispatchers.IO) {
                         playbackManager?.writeTempWav(audio)
                     }
+                    // Re-check generation after IO suspension — a newer loadScore
+                    // may have started while we were writing the temp file.
+                    if (thisGeneration != loadGeneration) return@launch
                     if (tempFile != null) {
                         playbackManager?.prepareFromFile(tempFile)
                     }
@@ -375,6 +380,10 @@ fun SheetMusicScreen(
         // Skip the initial launch (already handled by the loadScore above)
         if (svgContent == null) return@LaunchedEffect
 
+        // Bump audio generation so any in-flight audio re-render is discarded.
+        audioGeneration++
+        val thisAudioGen = audioGeneration
+
         val isExternal = selectedFileUrl.startsWith("external://")
         val filePath = if (isExternal) {
             selectedFileUrl.removePrefix("external://")
@@ -398,10 +407,14 @@ fun SheetMusicScreen(
                 null
             }
         }
+        // Discard if a newer audio re-render or loadScore was started.
+        if (thisAudioGen != audioGeneration) return@LaunchedEffect
         if (audio != null) {
             val tempFile = withContext(Dispatchers.IO) {
                 playbackManager?.writeTempWav(audio)
             }
+            // Re-check after IO suspension.
+            if (thisAudioGen != audioGeneration) return@LaunchedEffect
             if (tempFile != null) {
                 playbackManager?.prepareFromFile(tempFile)
             }
