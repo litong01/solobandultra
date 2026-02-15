@@ -397,7 +397,6 @@ class PlaybackManager: ObservableObject {
         webView.evaluateJavaScript(js, completionHandler: nil)
     }
 
-
     // MARK: - Poll timer (end-of-playback detection, ~4 Hz)
 
     private func startPollTimer() {

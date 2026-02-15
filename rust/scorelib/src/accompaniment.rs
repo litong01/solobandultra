@@ -86,7 +86,8 @@ fn analyze_chords_from_harmonies(
         let measure = &part.measures[um.original_index];
         let entry = &timemap[i];
         let divisions = entry.divisions.max(1) as f64;
-        let ms_per_division = entry.duration_ms / (entry.effective_quarters * divisions);
+        let denom = entry.effective_quarters * divisions;
+        let ms_per_division = if denom > 0.0 { entry.duration_ms / denom } else { 0.0 };
 
         if measure.harmonies.is_empty() {
             // No chord symbol in this measure — repeat the previous chord
