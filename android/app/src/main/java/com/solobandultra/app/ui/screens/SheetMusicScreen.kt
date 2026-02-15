@@ -306,19 +306,19 @@ fun SheetMusicScreen(
             val currentTranspose = transpose
             val result = withContext(Dispatchers.IO) {
                 try {
-                    val sfBytes = context.assets.open("GeneralUser_GS.sf2").use { it.readBytes() }
+                    // Ensure SoundFont is cached (no-op after first call)
+                    ScoreLib.loadSoundFont(context)
+
                     if (isExternal && extBytes != null) {
                         val ext = filePath.substringAfterLast('.', "")
                         val svg = ScoreLib.renderData(extBytes, ext, pageWidth, currentTranspose)
                         val pmap = ScoreLib.playbackMapFromData(extBytes, ext, pageWidth, currentTranspose)
-                        val audio = ScoreLib.renderAudioFromData(extBytes, ext, sfBytes, currentOptionsJson)
+                        val audio = ScoreLib.renderAudioFromData(extBytes, ext, currentOptionsJson)
                         Triple(svg, pmap, audio)
                     } else {
                         val svg = ScoreLib.renderAsset(context, filePath, pageWidth, currentTranspose)
                         val pmap = ScoreLib.playbackMapFromAsset(context, filePath, pageWidth, currentTranspose)
-                        val audio = ScoreLib.renderAudioFromAsset(
-                            context, filePath, "GeneralUser_GS.sf2", currentOptionsJson
-                        )
+                        val audio = ScoreLib.renderAudioFromAsset(context, filePath, currentOptionsJson)
                         Triple(svg, pmap, audio)
                     }
                 } catch (e: Exception) {
@@ -335,9 +335,15 @@ fun SheetMusicScreen(
                 svgContent = svg
                 playbackMapJson = pmap
 
-                // Prepare the playback manager with the rendered WAV audio
+                // Prepare the playback manager with the rendered WAV audio.
+                // File write on IO, MediaPlayer setup on Main (needs Looper).
                 if (audio != null) {
-                    playbackManager?.prepareAudio(audio)
+                    val tempFile = withContext(Dispatchers.IO) {
+                        playbackManager?.writeTempWav(audio)
+                    }
+                    if (tempFile != null) {
+                        playbackManager?.prepareFromFile(tempFile)
+                    }
                 }
             } else {
                 errorMessage = "Failed to render $filePath"
@@ -381,21 +387,24 @@ fun SheetMusicScreen(
         val extBytes = if (isExternal) externalFileData else null
         val audio = withContext(Dispatchers.IO) {
             try {
-                val sfBytes = context.assets.open("GeneralUser_GS.sf2").use { it.readBytes() }
+                ScoreLib.loadSoundFont(context)
                 if (isExternal && extBytes != null) {
                     val ext = filePath.substringAfterLast('.', "")
-                    ScoreLib.renderAudioFromData(extBytes, ext, sfBytes, currentOptionsJson)
+                    ScoreLib.renderAudioFromData(extBytes, ext, currentOptionsJson)
                 } else {
-                    ScoreLib.renderAudioFromAsset(
-                        context, filePath, "GeneralUser_GS.sf2", currentOptionsJson
-                    )
+                    ScoreLib.renderAudioFromAsset(context, filePath, currentOptionsJson)
                 }
             } catch (_: Exception) {
                 null
             }
         }
         if (audio != null) {
-            playbackManager?.prepareAudio(audio)
+            val tempFile = withContext(Dispatchers.IO) {
+                playbackManager?.writeTempWav(audio)
+            }
+            if (tempFile != null) {
+                playbackManager?.prepareFromFile(tempFile)
+            }
         }
     }
 

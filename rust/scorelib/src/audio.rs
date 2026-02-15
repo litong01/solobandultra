@@ -17,6 +17,9 @@ const SAMPLE_RATE: i32 = 44100;
 /// float buffer up front.
 const BLOCK_SIZE: usize = 8192;
 
+/// Target peak level for normalization (0.95 = 5% headroom to avoid DAC clipping).
+const NORMALIZE_TARGET: f32 = 0.95;
+
 /// Render MIDI data to a WAV file using the provided SoundFont.
 ///
 /// Returns a complete WAV file (header + PCM data) as bytes.
@@ -24,6 +27,10 @@ const BLOCK_SIZE: usize = 8192;
 ///
 /// An extra second of silence is appended so release tails ring out
 /// naturally instead of being abruptly cut.
+///
+/// The output is **peak-normalized** so the loudest sample reaches
+/// ~95% of full scale.  This ensures consistent loudness regardless
+/// of the SoundFont's internal gain and the piece's dynamics.
 pub fn render_audio(midi_data: &[u8], soundfont_data: &[u8]) -> Result<Vec<u8>, String> {
     // ── Load SoundFont ──
     let mut sf_cursor = Cursor::new(soundfont_data);
@@ -50,12 +57,13 @@ pub fn render_audio(midi_data: &[u8], soundfont_data: &[u8]) -> Result<Vec<u8>, 
     // Start playback.
     sequencer.play(&midi_file, false);
 
-    // ── Render in blocks, converting f32 → i16 incrementally ──
+    // ── Pass 1: Render to f32, tracking peak amplitude ──
     let mut left = vec![0f32; BLOCK_SIZE];
     let mut right = vec![0f32; BLOCK_SIZE];
 
-    // Pre-allocate PCM output: stereo × 2 bytes per sample.
-    let mut pcm_data: Vec<u8> = Vec::with_capacity(total_samples * 4);
+    // Store interleaved f32 samples for normalization.
+    let mut float_buf: Vec<f32> = Vec::with_capacity(total_samples * 2);
+    let mut peak: f32 = 0.0;
     let mut rendered: usize = 0;
 
     while rendered < total_samples {
@@ -63,22 +71,41 @@ pub fn render_audio(midi_data: &[u8], soundfont_data: &[u8]) -> Result<Vec<u8>, 
         sequencer.render(&mut left[..count], &mut right[..count]);
 
         for i in 0..count {
-            let l = (left[i] * 32767.0).clamp(-32768.0, 32767.0) as i16;
-            let r = (right[i] * 32767.0).clamp(-32768.0, 32767.0) as i16;
-            pcm_data.extend_from_slice(&l.to_le_bytes());
-            pcm_data.extend_from_slice(&r.to_le_bytes());
+            let l = left[i];
+            let r = right[i];
+            float_buf.push(l);
+            float_buf.push(r);
+            let abs_l = l.abs();
+            let abs_r = r.abs();
+            if abs_l > peak { peak = abs_l; }
+            if abs_r > peak { peak = abs_r; }
         }
         rendered += count;
     }
+
+    // ── Pass 2: Normalize and convert f32 → i16 ──
+    let gain = if peak > 0.0001 { NORMALIZE_TARGET / peak } else { 1.0 };
+
+    let mut pcm_data: Vec<u8> = Vec::with_capacity(total_samples * 4);
+    for sample in &float_buf {
+        let normalized = (sample * gain * 32767.0).clamp(-32768.0, 32767.0) as i16;
+        pcm_data.extend_from_slice(&normalized.to_le_bytes());
+    }
+
+    // Drop float buffer to free memory before building WAV.
+    drop(float_buf);
 
     let wav = build_wav(SAMPLE_RATE as u32, 2, 16, &pcm_data);
 
     #[cfg(debug_assertions)]
     eprintln!(
-        "[audio] Rendered {:.1}s → {} bytes WAV ({} PCM samples)",
+        "[audio] Rendered {:.1}s → {} bytes WAV ({} PCM samples, peak={:.3}, gain={:.2}x / {:.1} dB)",
         duration_secs,
         wav.len(),
-        rendered
+        rendered,
+        peak,
+        gain,
+        20.0 * (gain as f64).log10()
     );
 
     Ok(wav)

@@ -169,6 +169,10 @@ build_android() {
         export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="${NDK_BIN}/aarch64-linux-android21-clang"
         export CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER="${NDK_BIN}/x86_64-linux-android21-clang"
 
+        # 16 KB page alignment required for Google Play (Android 15+).
+        export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-z -C link-arg=max-page-size=16384"
+        export CARGO_TARGET_X86_64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-z -C link-arg=max-page-size=16384"
+
         echo "→ Building aarch64-linux-android (arm64-v8a)..."
         cargo build --release --target aarch64-linux-android 2>&1
 

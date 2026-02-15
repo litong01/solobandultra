@@ -78,14 +78,28 @@ class PlaybackManager(
     // ── Public API ──────────────────────────────────────────────────────
 
     /**
-     * Prepare WAV audio data for playback (does not start playing).
-     *
-     * The WAV data should be a complete WAV file as returned by
-     * ScoreLib.renderAudio().
+     * Write WAV data to a temp file on a background thread.
+     * Returns the temp file, or null on error.
+     * This is the only part that should run on Dispatchers.IO.
      */
-    fun prepareAudio(wavBytes: ByteArray) {
+    fun writeTempWav(wavBytes: ByteArray): File? {
+        return try {
+            val tempFile = File.createTempFile("playback", ".wav", context.cacheDir)
+            tempFile.writeBytes(wavBytes)
+            tempFile
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to write WAV temp file: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Prepare a previously written WAV temp file for playback.
+     * MUST be called on the main thread (MediaPlayer needs a Looper).
+     */
+    fun prepareFromFile(tempFile: File) {
         stop()
-        loadWav(wavBytes)
+        loadWavFromFile(tempFile)
     }
 
     /**
@@ -239,13 +253,11 @@ class PlaybackManager(
     // ── Private helpers ─────────────────────────────────────────────────
 
     /**
-     * Load WAV data into a MediaPlayer.
+     * Load a WAV temp file into a MediaPlayer.
+     * Must be called on the main thread (Looper required for MediaPlayer).
      */
-    private fun loadWav(wavBytes: ByteArray) {
+    private fun loadWavFromFile(tempFile: File) {
         try {
-            // MediaPlayer requires a file, so write WAV data to a temp file
-            val tempFile = File.createTempFile("playback", ".wav", context.cacheDir)
-            tempFile.writeBytes(wavBytes)
             wavTempFile = tempFile
 
             val player = MediaPlayer()

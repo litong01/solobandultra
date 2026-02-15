@@ -13,6 +13,32 @@ object ScoreLib {
         System.loadLibrary("scorelib")
     }
 
+    /**
+     * Cached SoundFont data — loaded once from assets on first use.
+     * Call [loadSoundFont] before using audio rendering functions.
+     */
+    @Volatile
+    private var cachedSoundFont: ByteArray? = null
+
+    /**
+     * Load and cache the SoundFont from assets. Safe to call multiple times;
+     * only reads from assets on the first invocation.
+     */
+    fun loadSoundFont(context: Context) {
+        if (cachedSoundFont == null) {
+            synchronized(this) {
+                if (cachedSoundFont == null) {
+                    cachedSoundFont = context.assets.open("GeneralUser_GS.sf2").use { it.readBytes() }
+                }
+            }
+        }
+    }
+
+    /**
+     * Get the cached SoundFont bytes (must call [loadSoundFont] first).
+     */
+    fun getSoundFont(): ByteArray? = cachedSoundFont
+
     // ── SVG Rendering ───────────────────────────────────────────────────
 
     /**
@@ -124,30 +150,30 @@ object ScoreLib {
     ): ByteArray?
 
     /**
-     * Render a MusicXML asset to WAV audio.
-     * Loads the SoundFont from assets as well.
+     * Render a MusicXML asset to WAV audio using the cached SoundFont.
+     * Call [loadSoundFont] before using this method.
      */
     fun renderAudioFromAsset(
         context: Context,
         assetPath: String,
-        soundfontAssetPath: String,
         optionsJson: String? = null
     ): ByteArray? {
+        val sfBytes = cachedSoundFont ?: return null
         val extension = assetPath.substringAfterLast('.', "")
         val bytes = context.assets.open(assetPath).use { it.readBytes() }
-        val sfBytes = context.assets.open(soundfontAssetPath).use { it.readBytes() }
         return renderAudio(bytes, extension.ifEmpty { null }, optionsJson, sfBytes)
     }
 
     /**
-     * Render pre-loaded MusicXML bytes to WAV audio.
+     * Render pre-loaded MusicXML bytes to WAV audio using the cached SoundFont.
+     * Call [loadSoundFont] before using this method.
      */
     fun renderAudioFromData(
         data: ByteArray,
         ext: String,
-        soundfontData: ByteArray,
         optionsJson: String? = null
     ): ByteArray? {
-        return renderAudio(data, ext.ifEmpty { null }, optionsJson, soundfontData)
+        val sfBytes = cachedSoundFont ?: return null
+        return renderAudio(data, ext.ifEmpty { null }, optionsJson, sfBytes)
     }
 }
