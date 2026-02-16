@@ -71,7 +71,7 @@ pub fn transpose_score(score: &mut Score, semitones: i32) {
             for note in &mut measure.notes {
                 if let Some(ref mut pitch) = note.pitch {
                     let midi = pitch.to_midi() + semitones;
-                    let octave = midi / 12 - 1;
+                    let octave = midi.div_euclid(12) - 1;
                     let pc = midi.rem_euclid(12);
                     let (step, alter) = semitone_to_note(pc, use_sharps);
                     pitch.step = step.to_string();
