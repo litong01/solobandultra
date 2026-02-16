@@ -42,14 +42,14 @@ fn smoke_parse_measures() {
     let score = parse_file(smoke_test_path()).unwrap();
     let part = &score.parts[0];
 
-    // 68 raw measures: m0 (pickup) through m67
-    assert_eq!(part.measures.len(), 68, "Should have 68 raw measures");
+    // 70 raw measures: m0 (pickup) through m69
+    assert_eq!(part.measures.len(), 70, "Should have 70 raw measures");
 
     // m0 is implicit (pickup)
     assert!(part.measures[0].implicit, "Measure 0 should be implicit (anacrusis)");
     assert_eq!(part.measures[0].number, 0);
 
-    println!("✓ smoke test: 68 measures, m0 is pickup");
+    println!("✓ smoke test: 70 measures, m0 is pickup");
 }
 
 #[test]
@@ -257,12 +257,12 @@ fn smoke_unroll_correct_count() {
     let score = parse_file(smoke_test_path()).unwrap();
     let unrolled = unroll(&score, 0);
 
-    // Expected: 8 (A) + 3 (B 1st) + 3 (B 2nd) + 4 (C) + 3 (D) + 48 (F waltz) + 1 (E) + 4 (D.S.) = 74
-    assert_eq!(unrolled.len(), 74,
-        "Should have 74 unrolled measures (68 raw with repeat + D.S.), got {}",
+    // Expected: 10 (A) + 3 (B 1st) + 3 (B 2nd) + 4 (C) + 3 (D) + 48 (F waltz) + 1 (E) + 4 (D.S.) = 76
+    assert_eq!(unrolled.len(), 76,
+        "Should have 76 unrolled measures (70 raw with repeat + D.S.), got {}",
         unrolled.len());
 
-    println!("✓ smoke test unroll: 68 raw → {} unrolled measures", unrolled.len());
+    println!("✓ smoke test unroll: 70 raw → {} unrolled measures", unrolled.len());
 }
 
 #[test]
@@ -273,23 +273,23 @@ fn smoke_unroll_correct_sequence() {
     // Verify the playback order by original_index
     let indices: Vec<usize> = unrolled.iter().map(|u| u.original_index).collect();
 
-    // Section A: m0-m7 (including new slur test measures at m6, m7)
-    assert_eq!(&indices[0..8], &[0, 1, 2, 3, 4, 5, 6, 7], "Section A");
-    // Section B 1st pass: m8, m9, m10
-    assert_eq!(&indices[8..11], &[8, 9, 10], "Section B 1st ending");
-    // Section B 2nd pass: m8, m9, m11
-    assert_eq!(&indices[11..14], &[8, 9, 11], "Section B 2nd ending");
-    // Section C: m12-m15
-    assert_eq!(&indices[14..18], &[12, 13, 14, 15], "Section C");
-    // Section D: m16-m18
-    assert_eq!(&indices[18..21], &[16, 17, 18], "Section D");
-    // Section F (waltz): m19-m66 (48 measures)
-    let waltz_indices: Vec<usize> = (19..=66).collect();
-    assert_eq!(&indices[21..69], &waltz_indices[..], "Section F (waltz)");
-    // Section E: m67
-    assert_eq!(indices[69], 67, "Section E (D.S.)");
-    // D.S. replay: m12-m15
-    assert_eq!(&indices[70..74], &[12, 13, 14, 15], "D.S. replay to Fine");
+    // Section A: m0-m9 (original + quarter-note pairs + beamed eighth pairs)
+    assert_eq!(&indices[0..10], &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9], "Section A");
+    // Section B 1st pass: m10, m11, m12
+    assert_eq!(&indices[10..13], &[10, 11, 12], "Section B 1st ending");
+    // Section B 2nd pass: m10, m11, m13
+    assert_eq!(&indices[13..16], &[10, 11, 13], "Section B 2nd ending");
+    // Section C: m14-m17
+    assert_eq!(&indices[16..20], &[14, 15, 16, 17], "Section C");
+    // Section D: m18-m20
+    assert_eq!(&indices[20..23], &[18, 19, 20], "Section D");
+    // Section F (waltz): m21-m68 (48 measures)
+    let waltz_indices: Vec<usize> = (21..=68).collect();
+    assert_eq!(&indices[23..71], &waltz_indices[..], "Section F (waltz)");
+    // Section E: m69
+    assert_eq!(indices[71], 69, "Section E (D.S.)");
+    // D.S. replay: m14-m17
+    assert_eq!(&indices[72..76], &[14, 15, 16, 17], "D.S. replay to Fine");
 
     println!("✓ smoke test unroll sequence verified ({} measures)", indices.len());
 }
@@ -304,7 +304,7 @@ fn smoke_timemap_properties() {
     let unrolled = unroll(&score, 0);
     let timemap = generate_timemap(&score, 0, &unrolled);
 
-    assert_eq!(timemap.len(), 74, "Timemap should have 74 entries");
+    assert_eq!(timemap.len(), 76, "Timemap should have 76 entries");
 
     // Starts at 0
     assert!(timemap[0].timestamp_ms.abs() < 0.01, "Should start at 0ms");
@@ -344,20 +344,20 @@ fn smoke_timemap_tempo_reverts_after_ds() {
     let unrolled = unroll(&score, 0);
     let timemap = generate_timemap(&score, 0, &unrolled);
 
-    // m67 is at 120 BPM, D.S. jumps to m12 which should be 108 BPM
-    let m67_entry = &timemap[69]; // index 69 = m67 (D.S. al Fine)
-    let ds_target = &timemap[70]; // index 70 = m12 (after D.S.)
+    // m69 is at 120 BPM, D.S. jumps to m14 which should be 108 BPM
+    let m69_entry = &timemap[71]; // index 71 = m69 (D.S. al Fine)
+    let ds_target = &timemap[72]; // index 72 = m14 (after D.S.)
 
-    assert_eq!(m67_entry.original_index, 67);
-    assert_eq!(ds_target.original_index, 12);
+    assert_eq!(m69_entry.original_index, 69);
+    assert_eq!(ds_target.original_index, 14);
 
-    assert!((m67_entry.tempo_bpm - 120.0).abs() < 1.0,
-        "m67 should be 120 BPM, got {}", m67_entry.tempo_bpm);
+    assert!((m69_entry.tempo_bpm - 120.0).abs() < 1.0,
+        "m69 should be 120 BPM, got {}", m69_entry.tempo_bpm);
     assert!((ds_target.tempo_bpm - 108.0).abs() < 1.0,
         "After D.S. to segno, should revert to 108 BPM, got {}", ds_target.tempo_bpm);
 
     println!("✓ smoke test D.S. tempo revert: {} BPM → {} BPM",
-        m67_entry.tempo_bpm, ds_target.tempo_bpm);
+        m69_entry.tempo_bpm, ds_target.tempo_bpm);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -450,8 +450,8 @@ fn smoke_playback_map() {
     let score = parse_file(smoke_test_path()).unwrap();
     let pmap = generate_playback_map(&score, None);
 
-    assert_eq!(pmap.measures.len(), 68, "Should have 68 original measures");
-    assert_eq!(pmap.timemap.len(), 74, "Should have 74 unrolled timemap entries");
+    assert_eq!(pmap.measures.len(), 70, "Should have 70 original measures");
+    assert_eq!(pmap.timemap.len(), 76, "Should have 76 unrolled timemap entries");
     assert!(!pmap.systems.is_empty(), "Should have at least one system");
 
     // Every measure should have note_positions
