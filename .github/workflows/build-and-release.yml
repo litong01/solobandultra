@@ -252,7 +252,7 @@ jobs:
           if-no-files-found: error
 
   # ─────────────────────────────────────────────
-  # Run Rust tests
+  # Run Rust tests + code coverage
   # ─────────────────────────────────────────────
   test-rust:
     name: Test Rust
@@ -263,6 +263,11 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Cache Cargo registry & build
         uses: actions/cache@v4
@@ -274,9 +279,18 @@ jobs:
           key: test-cargo-${{ hashFiles('rust/scorelib/Cargo.toml', 'rust/scorelib/Cargo.lock') }}
           restore-keys: test-cargo-
 
-      - name: Run tests
+      - name: Run tests with coverage
         working-directory: rust/scorelib
-        run: cargo test -- --nocapture
+        run: cargo llvm-cov --no-clean -- --nocapture
+
+      - name: Generate coverage report (summary)
+        working-directory: rust/scorelib
+        run: |
+          echo "## Rust Code Coverage" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cargo llvm-cov report --skip-functions 2>&1 >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
   # ─────────────────────────────────────────────
   # Create GitHub Release with all build artifacts
