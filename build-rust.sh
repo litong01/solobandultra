@@ -13,6 +13,7 @@
 #   ./build-rust.sh ios          # Build iOS targets only
 #   ./build-rust.sh android      # Build Android targets only
 #   ./build-rust.sh test         # Run Rust tests
+#   ./build-rust.sh coverage     # Run tests with code coverage report
 #
 
 set -euo pipefail
@@ -207,6 +208,29 @@ run_tests() {
     echo ""
 }
 
+# ─── Run tests with coverage ────────────────────────────────────────
+
+run_coverage() {
+    echo "═══ Running Rust tests with coverage (in Docker container) ═══"
+
+    # We use cargo-llvm-cov (LLVM source-based coverage) instead of
+    # tarpaulin because it works reliably inside Docker/QEMU on ARM Macs.
+    docker_cargo '
+        if ! command -v cargo-llvm-cov &>/dev/null; then
+            echo "→ Installing cargo-llvm-cov..."
+            cargo install cargo-llvm-cov 2>&1
+        fi
+
+        echo "→ Installing llvm-tools component..."
+        rustup component add llvm-tools-preview 2>&1
+
+        echo "→ Running tests with coverage instrumentation..."
+        cargo llvm-cov --no-clean -- --nocapture 2>&1
+    '
+
+    echo ""
+}
+
 # ─── Main ───────────────────────────────────────────────────────────
 
 check_docker
@@ -228,13 +252,17 @@ case "$TARGET" in
         ensure_image
         run_tests
         ;;
+    coverage)
+        ensure_image
+        run_coverage
+        ;;
     all)
         ensure_image
         build_ios
         build_android
         ;;
     *)
-        echo "Usage: $0 [ios|android|test|all]"
+        echo "Usage: $0 [ios|android|test|coverage|all]"
         exit 1
         ;;
 esac

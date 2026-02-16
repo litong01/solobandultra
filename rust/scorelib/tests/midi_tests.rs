@@ -365,3 +365,202 @@ fn midi_tongnian_with_accompaniment() {
     write_test_output(output_path, &midi);
     println!("✓ 童年 MIDI: {} bytes, {} tracks → {}", midi.len(), track_count, output_path);
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// parse_midi_options_from_json_str tests
+// ═══════════════════════════════════════════════════════════════════════
+
+#[test]
+fn parse_options_defaults() {
+    let opts = scorelib::parse_midi_options_from_json_str("{}");
+    assert!(opts.include_melody);
+    assert!(!opts.include_piano);
+    assert!(!opts.include_bass);
+    assert!(!opts.include_strings);
+    assert!(!opts.include_drums);
+    assert!(opts.include_metronome);
+    assert_eq!(opts.transpose, 0);
+    assert!(matches!(opts.energy, Energy::Medium));
+    println!("✓ parse_midi_options defaults correct");
+}
+
+#[test]
+fn parse_options_all_accompaniment_enabled() {
+    let json = r#"{
+        "include_melody": true,
+        "include_piano": true,
+        "include_bass": true,
+        "include_strings": true,
+        "include_drums": true,
+        "include_metronome": true,
+        "energy": "strong",
+        "transpose": 3
+    }"#;
+    let opts = scorelib::parse_midi_options_from_json_str(json);
+    assert!(opts.include_melody);
+    assert!(opts.include_piano);
+    assert!(opts.include_bass);
+    assert!(opts.include_strings);
+    assert!(opts.include_drums);
+    assert!(opts.include_metronome);
+    assert!(matches!(opts.energy, Energy::Strong));
+    assert_eq!(opts.transpose, 3);
+    println!("✓ parse_midi_options with all accompaniment enabled");
+}
+
+#[test]
+fn parse_options_melody_disabled() {
+    let json = r#"{"include_melody": false, "include_metronome": false}"#;
+    let opts = scorelib::parse_midi_options_from_json_str(json);
+    assert!(!opts.include_melody);
+    assert!(!opts.include_metronome);
+    println!("✓ parse_midi_options melody disabled");
+}
+
+#[test]
+fn parse_options_soft_energy() {
+    let json = r#"{"energy": "soft"}"#;
+    let opts = scorelib::parse_midi_options_from_json_str(json);
+    assert!(matches!(opts.energy, Energy::Soft));
+    println!("✓ parse_midi_options soft energy");
+}
+
+#[test]
+fn parse_options_negative_transpose() {
+    let json = r#"{"transpose": -5}"#;
+    let opts = scorelib::parse_midi_options_from_json_str(json);
+    assert_eq!(opts.transpose, -5);
+    println!("✓ parse_midi_options negative transpose");
+}
+
+#[test]
+fn parse_options_compact_json() {
+    // No spaces after colons
+    let json = r#"{"include_piano":true,"include_bass":true,"energy":"soft","transpose":-2}"#;
+    let opts = scorelib::parse_midi_options_from_json_str(json);
+    assert!(opts.include_piano);
+    assert!(opts.include_bass);
+    assert!(matches!(opts.energy, Energy::Soft));
+    assert_eq!(opts.transpose, -2);
+    println!("✓ parse_midi_options compact JSON (no spaces)");
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// generate_midi_from_bytes tests
+// ═══════════════════════════════════════════════════════════════════════
+
+#[test]
+fn generate_midi_from_musicxml_bytes() {
+    let data = std::fs::read("../../sheetmusic/asa-branca.musicxml").unwrap();
+    let options = MidiOptions::default();
+    let midi = scorelib::generate_midi_from_bytes(&data, Some("musicxml"), &options)
+        .expect("generate_midi_from_bytes should succeed");
+
+    assert_eq!(&midi[0..4], b"MThd");
+    let track_count = u16::from_be_bytes([midi[10], midi[11]]);
+    assert!(track_count >= 3);
+    println!("✓ generate_midi_from_bytes (musicxml): {} bytes, {} tracks", midi.len(), track_count);
+}
+
+#[test]
+fn generate_midi_from_mxl_bytes() {
+    let data = std::fs::read("../../sheetmusic/童年.mxl").unwrap();
+    let options = MidiOptions::default();
+    let midi = scorelib::generate_midi_from_bytes(&data, Some("mxl"), &options)
+        .expect("generate_midi_from_bytes (MXL) should succeed");
+
+    assert_eq!(&midi[0..4], b"MThd");
+    println!("✓ generate_midi_from_bytes (mxl): {} bytes", midi.len());
+}
+
+#[test]
+fn generate_midi_from_bytes_auto_detect() {
+    let data = std::fs::read("../../sheetmusic/asa-branca.musicxml").unwrap();
+    let options = MidiOptions::default();
+    let midi = scorelib::generate_midi_from_bytes(&data, None, &options)
+        .expect("generate_midi_from_bytes (auto-detect) should succeed");
+
+    assert_eq!(&midi[0..4], b"MThd");
+    println!("✓ generate_midi_from_bytes (auto-detect): {} bytes", midi.len());
+}
+
+#[test]
+fn generate_midi_from_bytes_with_transpose() {
+    let data = std::fs::read("../../sheetmusic/asa-branca.musicxml").unwrap();
+    let options_no_trans = MidiOptions::default();
+    let options_trans = MidiOptions { transpose: 5, ..MidiOptions::default() };
+
+    let midi1 = scorelib::generate_midi_from_bytes(&data, Some("musicxml"), &options_no_trans).unwrap();
+    let midi2 = scorelib::generate_midi_from_bytes(&data, Some("musicxml"), &options_trans).unwrap();
+
+    assert_ne!(midi1, midi2, "Transposed MIDI should differ from original");
+    println!("✓ generate_midi_from_bytes with transpose: orig={} bytes, trans={} bytes", midi1.len(), midi2.len());
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// render_bytes_to_svg tests
+// ═══════════════════════════════════════════════════════════════════════
+
+#[test]
+fn render_bytes_to_svg_musicxml() {
+    let data = std::fs::read("../../sheetmusic/asa-branca.musicxml").unwrap();
+    let svg = scorelib::render_bytes_to_svg(&data, Some("musicxml"), None, 0)
+        .expect("render_bytes_to_svg should succeed");
+
+    assert!(svg.starts_with("<svg"));
+    assert!(svg.contains("<ellipse"));
+    println!("✓ render_bytes_to_svg (musicxml): {} bytes", svg.len());
+}
+
+#[test]
+fn render_bytes_to_svg_mxl() {
+    let data = std::fs::read("../../sheetmusic/童年.mxl").unwrap();
+    let svg = scorelib::render_bytes_to_svg(&data, Some("mxl"), None, 0)
+        .expect("render_bytes_to_svg (MXL) should succeed");
+
+    assert!(svg.starts_with("<svg"));
+    assert!(svg.contains("<ellipse"));
+    println!("✓ render_bytes_to_svg (mxl): {} bytes", svg.len());
+}
+
+#[test]
+fn render_bytes_to_svg_with_transpose() {
+    let data = std::fs::read("../../sheetmusic/asa-branca.musicxml").unwrap();
+    let svg_orig = scorelib::render_bytes_to_svg(&data, Some("musicxml"), None, 0).unwrap();
+    let svg_trans = scorelib::render_bytes_to_svg(&data, Some("musicxml"), None, 3).unwrap();
+
+    assert!(svg_orig.starts_with("<svg"));
+    assert!(svg_trans.starts_with("<svg"));
+    // Transposed version should differ (key signature, note positions)
+    assert_ne!(svg_orig, svg_trans, "Transposed SVG should differ from original");
+    println!("✓ render_bytes_to_svg with transpose: orig={} bytes, trans={} bytes",
+        svg_orig.len(), svg_trans.len());
+}
+
+#[test]
+fn render_bytes_to_svg_with_page_width() {
+    let data = std::fs::read("../../sheetmusic/asa-branca.musicxml").unwrap();
+    let svg_wide = scorelib::render_bytes_to_svg(&data, Some("musicxml"), Some(820.0), 0).unwrap();
+    let svg_narrow = scorelib::render_bytes_to_svg(&data, Some("musicxml"), Some(390.0), 0).unwrap();
+
+    assert!(svg_wide.contains("viewBox=\"0 0 820"));
+    assert!(svg_narrow.contains("viewBox=\"0 0 390"));
+    println!("✓ render_bytes_to_svg with page width: wide vs narrow");
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// playback_map_from_bytes test
+// ═══════════════════════════════════════════════════════════════════════
+
+#[test]
+fn playback_map_from_bytes_returns_valid_json() {
+    let data = std::fs::read("../../sheetmusic/asa-branca.musicxml").unwrap();
+    let json = scorelib::playback_map_from_bytes(&data, Some("musicxml"), None, 0)
+        .expect("playback_map_from_bytes should succeed");
+
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("Should be valid JSON");
+    assert!(parsed["measures"].is_array());
+    assert!(parsed["systems"].is_array());
+    assert!(parsed["timemap"].is_array());
+    println!("✓ playback_map_from_bytes: {} bytes JSON", json.len());
+}

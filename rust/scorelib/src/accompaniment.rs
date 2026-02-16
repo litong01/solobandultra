@@ -761,3 +761,168 @@ pub fn generate_drums(_chords: &[Chord], energy: Energy, timemap: &[TimemapEntry
 
     events
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn velocity_clamps_to_valid_range() {
+        // Normal case
+        assert_eq!(velocity(100.0, 0.7), 70);
+        // High value should clamp to 127
+        assert_eq!(velocity(200.0, 1.0), 127);
+        // Very low value should clamp to 1 (not 0)
+        assert_eq!(velocity(0.5, 0.1), 1);
+        // Zero base should still clamp to 1
+        assert_eq!(velocity(0.0, 1.0), 1);
+    }
+
+    #[test]
+    fn energy_multipliers_ordering() {
+        let soft = energy_multipliers(Energy::Soft);
+        let med = energy_multipliers(Energy::Medium);
+        let strong = energy_multipliers(Energy::Strong);
+
+        // Strong > Medium > Soft for all instruments
+        assert!(strong.piano > med.piano);
+        assert!(med.piano > soft.piano);
+        assert!(strong.bass > med.bass);
+        assert!(med.bass > soft.bass);
+        assert!(strong.strings > med.strings);
+        assert!(med.strings > soft.strings);
+        assert!(strong.drums > med.drums);
+        assert!(med.drums > soft.drums);
+    }
+
+    #[test]
+    fn energy_multipliers_in_valid_range() {
+        for energy in [Energy::Soft, Energy::Medium, Energy::Strong] {
+            let em = energy_multipliers(energy);
+            assert!(em.piano > 0.0 && em.piano <= 1.0, "piano={}", em.piano);
+            assert!(em.bass > 0.0 && em.bass <= 1.0, "bass={}", em.bass);
+            assert!(em.strings > 0.0 && em.strings <= 1.0, "strings={}", em.strings);
+            assert!(em.drums > 0.0 && em.drums <= 1.0, "drums={}", em.drums);
+        }
+    }
+
+    #[test]
+    fn chord_voicing_intervals() {
+        // Major: root, major third (+4), fifth (+7)
+        let major = get_chord_voicing(0, ChordKind::Major); // C = 0
+        assert_eq!(major, vec![48, 52, 55]); // C3, E3, G3
+
+        // Minor: root, minor third (+3), fifth (+7)
+        let minor = get_chord_voicing(0, ChordKind::Minor);
+        assert_eq!(minor, vec![48, 51, 55]); // C3, Eb3, G3
+
+        // Dominant 7: root, major third, fifth, flat seventh
+        let dom7 = get_chord_voicing(0, ChordKind::Dominant7);
+        assert_eq!(dom7, vec![48, 52, 55, 58]);
+
+        // Diminished: root, minor third, tritone
+        let dim = get_chord_voicing(0, ChordKind::Diminished);
+        assert_eq!(dim, vec![48, 51, 54]);
+
+        // Augmented: root, major third, augmented fifth
+        let aug = get_chord_voicing(0, ChordKind::Augmented);
+        assert_eq!(aug, vec![48, 52, 56]);
+    }
+
+    #[test]
+    fn chord_voicing_transposes_with_root() {
+        // G major (root = 7)
+        let g_major = get_chord_voicing(7, ChordKind::Major);
+        assert_eq!(g_major, vec![55, 59, 62]); // G3, B3, D4
+
+        // D minor (root = 2)
+        let d_minor = get_chord_voicing(2, ChordKind::Minor);
+        assert_eq!(d_minor, vec![50, 53, 57]); // D3, F3, A3
+    }
+
+    #[test]
+    fn parse_chord_kind_standard_strings() {
+        assert_eq!(parse_chord_kind("major"), ChordKind::Major);
+        assert_eq!(parse_chord_kind("minor"), ChordKind::Minor);
+        assert_eq!(parse_chord_kind("dominant"), ChordKind::Dominant7);
+        assert_eq!(parse_chord_kind("dominant-seventh"), ChordKind::Dominant7);
+        assert_eq!(parse_chord_kind("major-seventh"), ChordKind::MajorSeventh);
+        assert_eq!(parse_chord_kind("minor-seventh"), ChordKind::MinorSeventh);
+        assert_eq!(parse_chord_kind("diminished"), ChordKind::Diminished);
+        assert_eq!(parse_chord_kind("half-diminished"), ChordKind::HalfDiminished);
+        assert_eq!(parse_chord_kind("augmented"), ChordKind::Augmented);
+        // Unknown defaults to Major
+        assert_eq!(parse_chord_kind("unknown-quality"), ChordKind::Major);
+    }
+
+    #[test]
+    fn infer_chord_kind_from_pitches() {
+        // C major triad: C(0), E(4), G(7)
+        assert_eq!(infer_chord_kind(&[0, 4, 7], 0), ChordKind::Major);
+        // C minor triad: C(0), Eb(3), G(7)
+        assert_eq!(infer_chord_kind(&[0, 3, 7], 0), ChordKind::Minor);
+        // C dominant 7: C(0), E(4), G(7), Bb(10)
+        assert_eq!(infer_chord_kind(&[0, 4, 7, 10], 0), ChordKind::Dominant7);
+        // C diminished: C(0), Eb(3), Gb(6)
+        assert_eq!(infer_chord_kind(&[0, 3, 6], 0), ChordKind::Diminished);
+        // C augmented: C(0), E(4), G#(8)
+        assert_eq!(infer_chord_kind(&[0, 4, 8], 0), ChordKind::Augmented);
+    }
+
+    #[test]
+    fn analyze_chords_asa_branca_produces_chords() {
+        let score = crate::parse_file("../../sheetmusic/asa-branca.musicxml").unwrap();
+        let unrolled = crate::unroller::unroll(&score, 0);
+        let timemap = crate::timemap::generate_timemap(&score, 0, &unrolled);
+
+        let chords = analyze_chords(&score.parts[0], &unrolled, &timemap);
+
+        assert!(!chords.is_empty(), "asa-branca should produce chords");
+
+        // All chords should have valid root (0-11) and positive duration
+        for c in &chords {
+            assert!(c.root < 12, "Root {} should be < 12", c.root);
+            assert!(c.duration_ms > 0.0, "Duration should be positive");
+            assert!(c.time_ms >= 0.0, "Time should be non-negative");
+        }
+
+        // Chords should be sorted by time
+        for i in 1..chords.len() {
+            assert!(
+                chords[i].time_ms >= chords[i - 1].time_ms,
+                "Chords should be sorted by time"
+            );
+        }
+
+        // asa-branca has explicit harmony <C major> in measure 1
+        let first_chord = &chords[0];
+        assert_eq!(first_chord.root, 0, "First chord should be C (root=0)");
+        assert_eq!(first_chord.kind, ChordKind::Major, "First chord should be Major");
+
+        println!("✓ asa-branca chords: {} total, first = C major", chords.len());
+    }
+
+    #[test]
+    fn analyze_chords_chopin_infers_from_melody() {
+        let score = crate::parse_file("../../sheetmusic/chopin-trois-valses.mxl").unwrap();
+        let unrolled = crate::unroller::unroll(&score, 0);
+        let timemap = crate::timemap::generate_timemap(&score, 0, &unrolled);
+
+        // Chopin has no explicit harmonies
+        let total_harmonies: usize = score.parts[0].measures.iter()
+            .map(|m| m.harmonies.len()).sum();
+        assert_eq!(total_harmonies, 0, "Chopin should have no explicit harmonies");
+
+        let chords = analyze_chords(&score.parts[0], &unrolled, &timemap);
+
+        // Should still infer chords from melody
+        assert!(!chords.is_empty(), "Should infer chords from melody");
+
+        for c in &chords {
+            assert!(c.root < 12);
+            assert!(c.duration_ms > 0.0);
+        }
+
+        println!("✓ chopin inferred chords: {}", chords.len());
+    }
+}

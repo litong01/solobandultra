@@ -184,3 +184,182 @@ fn playback_map_json_roundtrip() {
 
     println!("✓ Playback map JSON roundtrip OK ({} bytes)", json.len());
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// Note positions within measures
+// ═══════════════════════════════════════════════════════════════════════
+
+#[test]
+fn playback_map_measures_have_note_positions() {
+    let path = sheetmusic_dir().join("asa-branca.musicxml");
+    let score = parse_file(&path).unwrap();
+    let pmap = generate_playback_map(&score, None);
+
+    // Every measure should have at least one note_position entry
+    for m in &pmap.measures {
+        assert!(
+            !m.note_positions.is_empty(),
+            "Measure {} should have note_positions, got empty",
+            m.measure_idx
+        );
+    }
+
+    // note_positions should be sorted by fraction (first element of tuple)
+    for m in &pmap.measures {
+        for i in 1..m.note_positions.len() {
+            assert!(
+                m.note_positions[i].0 >= m.note_positions[i - 1].0,
+                "note_positions should be sorted by fraction in measure {}",
+                m.measure_idx
+            );
+        }
+    }
+
+    // Last note_position fraction should be 1.0 (end-of-measure anchor)
+    for m in &pmap.measures {
+        let last_frac = m.note_positions.last().unwrap().0;
+        assert!(
+            (last_frac - 1.0).abs() < 0.01,
+            "Last note_position fraction should be ~1.0, got {} in measure {}",
+            last_frac, m.measure_idx
+        );
+    }
+
+    // note_positions x values should be within the measure's x..x+width bounds
+    for m in &pmap.measures {
+        let left = m.x;
+        let right = m.x + m.width;
+        for &(frac, x) in &m.note_positions {
+            assert!(
+                x >= left - 1.0 && x <= right + 1.0,
+                "note_position x={} out of measure bounds [{}, {}] in measure {} (frac={})",
+                x, left, right, m.measure_idx, frac
+            );
+        }
+    }
+
+    let total_positions: usize = pmap.measures.iter().map(|m| m.note_positions.len()).sum();
+    println!("✓ asa-branca: {} measures with {} total note_positions", pmap.measures.len(), total_positions);
+}
+
+#[test]
+fn playback_map_chopin_note_positions() {
+    // Verify note_positions work on a multi-staff piano piece
+    let path = sheetmusic_dir().join("chopin-trois-valses.mxl");
+    let score = parse_file(&path).unwrap();
+    let pmap = generate_playback_map(&score, None);
+
+    for m in &pmap.measures {
+        assert!(!m.note_positions.is_empty(),
+            "Chopin measure {} should have note_positions", m.measure_idx);
+    }
+
+    // Fractions should always be in [0, 1]
+    for m in &pmap.measures {
+        for &(frac, _x) in &m.note_positions {
+            assert!(
+                frac >= 0.0 && frac <= 1.001,
+                "note_position fraction {} out of [0,1] in measure {}",
+                frac, m.measure_idx
+            );
+        }
+    }
+
+    println!("✓ chopin note_positions: all {} measures have valid entries", pmap.measures.len());
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Pickup (anacrusis) measure timing
+// ═══════════════════════════════════════════════════════════════════════
+
+#[test]
+fn playback_map_pickup_measure_has_shorter_duration() {
+    // asa-branca measure 0 is implicit (anacrusis) and shorter than a full measure
+    let path = sheetmusic_dir().join("asa-branca.musicxml");
+    let score = parse_file(&path).unwrap();
+    let pmap = generate_playback_map(&score, None);
+
+    // First timemap entry (measure 0) should be shorter than a full measure
+    let first = &pmap.timemap[0];
+    let second = &pmap.timemap[1];
+
+    assert_eq!(first.original_index, 0, "First entry should be measure 0");
+
+    // Duration of the pickup should be less than the next measure's duration
+    assert!(
+        first.duration_ms < second.duration_ms,
+        "Pickup measure duration ({:.1}ms) should be less than full measure ({:.1}ms)",
+        first.duration_ms, second.duration_ms
+    );
+
+    println!("✓ pickup measure: {:.1}ms (vs full measure {:.1}ms)", first.duration_ms, second.duration_ms);
+}
+
+#[test]
+fn playback_map_starts_at_time_zero() {
+    let path = sheetmusic_dir().join("asa-branca.musicxml");
+    let score = parse_file(&path).unwrap();
+    let pmap = generate_playback_map(&score, None);
+
+    assert!(
+        pmap.timemap[0].timestamp_ms.abs() < 0.01,
+        "First timemap entry should start at 0ms, got {}",
+        pmap.timemap[0].timestamp_ms
+    );
+    println!("✓ playback map starts at time 0");
+}
+
+#[test]
+fn playback_map_total_duration_reasonable() {
+    let path = sheetmusic_dir().join("asa-branca.musicxml");
+    let score = parse_file(&path).unwrap();
+    let pmap = generate_playback_map(&score, None);
+
+    // Total duration = last entry timestamp + last entry duration
+    let last = pmap.timemap.last().unwrap();
+    let total_ms = last.timestamp_ms + last.duration_ms;
+
+    // asa-branca should be roughly 60-180 seconds
+    assert!(
+        total_ms > 30_000.0 && total_ms < 300_000.0,
+        "Total duration {:.1}s should be reasonable",
+        total_ms / 1000.0
+    );
+    println!("✓ total duration: {:.1}s", total_ms / 1000.0);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Tempo changes reflected in playback map
+// ═══════════════════════════════════════════════════════════════════════
+
+#[test]
+fn playback_map_blue_bag_folly_tempo_changes() {
+    let path = sheetmusic_dir().join("blue-bag-folly.musicxml");
+    let score = parse_file(&path).unwrap();
+    let pmap = generate_playback_map(&score, None);
+
+    let tempos: std::collections::HashSet<i32> = pmap.timemap.iter()
+        .map(|e| e.tempo_bpm as i32)
+        .collect();
+
+    assert!(tempos.contains(&120), "Should have 120 BPM entries");
+    assert!(tempos.contains(&90), "Should have 90 BPM entries");
+
+    // Measures at 90 BPM should have longer durations than same-time-sig measures at 120 BPM
+    let dur_at_120: Vec<f64> = pmap.timemap.iter()
+        .filter(|e| (e.tempo_bpm - 120.0).abs() < 1.0)
+        .map(|e| e.duration_ms)
+        .collect();
+    let dur_at_90: Vec<f64> = pmap.timemap.iter()
+        .filter(|e| (e.tempo_bpm - 90.0).abs() < 1.0)
+        .map(|e| e.duration_ms)
+        .collect();
+
+    // Comparing average durations won't work because time signatures differ,
+    // but we can verify non-empty
+    assert!(!dur_at_120.is_empty(), "Should have durations at 120 BPM");
+    assert!(!dur_at_90.is_empty(), "Should have durations at 90 BPM");
+
+    println!("✓ blue-bag-folly tempo changes: {} entries at 120, {} entries at 90",
+        dur_at_120.len(), dur_at_90.len());
+}

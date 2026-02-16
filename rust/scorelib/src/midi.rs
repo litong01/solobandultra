@@ -525,4 +525,143 @@ mod tests {
         // Should contain MTrk
         assert!(smf.windows(4).any(|w| w == b"MTrk"));
     }
+
+    #[test]
+    fn ms_to_ticks_at_120bpm() {
+        use crate::timemap::TimemapEntry;
+        // At 120 BPM: 1 quarter = 500ms, so 480 ticks = 500ms
+        // → ticks_per_ms = 480 * 120 / 60000 = 0.96
+        let timemap = vec![
+            TimemapEntry {
+                index: 0,
+                original_index: 0,
+                timestamp_ms: 0.0,
+                duration_ms: 2000.0,
+                tempo_bpm: 120.0,
+                time_sig: (4, 4),
+                divisions: 1,
+                effective_quarters: 4.0,
+            },
+        ];
+
+        let t0 = ms_to_ticks(0.0, &timemap);
+        assert_eq!(t0, 0, "0 ms should be 0 ticks");
+
+        let t500 = ms_to_ticks(500.0, &timemap);
+        assert_eq!(t500, 480, "500ms at 120 BPM should be 480 ticks (1 quarter)");
+
+        let t1000 = ms_to_ticks(1000.0, &timemap);
+        assert_eq!(t1000, 960, "1000ms at 120 BPM should be 960 ticks (2 quarters)");
+    }
+
+    #[test]
+    fn ms_to_ticks_at_60bpm() {
+        use crate::timemap::TimemapEntry;
+        // At 60 BPM: 1 quarter = 1000ms, so 480 ticks = 1000ms
+        // → ticks_per_ms = 480 * 60 / 60000 = 0.48
+        let timemap = vec![
+            TimemapEntry {
+                index: 0,
+                original_index: 0,
+                timestamp_ms: 0.0,
+                duration_ms: 4000.0,
+                tempo_bpm: 60.0,
+                time_sig: (4, 4),
+                divisions: 1,
+                effective_quarters: 4.0,
+            },
+        ];
+
+        let t1000 = ms_to_ticks(1000.0, &timemap);
+        assert_eq!(t1000, 480, "1000ms at 60 BPM should be 480 ticks (1 quarter)");
+
+        let t2000 = ms_to_ticks(2000.0, &timemap);
+        assert_eq!(t2000, 960, "2000ms at 60 BPM should be 960 ticks (2 quarters)");
+    }
+
+    #[test]
+    fn ms_to_ticks_tempo_change_mid_piece() {
+        use crate::timemap::TimemapEntry;
+        // First measure at 120 BPM (2000ms), second at 60 BPM (4000ms)
+        let timemap = vec![
+            TimemapEntry {
+                index: 0,
+                original_index: 0,
+                timestamp_ms: 0.0,
+                duration_ms: 2000.0,
+                tempo_bpm: 120.0,
+                time_sig: (4, 4),
+                divisions: 1,
+                effective_quarters: 4.0,
+            },
+            TimemapEntry {
+                index: 1,
+                original_index: 1,
+                timestamp_ms: 2000.0,
+                duration_ms: 4000.0,
+                tempo_bpm: 60.0,
+                time_sig: (4, 4),
+                divisions: 1,
+                effective_quarters: 4.0,
+            },
+        ];
+
+        // Within first measure (120 BPM)
+        let t500 = ms_to_ticks(500.0, &timemap);
+        assert_eq!(t500, 480, "500ms in 120 BPM section");
+
+        // At the boundary (2000ms = end of first measure)
+        let t2000 = ms_to_ticks(2000.0, &timemap);
+        assert_eq!(t2000, 1920, "2000ms = 4 quarters at 120 BPM = 1920 ticks");
+
+        // Into second measure (60 BPM): 2000ms + 1000ms = 3000ms
+        // 1920 ticks (first measure) + 480 ticks (1 quarter at 60 BPM)
+        let t3000 = ms_to_ticks(3000.0, &timemap);
+        assert_eq!(t3000, 2400, "3000ms should be 1920 + 480 = 2400 ticks");
+    }
+
+    #[test]
+    fn ms_to_ticks_empty_timemap() {
+        let timemap: Vec<crate::timemap::TimemapEntry> = vec![];
+        let t = ms_to_ticks(1000.0, &timemap);
+        assert_eq!(t, 0, "Empty timemap should return 0");
+    }
+
+    #[test]
+    fn ms_to_ticks_monotonically_increasing() {
+        use crate::timemap::TimemapEntry;
+        let timemap = vec![
+            TimemapEntry {
+                index: 0,
+                original_index: 0,
+                timestamp_ms: 0.0,
+                duration_ms: 2000.0,
+                tempo_bpm: 120.0,
+                time_sig: (4, 4),
+                divisions: 1,
+                effective_quarters: 4.0,
+            },
+            TimemapEntry {
+                index: 1,
+                original_index: 1,
+                timestamp_ms: 2000.0,
+                duration_ms: 4000.0,
+                tempo_bpm: 60.0,
+                time_sig: (4, 4),
+                divisions: 1,
+                effective_quarters: 4.0,
+            },
+        ];
+
+        let mut prev_ticks = 0;
+        for ms in (0..6000).step_by(100) {
+            let ticks = ms_to_ticks(ms as f64, &timemap);
+            assert!(
+                ticks >= prev_ticks,
+                "ms_to_ticks should be monotonically increasing: {}ms → {} ticks (prev={})",
+                ms, ticks, prev_ticks
+            );
+            prev_ticks = ticks;
+        }
+    }
 }
