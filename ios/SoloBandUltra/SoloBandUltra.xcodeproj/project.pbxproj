@@ -34,7 +34,7 @@
 		BB00000000000000000001A1 /* ScoreLibBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreLibBridge.swift; sourceTree = "<group>"; };
 		BB00000000000000000002A1 /* SoloBandUltra-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "SoloBandUltra-Bridging-Header.h"; sourceTree = "<group>"; };
 		BB00000000000000000003A1 /* libscorelib.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = libscorelib.xcframework; path = lib/libscorelib.xcframework; sourceTree = "<group>"; };
-		CC00000000000000000001A1 /* SheetMusic */ = {isa = PBXFileReference; lastKnownFileType = folder; path = SheetMusic; sourceTree = "<group>"; };
+		CC00000000000000000001A1 /* SheetMusic */ = {isa = PBXFileReference; lastKnownFileType = folder; name = sheetmusic; path = ../../sheetmusic; sourceTree = SOURCE_ROOT; };
 		DD00000000000000000001A1 /* PlaybackManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackManager.swift; sourceTree = "<group>"; };
 		EE00000000000000000001A1 /* MidiSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MidiSettings.swift; sourceTree = "<group>"; };
 		FF00000000000000000001A1 /* AuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthManager.swift; sourceTree = "<group>"; };

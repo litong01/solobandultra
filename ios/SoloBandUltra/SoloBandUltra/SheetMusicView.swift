@@ -27,8 +27,8 @@ struct SheetMusicView: View {
         if url.hasPrefix("external://") {
             return String(url.dropFirst("external://".count))
         }
-        if url.hasPrefix("file://SheetMusic/") {
-            return String(url.dropFirst("file://SheetMusic/".count))
+        if url.hasPrefix("file://sheetmusic/") {
+            return String(url.dropFirst("file://sheetmusic/".count))
         }
         return url.components(separatedBy: "/").last ?? MidiSettings.defaultLandingFile
     }
@@ -158,7 +158,7 @@ struct SheetMusicView: View {
             } else {
                 let name = (filename as NSString).deletingPathExtension
                 let url: URL
-                if let folderURL = Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "SheetMusic") {
+                if let folderURL = Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "sheetmusic") {
                     url = folderURL
                 } else if let rootURL = Bundle.main.url(forResource: name, withExtension: ext) {
                     url = rootURL
@@ -236,7 +236,7 @@ struct SheetMusicView: View {
             } else {
                 let name = (filename as NSString).deletingPathExtension
                 let url: URL
-                if let folderURL = Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "SheetMusic") {
+                if let folderURL = Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "sheetmusic") {
                     url = folderURL
                 } else if let rootURL = Bundle.main.url(forResource: name, withExtension: ext) {
                     url = rootURL

@@ -75,6 +75,11 @@ rust/**/test_output/
 ios/**/lib/libscorelib.xcframework/
 android/app/src/main/jniLibs/
 
+# Sheet music files (source of truth is sheetmusic/ at the repo root;
+# platform copies are generated at build time)
+ios/SoloBandUltra/SoloBandUltra/sheetmusic/
+android/app/src/main/assets/sheetmusic/
+
 # =========================
 # Docker
 # =========================

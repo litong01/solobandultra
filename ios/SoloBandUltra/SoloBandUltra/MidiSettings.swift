@@ -51,7 +51,7 @@ class MidiSettings: ObservableObject {
     // ── Music source selection ──
     /// The default music file shown on app launch (landing page).
     static let defaultLandingFile = "asa-branca.musicxml"
-    static let defaultLandingFileUrl = "file://SheetMusic/asa-branca.musicxml"
+    static let defaultLandingFileUrl = "file://sheetmusic/asa-branca.musicxml"
 
     @Published var selectedSourceId: String = "bundled"
     @Published var selectedFileUrl: String = defaultLandingFileUrl

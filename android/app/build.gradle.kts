@@ -3,9 +3,22 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// Copy sheet music files from the repo root (single source of truth) into
+// the build directory so they appear as assets/sheetmusic/*.musicxml at runtime.
+val copySheetMusic = tasks.register<Copy>("copySheetMusic") {
+    from("../../sheetmusic")
+    into(layout.buildDirectory.dir("generated/sheetmusic-assets/sheetmusic"))
+}
+
 android {
     namespace = "com.solobandultra.app"
     compileSdk = 34
+
+    sourceSets {
+        getByName("main") {
+            assets.srcDirs("src/main/assets", layout.buildDirectory.dir("generated/sheetmusic-assets"))
+        }
+    }
 
     defaultConfig {
         applicationId = "com.solobandultra.app"
@@ -89,4 +102,11 @@ dependencies {
     // Debug
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+}
+
+// Ensure sheet music files are copied before assets are merged into the APK.
+afterEvaluate {
+    tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
+        dependsOn(copySheetMusic)
+    }
 }

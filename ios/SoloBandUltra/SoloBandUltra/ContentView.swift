@@ -339,7 +339,7 @@ struct SettingsSheet: View {
 
     /// Scan the app bundle's SheetMusic folder for .musicxml and .mxl files.
     private static func discoverBundledFiles() -> [MusicItem] {
-        guard let resourcesURL = Bundle.main.url(forResource: "SheetMusic", withExtension: nil) else {
+        guard let resourcesURL = Bundle.main.url(forResource: "sheetmusic", withExtension: nil) else {
             return []
         }
         let contents = (try? FileManager.default.contentsOfDirectory(at: resourcesURL,
@@ -354,7 +354,7 @@ struct SettingsSheet: View {
             .map { file in
                 MusicItem(
                     name: (file as NSString).deletingPathExtension,
-                    url: "file://SheetMusic/\(file)"
+                    url: "file://sheetmusic/\(file)"
                 )
             }
     }
