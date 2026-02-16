@@ -81,7 +81,13 @@ pub(super) fn collect_and_render_slurs_for_measure(
                 }
                 "stop" => {
                     if let Some(start) = open_slurs.remove(&ev.number) {
-                        render_slur(svg, &start, nx, note_y, stem_up);
+                        // Skip rendering slurs between same-pitch notes —
+                        // they look identical to ties but don't affect
+                        // playback, which confuses users.
+                        let same_pitch = (start.y - note_y).abs() < 0.5;
+                        if !same_pitch {
+                            render_slur(svg, &start, nx, note_y, stem_up);
+                        }
                     }
                 }
                 _ => {}
