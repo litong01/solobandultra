@@ -233,8 +233,12 @@ fn extract_melody(
         let mut voice_positions: HashMap<VoiceKey, f64> = HashMap::new();
         let mut voice_last_onset: HashMap<VoiceKey, f64> = HashMap::new();
 
+        // Buffer for grace notes preceding a main note.
+        let mut pending_graces: Vec<&crate::model::Note> = Vec::new();
+
         for note in &measure.notes {
             if note.grace {
+                pending_graces.push(note);
                 continue;
             }
 
@@ -246,6 +250,43 @@ fn extract_melody(
             // stays correct for notes we DO include), but only emit MIDI
             // events for notes on the target staff.
             let emit = staff_filter.map_or(true, |sf| note_staff == sf);
+
+            // Emit pending grace notes just before a principal pitched note.
+            // Each grace note is ~1/8 of a beat, capped at 30-80ms, placed
+            // immediately before the main note's onset with softer velocity.
+            if !pending_graces.is_empty() && emit && !note.rest && !note.chord {
+                let main_onset_ms = entry.timestamp_ms
+                    + (*pos_div / divisions / quarter_notes_in_measure)
+                        * entry.duration_ms;
+                let beat_ms = 60_000.0 / entry.tempo_bpm;
+                let grace_dur_ms = (beat_ms / 8.0).clamp(30.0, 80.0);
+                let num_graces = pending_graces.len();
+
+                for (gi, gnote) in pending_graces.iter().enumerate() {
+                    if let Some(ref pitch) = gnote.pitch {
+                        let midi_note = pitch.to_midi().max(0).min(127) as u8;
+                        let offset = (num_graces - gi) as f64 * grace_dur_ms;
+                        let onset_ms = (main_onset_ms - offset).max(0.0);
+                        let off_ms = onset_ms + grace_dur_ms;
+
+                        let on_tick = ms_to_ticks(onset_ms, timemap);
+                        let off_tick = ms_to_ticks(off_ms, timemap);
+
+                        events.push(MidiEvent {
+                            tick: on_tick,
+                            bytes: vec![0x90 | channel, midi_note, 64],
+                        });
+                        events.push(MidiEvent {
+                            tick: off_tick,
+                            bytes: vec![0x80 | channel, midi_note, 0],
+                        });
+                    }
+                }
+                pending_graces.clear();
+            } else if !note.chord {
+                // Clear grace notes before rests (no main note to attach to)
+                pending_graces.clear();
+            }
 
             // Chord notes share the same onset as their principal note
             if note.chord {
