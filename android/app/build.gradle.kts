@@ -104,9 +104,11 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
-// Ensure sheet music files are copied before assets are merged into the APK.
+// Ensure sheet music files are copied before any task that reads assets
+// (mergeAssets, lint, etc.).  preBuild is the first task in the Android
+// build lifecycle — everything else depends on it transitively.
 afterEvaluate {
-    tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
+    tasks.named("preBuild") {
         dependsOn(copySheetMusic)
     }
 }
