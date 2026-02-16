@@ -17,8 +17,13 @@ import Combine
 ///
 /// Supports:
 /// - **Speed** — `AVAudioUnitTimePitch.rate` (speed without pitch change).
-/// - **Mute** — `mainMixerNode.volume = 0` (player keeps running, cursor in sync).
+/// - **Mute** — `mainMixerNode.volume = 0`.
 /// - **Repeat** — replays the piece N times automatically.
+///
+/// **Settings model:** Changing speed, mute, cursor visibility, or repeat
+/// count stops playback and resets the cursor to the beginning.  The user
+/// presses play to restart with the new settings.  This avoids all the
+/// complexity (and bugs) of reconfiguring the audio graph mid-playback.
 class PlaybackManager: ObservableObject {
     // MARK: - Published state
 
@@ -31,36 +36,41 @@ class PlaybackManager: ObservableObject {
     // MARK: - Playback settings
 
     /// Playback speed multiplier (1.0 = normal, 0.5 = half, 2.0 = double).
-    /// Clamped to [0.1, 5.0].  Takes effect immediately via AVAudioUnitTimePitch.
+    /// Clamped to [0.1, 5.0].  Changing while playing stops playback and
+    /// resets the cursor to the beginning — the user presses play to restart.
     var speed: Double = 1.0 {
         didSet {
             speed = max(0.1, min(5.0, speed))
-            timePitch.rate = Float(speed)
-            if isPlaying {
-                // Re-sync wall-clock tracking and cursor.
-                resyncPlayback()
-            }
+            resetIfPlaying()
         }
     }
 
-    /// When `true` audio is silenced but the player keeps running
-    /// and the cursor still moves.
+    /// When `true` audio is silenced.  Changing stops playback.
     var isMuted: Bool = false {
-        didSet {
-            engine.mainMixerNode.outputVolume = isMuted ? 0 : 1
-        }
+        didSet { resetIfPlaying() }
     }
 
     /// Total number of times to play (1 = play once, 2 = play twice, …).
-    var repeatCount: Int = 1
+    /// Changing stops playback.
+    var repeatCount: Int = 1 {
+        didSet { resetIfPlaying() }
+    }
 
     /// Whether to show the orange cursor bar overlay during playback.
-    /// When false, the bar is invisible but position tracking and auto-scroll
-    /// continue working — the score still "turns pages" with the music.
-    /// This is a pure visual toggle — audio and scrolling are unaffected.
+    /// Changing stops playback.
     var showCursorEnabled: Bool = true {
         didSet {
+            resetIfPlaying()
             sendJS("if (typeof setCursorBarVisible === 'function') { setCursorBarVisible(\(showCursorEnabled)); }")
+        }
+    }
+
+    /// Stop playback and reset to the beginning whenever a setting changes.
+    /// After this the user simply presses play to hear the piece with the
+    /// new settings — no mid-playback reconfiguration needed.
+    private func resetIfPlaying() {
+        if isPlaying || currentTimeMs > 0 {
+            stop()
         }
     }
 
@@ -259,6 +269,10 @@ class PlaybackManager: ObservableObject {
     }
 
     /// Internal: schedule audio from currentTimeMs and start the player.
+    ///
+    /// Always starts from a fully stopped engine (via `stop()`) so the
+    /// audio graph is in a known-good state — no stale DSP buffers, no
+    /// rate mismatches.
     private func startPlayback() {
         guard let file = audioFile else {
             print("[PlaybackManager] No audio data loaded")
@@ -277,8 +291,9 @@ class PlaybackManager: ObservableObject {
             }
             let frameCount = AVAudioFrameCount(totalFrames - startFrame)
 
-            // Stop any previous scheduling.
-            playerNode.stop()
+            // Apply current settings to the (freshly started) engine.
+            timePitch.rate = Float(speed)
+            engine.mainMixerNode.outputVolume = isMuted ? 0 : 1
 
             // Bump generation so any in-flight completion handler is ignored.
             playbackGeneration += 1
@@ -298,7 +313,6 @@ class PlaybackManager: ObservableObject {
                 }
             }
 
-            timePitch.rate = Float(speed)
             playerNode.play()
             isPlaying = true
 
@@ -318,12 +332,19 @@ class PlaybackManager: ObservableObject {
     }
 
     /// Pause playback — cursor stays at the current position.
+    /// Stops the engine fully so resume goes through the same clean
+    /// `startPlayback()` path as a fresh play.
     func pause() {
         guard isPlaying else { return }
 
-        // Capture position before pausing.
+        // Capture position before stopping.
         updateCurrentTime()
-        playerNode.pause()
+
+        // Full stop of engine — resume will restart cleanly.
+        playbackGeneration += 1
+        playerNode.stop()
+        engine.stop()
+        timePitch.reset()
         isPlaying = false
         stopPollTimer()
 
@@ -337,6 +358,8 @@ class PlaybackManager: ObservableObject {
         playbackGeneration += 1
 
         playerNode.stop()
+        engine.stop()
+        timePitch.reset()   // Flush stale buffers so the next playback starts clean.
         isPlaying = false
         currentTimeMs = 0
         remainingRepeats = 0
@@ -357,7 +380,11 @@ class PlaybackManager: ObservableObject {
         let clampedMs = max(0, min(musicTimeMs, durationMs))
 
         if wasPlaying {
+            // Full stop so restart goes through the clean path.
+            playbackGeneration += 1
             playerNode.stop()
+            engine.stop()
+            timePitch.reset()
             isPlaying = false
             stopPollTimer()
         }
@@ -379,15 +406,6 @@ class PlaybackManager: ObservableObject {
         guard isPlaying else { return }
         let elapsed = CFAbsoluteTimeGetCurrent() - wallStart
         currentTimeMs = min(musicStart + elapsed * speed * 1000.0, durationMs)
-    }
-
-    /// Re-sync wall-clock tracking after a speed change.
-    private func resyncPlayback() {
-        updateCurrentTime()
-        wallStart = CFAbsoluteTimeGetCurrent()
-        musicStart = currentTimeMs
-        let posMs = currentTimeMs
-        sendJS("startCursorAnimation(\(posMs), \(speed))")
     }
 
     // MARK: - WebView communication (one-shot commands only)
@@ -428,7 +446,11 @@ class PlaybackManager: ObservableObject {
     private func playbackDidFinish() {
         guard isPlaying else { return }
 
+        // Full engine stop for a clean state.
+        playbackGeneration += 1
         playerNode.stop()
+        engine.stop()
+        timePitch.reset()
         isPlaying = false
         stopPollTimer()
         sendJS("stopCursorAnimation(0)")

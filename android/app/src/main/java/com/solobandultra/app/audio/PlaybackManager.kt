@@ -20,8 +20,13 @@ import java.io.File
  *
  * Supports:
  * - **Speed** — uses PlaybackParams for time-stretch speed control.
- * - **Mute** — sets MediaPlayer volume to zero; player still runs for cursor sync.
+ * - **Mute** — sets MediaPlayer volume to zero.
  * - **Repeat** — replays the piece N times automatically.
+ *
+ * **Settings model:** Changing speed, mute, cursor visibility, or repeat
+ * count stops playback and resets the cursor to the beginning.  The user
+ * presses play to restart with the new settings.  This avoids all the
+ * complexity of reconfiguring the MediaPlayer mid-playback.
  */
 class PlaybackManager(
     private val context: Context,
@@ -44,37 +49,70 @@ class PlaybackManager(
 
     // ── Playback settings ──────────────────────────────────────────────
 
-    /** Playback speed multiplier. Clamped to [0.1, 5.0]. */
+    /** Playback speed multiplier. Clamped to [0.1, 5.0]. Changing stops playback. */
     var speed: Double = 1.0
         set(value) {
             val clamped = value.coerceIn(0.1, 5.0)
             if (field != clamped) {
                 field = clamped
-                applySpeedChange()
+                resetPlayback()
             }
         }
 
-    /** When `true`, volume is zero but playback & cursor still run. */
+    /** When `true`, volume is zero. Changing stops playback. */
     var isMuted: Boolean = false
         set(value) {
-            field = value
-            applyMuteChange()
+            if (field != value) {
+                field = value
+                resetPlayback()
+            }
         }
 
-    /** Total number of plays (1 = play once, 2 = play twice, …). */
+    /** Total number of plays (1 = play once, 2 = play twice, …). Changing stops playback. */
     var repeatCount: Int = 1
+        set(value) {
+            if (field != value) {
+                field = value
+                resetPlayback()
+            }
+        }
 
-    /**
-     * Whether to show the orange cursor bar overlay during playback.
-     * When false, the bar is invisible but position tracking and auto-scroll
-     * continue working — the score still "turns pages" with the music.
-     * This is a pure visual toggle — audio and scrolling are unaffected.
-     */
+    /** Whether to show the orange cursor bar overlay. Changing stops playback. */
     var showCursorEnabled: Boolean = true
         set(value) {
-            field = value
-            setCursorBarVisible(value)
+            if (field != value) {
+                field = value
+                resetPlayback()
+                setCursorBarVisible(value)
+            }
         }
+
+    /**
+     * Stop playback and reset to the beginning when any setting changes.
+     * Keeps the MediaPlayer prepared so the user can press play immediately.
+     */
+    private fun resetPlayback() {
+        val player = mediaPlayer
+        if (player != null && _isPlaying.value) {
+            try {
+                if (player.isPlaying) player.pause()
+                player.seekTo(0)
+            } catch (_: IllegalStateException) { /* ignore */ }
+        } else if (player != null && _currentTimeMs.value > 0.0) {
+            try {
+                player.seekTo(0)
+            } catch (_: IllegalStateException) { /* ignore */ }
+        } else {
+            return
+        }
+        _isPlaying.value = false
+        _currentTimeMs.value = 0.0
+        remainingRepeats = 0
+        stopChoreographer()
+        audioSessionManager.abandonAudioFocus()
+        updateCursor(0.0)
+        Log.d(TAG, "Settings changed — playback reset to beginning")
+    }
 
     // ── Internal state ──────────────────────────────────────────────────
 
@@ -358,15 +396,6 @@ class PlaybackManager(
         }
     }
 
-    /** Called when speed changes at runtime. */
-    private fun applySpeedChange() {
-        val player = mediaPlayer ?: return
-        if (_isPlaying.value) {
-            applyPlaybackSpeed(player)
-        }
-        // If paused, speed will be applied on next play()
-    }
-
     /** Apply mute volume to the current MediaPlayer. */
     private fun applyMuteVolume(player: MediaPlayer) {
         if (isMuted) {
@@ -374,11 +403,6 @@ class PlaybackManager(
         } else {
             player.setVolume(1f, 1f)
         }
-    }
-
-    /** Called when mute changes at runtime. */
-    private fun applyMuteChange() {
-        mediaPlayer?.let { applyMuteVolume(it) }
     }
 
     /** Called when playback reaches the end naturally. */
