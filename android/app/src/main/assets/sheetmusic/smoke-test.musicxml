@@ -10,8 +10,8 @@
     ✓ Time signatures: 4/4, 3/4, 6/8, 5/4
     ✓ Tempos: 120, 96, 108, 132, 180 BPM
     ✓ Note values: whole, half, quarter, eighth, sixteenth, dotted
-    ✓ Ties (across barlines)
-    ✓ Slurs
+    ✓ Ties (same-pitch pairs + across barlines)
+    ✓ Slurs (different-pitch legato)
     ✓ Triplets (tuplets)
     ✓ Grace notes
     ✓ Articulations: staccato, accent, fermata
@@ -296,7 +296,7 @@
       </note>
     </measure>
 
-    <!-- Measure 7: Quarter-note same-pitch pairs WITH slurs -->
+    <!-- Measure 7: Quarter-note same-pitch pairs WITH ties (merged sound) -->
     <measure number="7">
       <harmony>
         <root><root-step>A</root-step></root>
@@ -305,22 +305,26 @@
       <note>
         <pitch><step>A</step><octave>4</octave></pitch>
         <duration>12</duration><type>quarter</type>
-        <notations><slur type="start" number="1"/></notations>
+        <tie type="start"/>
+        <notations><tied type="start"/></notations>
       </note>
       <note>
         <pitch><step>A</step><octave>4</octave></pitch>
         <duration>12</duration><type>quarter</type>
-        <notations><slur type="stop" number="1"/></notations>
+        <tie type="stop"/>
+        <notations><tied type="stop"/></notations>
       </note>
       <note>
         <pitch><step>D</step><octave>4</octave></pitch>
         <duration>12</duration><type>quarter</type>
-        <notations><slur type="start" number="2"/></notations>
+        <tie type="start"/>
+        <notations><tied type="start"/></notations>
       </note>
       <note>
         <pitch><step>D</step><octave>4</octave></pitch>
         <duration>12</duration><type>quarter</type>
-        <notations><slur type="stop" number="2"/></notations>
+        <tie type="stop"/>
+        <notations><tied type="stop"/></notations>
       </note>
     </measure>
 
@@ -372,7 +376,7 @@
       </note>
     </measure>
 
-    <!-- Measure 9: Beamed eighth-note pairs WITH slurs -->
+    <!-- Measure 9: Beamed eighth-note pairs WITH ties (merged sound) -->
     <measure number="9">
       <harmony>
         <root><root-step>A</root-step></root>
@@ -381,50 +385,58 @@
       <note>
         <pitch><step>A</step><octave>4</octave></pitch>
         <duration>6</duration><type>eighth</type>
+        <tie type="start"/>
         <beam number="1">begin</beam>
-        <notations><slur type="start" number="1"/></notations>
+        <notations><tied type="start"/></notations>
       </note>
       <note>
         <pitch><step>A</step><octave>4</octave></pitch>
         <duration>6</duration><type>eighth</type>
+        <tie type="stop"/>
         <beam number="1">end</beam>
-        <notations><slur type="stop" number="1"/></notations>
+        <notations><tied type="stop"/></notations>
       </note>
       <note>
         <pitch><step>D</step><octave>4</octave></pitch>
         <duration>6</duration><type>eighth</type>
+        <tie type="start"/>
         <beam number="1">begin</beam>
-        <notations><slur type="start" number="2"/></notations>
+        <notations><tied type="start"/></notations>
       </note>
       <note>
         <pitch><step>D</step><octave>4</octave></pitch>
         <duration>6</duration><type>eighth</type>
+        <tie type="stop"/>
         <beam number="1">end</beam>
-        <notations><slur type="stop" number="2"/></notations>
+        <notations><tied type="stop"/></notations>
       </note>
       <note>
         <pitch><step>A</step><octave>4</octave></pitch>
         <duration>6</duration><type>eighth</type>
+        <tie type="start"/>
         <beam number="1">begin</beam>
-        <notations><slur type="start" number="1"/></notations>
+        <notations><tied type="start"/></notations>
       </note>
       <note>
         <pitch><step>A</step><octave>4</octave></pitch>
         <duration>6</duration><type>eighth</type>
+        <tie type="stop"/>
         <beam number="1">end</beam>
-        <notations><slur type="stop" number="1"/></notations>
+        <notations><tied type="stop"/></notations>
       </note>
       <note>
         <pitch><step>D</step><octave>4</octave></pitch>
         <duration>6</duration><type>eighth</type>
+        <tie type="start"/>
         <beam number="1">begin</beam>
-        <notations><slur type="start" number="2"/></notations>
+        <notations><tied type="start"/></notations>
       </note>
       <note>
         <pitch><step>D</step><octave>4</octave></pitch>
         <duration>6</duration><type>eighth</type>
+        <tie type="stop"/>
         <beam number="1">end</beam>
-        <notations><slur type="stop" number="2"/></notations>
+        <notations><tied type="stop"/></notations>
       </note>
     </measure>
 
