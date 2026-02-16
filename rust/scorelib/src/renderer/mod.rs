@@ -10,6 +10,7 @@ mod svg_builder;
 mod beat_map;
 mod lyrics;
 mod slurs;
+mod ties;
 mod notes;
 mod staff;
 mod layout;
@@ -20,6 +21,7 @@ use svg_builder::{SvgBuilder, empty_svg};
 use beat_map::note_x_positions_from_beat_map;
 use lyrics::*;
 use slurs::SlurStart;
+use ties::TieStart;
 use notes::render_notes;
 use staff::*;
 use layout::*;
@@ -140,6 +142,10 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
 
     // Open slurs that carry across systems, keyed by (part_idx, staff_num, slur_number)
     let mut global_open_slurs: std::collections::HashMap<(usize, usize, i32), SlurStart> =
+        std::collections::HashMap::new();
+
+    // Open ties that carry across systems, keyed by (part_idx, staff_num, pitch_key)
+    let mut global_open_ties: std::collections::HashMap<(usize, usize, String), TieStart> =
         std::collections::HashMap::new();
 
     // Render each system
@@ -363,6 +369,35 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
             }
         }
 
+        // ── Initialise per-part/staff open ties from global carry-over ──
+        let mut system_open_ties: std::collections::HashMap<(usize, usize), std::collections::HashMap<String, TieStart>> =
+            std::collections::HashMap::new();
+        for part_info in &system.parts {
+            let pidx = part_info.part_idx;
+            for staff_num in 1..=part_info.num_staves {
+                let mut staff_ties = std::collections::HashMap::new();
+                let keys_to_remove: Vec<(usize, usize, String)> = global_open_ties.keys()
+                    .filter(|k| k.0 == pidx && k.1 == staff_num)
+                    .cloned()
+                    .collect();
+                for key in keys_to_remove {
+                    if let Some(start) = global_open_ties.remove(&key) {
+                        let staff_y = system_y
+                            + part_info.y_offset
+                            + (staff_num as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP);
+                        let y_offset = start.y - start.staff_y;
+                        staff_ties.insert(key.2, TieStart {
+                            x: PAGE_MARGIN_LEFT + CLEF_SPACE,
+                            y: staff_y + y_offset,
+                            stem_up: start.stem_up,
+                            staff_y,
+                        });
+                    }
+                }
+                system_open_ties.insert((pidx, staff_num), staff_ties);
+            }
+        }
+
         // ── Render measures ──
         for ml in &system.measures {
             let mx = ml.x;
@@ -543,6 +578,24 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                         );
                     }
 
+                    // Ties
+                    {
+                        let staff_ties = system_open_ties
+                            .entry((pidx, staff_num))
+                            .or_insert_with(std::collections::HashMap::new);
+                        ties::collect_and_render_ties_for_measure(
+                            &mut svg,
+                            measure,
+                            staff_y,
+                            ps.clefs[staff_num].as_ref(),
+                            ps.divisions,
+                            effective_transpose,
+                            staff_filter,
+                            &ml.beat_x_map,
+                            staff_ties,
+                        );
+                    }
+
                     // Barlines (per-staff)
                     if staff_num == 1 {
                         render_barlines(&mut svg, measure, mx, mw, staff_y);
@@ -600,6 +653,16 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                 slurs::render_open_slur_continuations(&mut svg, staff_slurs, system.x_end);
                 for (&slur_num, start) in staff_slurs {
                     global_open_slurs.insert((*pidx, *staff_num, slur_num), start.clone());
+                }
+            }
+        }
+
+        // ── End-of-system tie handling ──
+        for ((pidx, staff_num), staff_ties) in &system_open_ties {
+            if !staff_ties.is_empty() {
+                ties::render_open_tie_continuations(&mut svg, staff_ties, system.x_end);
+                for (pitch_key, start) in staff_ties {
+                    global_open_ties.insert((*pidx, *staff_num, pitch_key.clone()), start.clone());
                 }
             }
         }
