@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -132,29 +133,29 @@ fun SheetMusicScreen(
     var showMenu by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
 
-    // MIDI settings state
-    var includeMelody by remember { mutableStateOf(true) }
-    var includePiano by remember { mutableStateOf(false) }
-    var includeBass by remember { mutableStateOf(false) }
-    var includeStrings by remember { mutableStateOf(false) }
-    var includeDrums by remember { mutableStateOf(false) }
-    var includeMetronome by remember { mutableStateOf(true) }
+    // MIDI settings state (rememberSaveable survives configuration changes like rotation)
+    var includeMelody by rememberSaveable { mutableStateOf(true) }
+    var includePiano by rememberSaveable { mutableStateOf(false) }
+    var includeBass by rememberSaveable { mutableStateOf(false) }
+    var includeStrings by rememberSaveable { mutableStateOf(false) }
+    var includeDrums by rememberSaveable { mutableStateOf(false) }
+    var includeMetronome by rememberSaveable { mutableStateOf(true) }
     val energy = EnergyLevel.Strong  // Hardcoded; not user-facing
-    var playbackSpeed by remember { mutableStateOf(1.0) }
-    var muteMusic by remember { mutableStateOf(false) }
-    var repeatCount by remember { mutableIntStateOf(1) }
-    var transpose by remember { mutableIntStateOf(0) }
-    var showCursor by remember { mutableStateOf(true) }
+    var playbackSpeed by rememberSaveable { mutableStateOf(1.0) }
+    var muteMusic by rememberSaveable { mutableStateOf(false) }
+    var repeatCount by rememberSaveable { mutableIntStateOf(1) }
+    var transpose by rememberSaveable { mutableIntStateOf(0) }
+    var showCursor by rememberSaveable { mutableStateOf(true) }
 
     // Music source selection
-    var selectedSourceId by remember { mutableStateOf("bundled") }
-    var selectedFileUrl by remember { mutableStateOf("file://sheetmusic/$DEFAULT_LANDING_FILE") }
+    var selectedSourceId by rememberSaveable { mutableStateOf("bundled") }
+    var selectedFileUrl by rememberSaveable { mutableStateOf("file://sheetmusic/$DEFAULT_LANDING_FILE") }
 
     // External file (opened via document picker or pasted URL)
     var externalFileData by remember { mutableStateOf<ByteArray?>(null) }
-    var externalFileName by remember { mutableStateOf<String?>(null) }
+    var externalFileName by rememberSaveable { mutableStateOf<String?>(null) }
     /** Monotonically increasing counter to force reload when same file is re-opened. */
-    var externalFileVersion by remember { mutableIntStateOf(0) }
+    var externalFileVersion by rememberSaveable { mutableIntStateOf(0) }
     var isDownloading by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
