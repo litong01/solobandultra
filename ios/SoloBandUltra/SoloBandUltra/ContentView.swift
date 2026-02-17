@@ -136,22 +136,9 @@ struct ContentView: View {
         }
         .overlay {
             if showSettings {
-                ZStack(alignment: .bottom) {
-                    // Dimming scrim
-                    Color.black.opacity(0.3)
-                        .ignoresSafeArea()
-                        .onTapGesture { showSettings = false }
-
-                    // Bottom-anchored settings card
+                BottomSheetOverlay(isPresented: $showSettings) {
                     SettingsSheet(midiSettings: midiSettings, isPresented: $showSettings)
-                        .frame(maxHeight: UIScreen.main.bounds.height * 0.55)
-                        .background(Color(.systemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .shadow(color: .black.opacity(0.15), radius: 20, y: -5)
-                        .padding(.horizontal, 8)
-                        .padding(.bottom, 8)
                 }
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.86), value: showSettings)
@@ -370,7 +357,7 @@ struct SettingsSheet: View {
                             Text("Playlist")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
-                                .frame(width: 60, alignment: .leading)
+                                .fixedSize()
                             Spacer()
                             Picker("", selection: $selectedSourceId) {
                                 ForEach(musicSources) { source in
@@ -387,7 +374,7 @@ struct SettingsSheet: View {
                                 Text("Music")
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
-                                    .frame(width: 60, alignment: .leading)
+                                    .fixedSize()
                                 Spacer()
                                 Picker("", selection: $selectedFileUrl) {
                                     ForEach(source.items) { item in
@@ -660,6 +647,89 @@ private struct PlaybackSettingsContent: View {
                 .frame(width: 40)
                 .font(.subheadline)
         }
+    }
+}
+
+// MARK: - Draggable Bottom Sheet Overlay
+
+/// A custom bottom-sheet overlay that anchors to the bottom of the screen,
+/// spans full width, and can be dragged between a collapsed (~50%) and
+/// expanded (~90%) height.  Mimics the Android `ModalBottomSheet` behaviour.
+private struct BottomSheetOverlay<Content: View>: View {
+    @Binding var isPresented: Bool
+    @ViewBuilder let content: Content
+
+    /// Fraction of screen height for the collapsed (initial) stop.
+    private let collapsedFraction: CGFloat = 0.65
+    /// Fraction of screen height for the expanded stop.
+    private let expandedFraction: CGFloat = 0.92
+
+    @State private var currentFraction: CGFloat = 0.65
+    @GestureState private var dragOffset: CGFloat = 0
+
+    var body: some View {
+        GeometryReader { geo in
+            let screenHeight = geo.size.height
+            let sheetHeight = screenHeight * currentFraction + dragOffset
+
+            ZStack(alignment: .bottom) {
+                // Dimming scrim
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                    .onTapGesture { isPresented = false }
+
+                // Sheet
+                VStack(spacing: 0) {
+                    // Drag handle
+                    Capsule()
+                        .fill(Color(.systemGray3))
+                        .frame(width: 36, height: 5)
+                        .padding(.top, 8)
+                        .padding(.bottom, 4)
+
+                    content
+                        .frame(maxHeight: .infinity)
+                }
+                .frame(width: geo.size.width, height: max(sheetHeight, 0))
+                .background(Color(.systemBackground))
+                .clipShape(
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: 16,
+                        bottomLeadingRadius: 0,
+                        bottomTrailingRadius: 0,
+                        topTrailingRadius: 16,
+                        style: .continuous
+                    )
+                )
+                .shadow(color: .black.opacity(0.15), radius: 20, y: -5)
+                .gesture(
+                    DragGesture()
+                        .updating($dragOffset) { value, state, _ in
+                            state = -value.translation.height
+                        }
+                        .onEnded { value in
+                            let projected = -value.predictedEndTranslation.height
+                            let midpoint = screenHeight * (collapsedFraction + expandedFraction) / 2
+                            let targetHeight = screenHeight * currentFraction + projected
+
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+                                if targetHeight > midpoint {
+                                    currentFraction = expandedFraction
+                                } else if targetHeight < screenHeight * collapsedFraction * 0.5 {
+                                    // Dragged far enough down to dismiss
+                                    isPresented = false
+                                } else {
+                                    currentFraction = collapsedFraction
+                                }
+                            }
+                        }
+                )
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        }
+        .ignoresSafeArea()
+        .transition(.opacity.combined(with: .move(edge: .bottom)))
+        .onAppear { currentFraction = collapsedFraction }
     }
 }
 
