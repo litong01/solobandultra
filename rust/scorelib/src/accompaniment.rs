@@ -478,7 +478,7 @@ pub fn generate_metronome(timemap: &[TimemapEntry]) -> Vec<MidiEvent> {
         for b in 0..num_clicks {
             let beat_time_ms = entry.timestamp_ms + b as f64 * beat_dur_ms;
             let note = if b == 0 { CLICK_HI } else { CLICK_LO };
-            let vel = if b == 0 { 127 } else { 100 };
+            let vel = if b == 0 { 85 } else { 65 };
 
             let on_tick = ms_to_ticks(beat_time_ms, timemap);
             let off_tick = ms_to_ticks(beat_time_ms + click_dur_ms, timemap);
@@ -706,7 +706,7 @@ pub fn generate_drums(_chords: &[Chord], energy: Energy, timemap: &[TimemapEntry
 
             // Kick on beat 1 and 3 (or beat 1 only if < 4 beats)
             if b == 0 || (beats >= 4 && b == 2) {
-                let vel = velocity(100.0, em.drums);
+                let vel = velocity(82.0, em.drums);
                 events.push(MidiEvent {
                     tick: on_tick,
                     bytes: vec![0x99, KICK, vel],
@@ -719,7 +719,7 @@ pub fn generate_drums(_chords: &[Chord], energy: Energy, timemap: &[TimemapEntry
 
             // Snare on backbeats (2, 4)
             if b % 2 == 1 {
-                let vel = velocity(90.0, em.drums);
+                let vel = velocity(72.0, em.drums);
                 events.push(MidiEvent {
                     tick: on_tick,
                     bytes: vec![0x99, SNARE, vel],
@@ -731,7 +731,7 @@ pub fn generate_drums(_chords: &[Chord], energy: Energy, timemap: &[TimemapEntry
             }
 
             // Hi-hat on every beat
-            let hh_vel = velocity(70.0, em.drums);
+            let hh_vel = velocity(55.0, em.drums);
             events.push(MidiEvent {
                 tick: on_tick,
                 bytes: vec![0x99, HIHAT_CLOSED, hh_vel],
@@ -746,7 +746,7 @@ pub fn generate_drums(_chords: &[Chord], energy: Energy, timemap: &[TimemapEntry
             if beat_dur_ms > 300.0 {
                 let eighth_time = beat_time + beat_dur_ms * 0.5;
                 let eighth_tick = ms_to_ticks(eighth_time, timemap);
-                let eighth_vel = velocity(50.0, em.drums);
+                let eighth_vel = velocity(40.0, em.drums);
                 events.push(MidiEvent {
                     tick: eighth_tick,
                     bytes: vec![0x99, HIHAT_CLOSED, eighth_vel],

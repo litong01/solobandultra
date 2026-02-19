@@ -17,8 +17,18 @@ const SAMPLE_RATE: i32 = 44100;
 /// float buffer up front.
 const BLOCK_SIZE: usize = 8192;
 
-/// Target peak level for normalization (0.95 = 5% headroom to avoid DAC clipping).
-const NORMALIZE_TARGET: f32 = 0.95;
+/// Target RMS level for normalization (~-14 dBFS, typical streaming loudness target).
+/// RMS normalization keeps perceived loudness consistent regardless of how many
+/// accompaniment tracks are active — unlike peak normalization, a single loud drum
+/// transient won't cause the whole mix to sound quieter.
+const TARGET_RMS: f32 = 0.20;
+
+/// Maximum gain allowed during RMS normalization.
+/// Prevents near-silent content from being amplified to an ear-damaging level.
+const MAX_GAIN: f32 = 8.0;
+
+/// Hard peak ceiling applied after RMS gain to prevent DAC clipping.
+const PEAK_CEILING: f32 = 0.95;
 
 /// Maximum allowed MIDI duration in seconds (safety cap against malformed files).
 const MAX_DURATION_SECS: f64 = 3600.0; // 1 hour
@@ -70,13 +80,14 @@ pub fn render_audio(midi_data: &[u8], soundfont_data: &[u8]) -> Result<Vec<u8>, 
     // Start playback.
     sequencer.play(&midi_file, false);
 
-    // ── Pass 1: Render to f32, tracking peak amplitude ──
+    // ── Pass 1: Render to f32, computing RMS and peak amplitude ──
     let mut left = vec![0f32; BLOCK_SIZE];
     let mut right = vec![0f32; BLOCK_SIZE];
 
     // Store interleaved f32 samples for normalization.
     let mut float_buf: Vec<f32> = Vec::with_capacity(float_cap);
     let mut peak: f32 = 0.0;
+    let mut sum_sq: f64 = 0.0;
     let mut rendered: usize = 0;
 
     while rendered < total_samples {
@@ -88,6 +99,7 @@ pub fn render_audio(midi_data: &[u8], soundfont_data: &[u8]) -> Result<Vec<u8>, 
             let r = if right[i].is_finite() { right[i] } else { 0.0 };
             float_buf.push(l);
             float_buf.push(r);
+            sum_sq += (l * l + r * r) as f64;
             let abs_l = l.abs();
             let abs_r = r.abs();
             if abs_l > peak { peak = abs_l; }
@@ -96,8 +108,23 @@ pub fn render_audio(midi_data: &[u8], soundfont_data: &[u8]) -> Result<Vec<u8>, 
         rendered += count;
     }
 
-    // ── Pass 2: Normalize and convert f32 → i16 ──
-    let gain = if peak > 0.0001 { NORMALIZE_TARGET / peak } else { 1.0 };
+    // ── Pass 2: RMS-normalize, then clamp peak to ceiling ──
+    //
+    // RMS normalization targets a consistent perceived loudness.
+    // This prevents a single drum transient from dragging the whole mix quiet
+    // when accompaniment is added — the problem with pure peak normalization.
+    let rms = ((sum_sq / (float_buf.len() as f64)).sqrt()) as f32;
+    let rms_gain = if rms > 0.0001 {
+        (TARGET_RMS / rms).min(MAX_GAIN)
+    } else {
+        1.0
+    };
+    // If the RMS gain would push the peak above the ceiling, scale back just enough.
+    let gain = if peak * rms_gain > PEAK_CEILING {
+        PEAK_CEILING / peak
+    } else {
+        rms_gain
+    };
 
     let mut pcm_data: Vec<u8> = Vec::with_capacity(pcm_cap);
     for sample in &float_buf {
@@ -112,10 +139,11 @@ pub fn render_audio(midi_data: &[u8], soundfont_data: &[u8]) -> Result<Vec<u8>, 
 
     #[cfg(debug_assertions)]
     eprintln!(
-        "[audio] Rendered {:.1}s → {} bytes WAV ({} PCM samples, peak={:.3}, gain={:.2}x / {:.1} dB)",
+        "[audio] Rendered {:.1}s → {} bytes WAV ({} PCM samples, rms={:.3}, peak={:.3}, gain={:.2}x / {:.1} dB)",
         duration_secs,
         wav.len(),
         rendered,
+        rms,
         peak,
         gain,
         20.0 * (gain as f64).log10()

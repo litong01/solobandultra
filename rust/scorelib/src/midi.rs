@@ -290,7 +290,7 @@ fn extract_melody(
 
                         events.push(MidiEvent {
                             tick: on_tick,
-                            bytes: vec![0x90 | channel, midi_note, 64],
+                            bytes: vec![0x90 | channel, midi_note, 90],
                         });
                         events.push(MidiEvent {
                             tick: off_tick,
@@ -324,7 +324,7 @@ fn extract_melody(
                         if !note.tie_stop {
                             events.push(MidiEvent {
                                 tick: on_tick,
-                                bytes: vec![0x90 | channel, midi_note, 80],
+                                bytes: vec![0x90 | channel, midi_note, 100],
                             });
                         }
                         if !note.tie_start {
@@ -365,7 +365,7 @@ fn extract_melody(
                     if !note.tie_stop {
                         events.push(MidiEvent {
                             tick: on_tick,
-                            bytes: vec![0x90 | channel, midi_note, 80],
+                            bytes: vec![0x90 | channel, midi_note, 100],
                         });
                     }
                     if !note.tie_start {
