@@ -326,7 +326,9 @@ struct SVGWebView: UIViewRepresentable {
             playbackMapJson: playbackMapJson,
             cursorBarVisible: playbackManager.showCursorEnabled
         )
-        webView.loadHTMLString(html, baseURL: nil)
+        // Use the bundle resource URL as base so @font-face relative paths
+        // (e.g. "Fonts/Lora-Regular.ttf") resolve to the bundled font files.
+        webView.loadHTMLString(html, baseURL: Bundle.main.resourceURL)
     }
 
     /// Build the complete HTML document with SVG, cursor div, and playback JavaScript.
@@ -348,19 +350,19 @@ struct SVGWebView: UIViewRepresentable {
         <style>
             @font-face {
                 font-family: 'Lora';
-                src: url('\(LoraFont.regularDataURL)') format('truetype');
+                src: url('Fonts/Lora-Regular.ttf') format('truetype');
                 font-weight: 100 900;
                 font-style: normal;
             }
             @font-face {
                 font-family: 'Lora';
-                src: url('\(LoraFont.italicDataURL)') format('truetype');
+                src: url('Fonts/Lora-Italic.ttf') format('truetype');
                 font-weight: 100 900;
                 font-style: italic;
             }
             @font-face {
-                font-family: 'Ma Shan Zheng';
-                src: url('\(KaitiFont.regularDataURL)') format('truetype');
+                font-family: 'LXGW WenKai';
+                src: url('Fonts/LXGWWenKai-Regular.ttf') format('truetype');
                 font-weight: normal;
                 font-style: normal;
             }

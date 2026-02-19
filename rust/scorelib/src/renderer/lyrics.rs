@@ -10,12 +10,13 @@ use super::beat_map::compute_note_beat_times;
 pub(super) const LATIN_FONT_STACK: &str = "Lora, Georgia, serif";
 
 /// The CJK regular-script (楷体) font stack used for all Chinese/Japanese/Korean text.
-/// "Ma Shan Zheng" is the app-bundled Kaiti font (declared via @font-face in the WebView HTML)
+/// "LXGW WenKai" is the app-bundled Kaiti font (declared via @font-face in the WebView HTML).
+/// It covers 27 000+ characters (CJK Unified Ideographs A–F), unlike Ma Shan Zheng (~6 763).
 /// and will always be available.  The remaining entries are system-font fallbacks for any
 /// characters not covered by the bundled font, or on platforms where the @font-face hasn't
 /// loaded yet.
 pub(super) const CJK_FONT_STACK: &str =
-    "Ma Shan Zheng, Kaiti TC, Kaiti SC, KaiTi, STKaiti, PingFang SC, Noto Sans CJK SC, sans-serif";
+    "LXGW WenKai, Kaiti TC, Kaiti SC, KaiTi, STKaiti, PingFang SC, Noto Sans CJK SC, sans-serif";
 
 /// Returns true if `text` contains any CJK Unified Ideograph character.
 pub(super) fn has_cjk(text: &str) -> bool {
@@ -40,6 +41,7 @@ pub(super) fn font_for_text(text: &str) -> &'static str {
 
 pub(super) const LYRICS_COLOR: &str = "#333333";
 pub(super) const LYRICS_FONT_SIZE: f64 = 13.0;
+pub(super) const LYRICS_FONT_SIZE_CJK: f64 = 15.0;
 pub(super) const LYRICS_PAD_BELOW: f64 = 16.0;
 pub(super) const LYRICS_LINE_HEIGHT: f64 = 16.0;
 pub(super) const LYRICS_MIN_Y_BELOW_STAFF: f64 = 54.0;
@@ -100,7 +102,10 @@ pub(super) fn collect_lyric_events(parts: &[Part], mi: usize, divisions_map: &[i
         for (i, note) in measure.notes.iter().enumerate() {
             if note.lyrics.is_empty() { continue; }
             let w = note.lyrics.iter()
-                .map(|l| estimate_text_width(&l.text, LYRICS_FONT_SIZE))
+                .map(|l| {
+                    let sz = if has_cjk(&l.text) { LYRICS_FONT_SIZE_CJK } else { LYRICS_FONT_SIZE };
+                    estimate_text_width(&l.text, sz)
+                })
                 .fold(0.0f64, f64::max);
             if w <= 0.0 { continue; }
             let has_dash = note.lyrics.iter().any(|l| {
@@ -220,8 +225,6 @@ pub(super) fn render_lyrics(
     lyrics_base_y: f64,
     staff_filter: Option<i32>,
 ) {
-    let font_size = LYRICS_FONT_SIZE;
-
     for (i, note) in measure.notes.iter().enumerate() {
         if let Some(sf) = staff_filter {
             if note.staff.unwrap_or(1) != sf { continue; }
@@ -238,8 +241,9 @@ pub(super) fn render_lyrics(
                 _ => lyric.text.clone(),
             };
 
-            // Choose Lora or 楷体 based on the actual lyric text content.
+            // Choose Lora or 楷体, and the matching font size, based on content.
             let family = font_for_text(&lyric.text);
+            let font_size = if has_cjk(&lyric.text) { LYRICS_FONT_SIZE_CJK } else { LYRICS_FONT_SIZE };
 
             svg.styled_text(
                 nx, ly,

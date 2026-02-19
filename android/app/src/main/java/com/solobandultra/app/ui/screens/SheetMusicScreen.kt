@@ -1291,8 +1291,8 @@ private fun buildHtml(svg: String, playbackMapJson: String?, cursorBarVisible: B
                 font-style: italic;
             }
             @font-face {
-                font-family: 'Ma Shan Zheng';
-                src: url('fonts/MaShanZheng-Regular.ttf') format('truetype');
+                font-family: 'LXGW WenKai';
+                src: url('fonts/LXGWWenKai-Regular.ttf') format('truetype');
                 font-weight: normal;
                 font-style: normal;
             }
