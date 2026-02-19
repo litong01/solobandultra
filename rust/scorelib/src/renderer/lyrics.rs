@@ -177,7 +177,11 @@ pub(super) fn render_lyrics(
     note_positions: &[f64],
     lyrics_base_y: f64,
     staff_filter: Option<i32>,
+    lyric_font_family: Option<&str>,
+    lyric_font_size: Option<f64>,
 ) {
+    let font_size = lyric_font_size.unwrap_or(LYRICS_FONT_SIZE);
+
     for (i, note) in measure.notes.iter().enumerate() {
         if let Some(sf) = staff_filter {
             if note.staff.unwrap_or(1) != sf { continue; }
@@ -194,13 +198,15 @@ pub(super) fn render_lyrics(
                 _ => lyric.text.clone(),
             };
 
-            svg.text(
+            svg.styled_text(
                 nx, ly,
                 &display_text,
-                LYRICS_FONT_SIZE,
+                font_size,
                 "normal",
                 LYRICS_COLOR,
                 "middle",
+                lyric_font_family,
+                None,
             );
         }
     }

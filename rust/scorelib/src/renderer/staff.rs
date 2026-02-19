@@ -12,11 +12,17 @@ use super::svg_builder::{SvgBuilder, vexflow_outline_to_svg};
 pub(super) fn render_header(svg: &mut SvgBuilder, score: &Score, page_width: f64) {
     let center_x = page_width / 2.0;
 
+    // The global <word-font> from <defaults> is the fallback font-family for all
+    // header text when individual <credit-words> elements don't carry their own.
+    let default_font_family = score.defaults.as_ref()
+        .and_then(|d| d.word_font.as_ref())
+        .and_then(|wf| wf.font_family.as_deref());
+
     if let Some(ref title) = score.title {
         let style = score.title_style.as_ref();
         let size = style.and_then(|s| s.font_size).unwrap_or(22.0);
         let weight = style.and_then(|s| s.font_weight.as_deref()).unwrap_or("bold");
-        let family = style.and_then(|s| s.font_family.as_deref());
+        let family = style.and_then(|s| s.font_family.as_deref()).or(default_font_family);
         let font_style = style.and_then(|s| s.font_style.as_deref());
         svg.styled_text(center_x, PAGE_MARGIN_TOP + 22.0, title, size, weight,
                         HEADER_COLOR, "middle", family, font_style);
@@ -26,7 +32,7 @@ pub(super) fn render_header(svg: &mut SvgBuilder, score: &Score, page_width: f64
         let style = score.subtitle_style.as_ref();
         let size = style.and_then(|s| s.font_size).unwrap_or(14.0);
         let weight = style.and_then(|s| s.font_weight.as_deref()).unwrap_or("normal");
-        let family = style.and_then(|s| s.font_family.as_deref());
+        let family = style.and_then(|s| s.font_family.as_deref()).or(default_font_family);
         let font_style = style.and_then(|s| s.font_style.as_deref());
         svg.styled_text(center_x, PAGE_MARGIN_TOP + 40.0, subtitle, size, weight,
                         HEADER_COLOR, "middle", family, font_style);
@@ -41,11 +47,125 @@ pub(super) fn render_header(svg: &mut SvgBuilder, score: &Score, page_width: f64
         let style = score.composer_style.as_ref();
         let size = style.and_then(|s| s.font_size).unwrap_or(11.0);
         let weight = style.and_then(|s| s.font_weight.as_deref()).unwrap_or("normal");
-        let family = style.and_then(|s| s.font_family.as_deref());
+        let family = style.and_then(|s| s.font_family.as_deref()).or(default_font_family);
         let font_style = style.and_then(|s| s.font_style.as_deref());
         svg.styled_text(page_width - PAGE_MARGIN_RIGHT, PAGE_MARGIN_TOP + 55.0,
                         &label, size, weight, HEADER_COLOR, "end", family, font_style);
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Instrument name rendering
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Render the instrument name to the left of the first system's staff.
+///
+/// Placed right-aligned just before the left margin, vertically centred on
+/// the staff. Shown only on the first system — standard notation practice.
+///
+/// Label priority:
+///   1. `part.abbreviation` if present and non-empty
+///   2. First word of `part.name`, truncated to 9 chars
+///
+/// Generic auto-generated IDs (e.g. "P1", "P2") are skipped silently.
+/// Returns true if the string looks like an auto-generated part ID
+/// (e.g. "P1", "Part 1", bare digits).
+fn is_auto_id(s: &str) -> bool {
+    let s = s.trim();
+    if s.is_empty() { return true; }
+    if s.chars().all(|c| c.is_ascii_digit()) { return true; }
+    if s.starts_with('P') && s[1..].chars().all(|c| c.is_ascii_digit()) { return true; }
+    // "Part N" patterns
+    let lower = s.to_lowercase();
+    if lower.starts_with("part ") && lower[5..].trim().chars().all(|c| c.is_ascii_digit()) {
+        return true;
+    }
+    false
+}
+
+/// Strip a trailing " (N)" or " N" numbering suffix added by notation apps
+/// (e.g. "Piano (2)" → "Piano", "Violin 1" stays as-is because "1" is
+/// meaningful there, but "(2)" is a duplicate-instrument marker).
+fn strip_instrument_number_suffix(s: &str) -> &str {
+    // Strip trailing " (N)" only — e.g. "Piano (2)"
+    if let Some(pos) = s.rfind(" (") {
+        let suffix = &s[pos..];
+        // Check the suffix is " (" + digits + ")"
+        let inner = suffix.trim_start_matches(" (").trim_end_matches(')');
+        if !inner.is_empty() && inner.chars().all(|c| c.is_ascii_digit()) {
+            return s[..pos].trim_end();
+        }
+    }
+    s
+}
+
+pub(super) fn render_instrument_name(
+    svg: &mut SvgBuilder,
+    part: &crate::model::Part,
+    staff_y: f64,
+    num_staves: usize,
+) {
+    // Priority: abbreviation → part-name → instrument-name from <score-instrument>
+    let label: &str = if let Some(abbr) = part.abbreviation.as_deref().filter(|s| !is_auto_id(s)) {
+        abbr
+    } else if !is_auto_id(&part.name) {
+        &part.name
+    } else if let Some(iname) = part.instrument_name.as_deref().filter(|s| !is_auto_id(s)) {
+        iname
+    } else {
+        return; // nothing useful to show
+    };
+
+    let label = strip_instrument_number_suffix(label.trim());
+    if label.is_empty() { return; }
+
+    // Build display text: use abbreviation as-is (already short);
+    // for longer names take up to two words and truncate to 14 chars.
+    let display: String = {
+        let mut words = label.split_whitespace();
+        let first = words.next().unwrap_or("");
+        let second = words.next();
+        let candidate = if let Some(w2) = second {
+            // Skip purely-numeric second words like "Piano 2" → just "Piano"
+            // but keep descriptive second words like "Alto Saxophone"
+            if w2.chars().all(|c| c.is_ascii_digit() || c == '.') {
+                first.to_string()
+            } else {
+                format!("{} {}", first, w2)
+            }
+        } else {
+            first.to_string()
+        };
+        if candidate.chars().count() <= 14 {
+            candidate
+        } else {
+            let mut s: String = candidate.chars().take(13).collect();
+            s.push('.');
+            s
+        }
+    };
+
+    // Vertical centre across all staves in the part
+    let total_staff_height = STAFF_HEIGHT
+        + (num_staves as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP);
+    let center_y = staff_y + total_staff_height / 2.0 + 5.0; // +5 for optical baseline offset
+
+    // Centre horizontally in the instrument-prefix band that precedes the clef.
+    let cx = PAGE_MARGIN_LEFT + INSTRUMENT_PREFIX_WIDTH / 2.0;
+    svg.elements.push(format!(
+        "<text x=\"{:.1}\" y=\"{:.1}\" \
+         font-size=\"13\" font-weight=\"bold\" font-style=\"italic\" \
+         fill=\"#333333\" text-anchor=\"middle\">{}</text>",
+        cx, center_y, escape_xml(&display)
+    ));
+}
+
+/// Escape XML special characters in text content.
+fn escape_xml(s: &str) -> String {
+    s.replace('&', "&amp;")
+     .replace('<', "&lt;")
+     .replace('>', "&gt;")
+     .replace('"', "&quot;")
 }
 
 // ═══════════════════════════════════════════════════════════════════════

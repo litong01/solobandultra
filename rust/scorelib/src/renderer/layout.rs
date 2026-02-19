@@ -218,7 +218,9 @@ pub(super) fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], pag
     let initial_key = score.parts.iter()
         .flat_map(|p| p.measures.iter())
         .find_map(|m| m.attributes.as_ref().and_then(|a| a.key.as_ref()));
-    let first_prefix = CLEF_SPACE + key_sig_width(initial_key) + TIME_SIG_SPACE;
+    // On the first system we reserve INSTRUMENT_PREFIX_WIDTH before the clef
+    // for the instrument name and tempo label.
+    let first_prefix = INSTRUMENT_PREFIX_WIDTH + CLEF_SPACE + key_sig_width(initial_key) + TIME_SIG_SPACE;
     let available_first = content_width - first_prefix;
 
     let mut system_groups: Vec<Vec<usize>> = Vec::new();
@@ -258,7 +260,8 @@ pub(super) fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], pag
             + key_sig_width(key_at_start)
             + if show_time_sig { TIME_SIG_SPACE } else { 0.0 };
 
-        let x_start = PAGE_MARGIN_LEFT + prefix_width;
+        let extra_prefix = if is_first { INSTRUMENT_PREFIX_WIDTH } else { 0.0 };
+        let x_start = PAGE_MARGIN_LEFT + extra_prefix + prefix_width;
         let x_end = PAGE_MARGIN_LEFT + content_width;
         let available = x_end - x_start;
 

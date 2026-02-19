@@ -19,6 +19,9 @@ pub(super) const HEADER_HEIGHT: f64 = 70.0; // space for title + composer
 pub(super) const FIRST_SYSTEM_TOP: f64 = PAGE_MARGIN_TOP + HEADER_HEIGHT;
 
 // ── Prefix widths ───────────────────────────────────────────────────
+/// Extra horizontal space reserved before the clef on the first system for
+/// the instrument name and tempo marking.
+pub(super) const INSTRUMENT_PREFIX_WIDTH: f64 = 80.0;
 pub(super) const CLEF_SPACE: f64 = 32.0; // horizontal space for clef at system start
 pub(super) const KEY_SIG_SHARP_SPACE: f64 = 10.0;
 pub(super) const KEY_SIG_FLAT_SPACE: f64 = 8.0;

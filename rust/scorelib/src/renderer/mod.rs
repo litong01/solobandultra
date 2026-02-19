@@ -149,7 +149,7 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
         std::collections::HashMap::new();
 
     // Render each system
-    for system in &layout.systems {
+    for (sys_idx, system) in layout.systems.iter().enumerate() {
         let system_y = system.y;
 
         // Pre-update part states from the first measure of this system
@@ -196,6 +196,15 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
             }
         }
 
+        // On the first system the instrument-name band sits to the left of
+        // the staff, so everything (staff lines, clef, key, time, brace)
+        // starts INSTRUMENT_PREFIX_WIDTH units further right.
+        let sys_prefix_x = if sys_idx == 0 {
+            PAGE_MARGIN_LEFT + INSTRUMENT_PREFIX_WIDTH
+        } else {
+            PAGE_MARGIN_LEFT
+        };
+
         // ── Staff lines, clefs, key/time signatures per part ──
         for part_info in &system.parts {
             let ps = &part_states[part_info.part_idx];
@@ -205,15 +214,15 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                     + part_info.y_offset
                     + (staff_num as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP);
 
-                render_staff_lines(&mut svg, PAGE_MARGIN_LEFT, system.x_end, staff_y);
+                render_staff_lines(&mut svg, sys_prefix_x, system.x_end, staff_y);
 
                 if system.show_clef {
                     if let Some(ref clef) = ps.clefs[staff_num] {
-                        render_clef(&mut svg, PAGE_MARGIN_LEFT + 5.0, staff_y, clef);
+                        render_clef(&mut svg, sys_prefix_x + 5.0, staff_y, clef);
                     }
                 }
 
-                let key_x = PAGE_MARGIN_LEFT + CLEF_SPACE;
+                let key_x = sys_prefix_x + CLEF_SPACE;
                 if let Some(ref key) = ps.key {
                     render_key_signature(
                         &mut svg, key_x, staff_y, key,
@@ -235,7 +244,18 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                 let bottom_y = top_y
                     + (part_info.num_staves as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP)
                     + STAFF_HEIGHT;
-                render_brace(&mut svg, PAGE_MARGIN_LEFT - 2.0, top_y, bottom_y);
+                render_brace(&mut svg, sys_prefix_x - 2.0, top_y, bottom_y);
+            }
+
+            // Instrument name — first system only, left of the first staff
+            if sys_idx == 0 {
+                let top_staff_y = system_y + part_info.y_offset;
+                render_instrument_name(
+                    &mut svg,
+                    &score.parts[part_info.part_idx],
+                    top_staff_y,
+                    part_info.num_staves,
+                );
             }
         }
 
@@ -250,7 +270,7 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                 + STAFF_HEIGHT;
 
             svg.line(
-                PAGE_MARGIN_LEFT, top_y, PAGE_MARGIN_LEFT, bottom_y,
+                sys_prefix_x, top_y, sys_prefix_x, bottom_y,
                 BARLINE_COLOR, BARLINE_WIDTH,
             );
         }
@@ -264,7 +284,7 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                 let color = "#555555";
                 svg.elements.push(format!(
                     "<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"15\" font-style=\"italic\" fill=\"{}\" text-anchor=\"start\">{}</text>",
-                    PAGE_MARGIN_LEFT - 10.0, top_staff_y - 8.0, color, measure_num
+                    sys_prefix_x - 10.0, top_staff_y - 8.0, color, measure_num
                 ));
             }
         }
@@ -399,7 +419,7 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
         }
 
         // ── Render measures ──
-        for ml in &system.measures {
+        for (mi_in_sys, ml) in system.measures.iter().enumerate() {
             let mx = ml.x;
             let mw = ml.width;
 
@@ -511,7 +531,16 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                         let mut above_word_idx: usize = 0;
                         for dir in &measure.directions {
                             if dir.sound_tempo.is_some() || dir.metronome.is_some() {
-                                render_tempo_marking(&mut svg, mx + 4.0, staff_y, dir);
+                                // On the first measure of the first system render the
+                                // tempo label inside the instrument-prefix band so it
+                                // sits above the instrument name and does not crowd
+                                // the first barline.
+                                let tempo_x = if sys_idx == 0 && mi_in_sys == 0 {
+                                    PAGE_MARGIN_LEFT + 5.0
+                                } else {
+                                    mx + 4.0
+                                };
+                                render_tempo_marking(&mut svg, tempo_x, staff_y, dir);
                             }
                             if dir.segno {
                                 render_segno(&mut svg, mx + 6.0, staff_y);
@@ -606,9 +635,16 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                         let note_xs = note_x_positions_from_beat_map(
                             &measure.notes, ps.divisions, &ml.beat_x_map,
                         );
+                        let lyric_font_family = score.defaults.as_ref()
+                            .and_then(|d| d.lyric_font.as_ref())
+                            .and_then(|lf| lf.font_family.as_deref());
+                        let lyric_font_size = score.defaults.as_ref()
+                            .and_then(|d| d.lyric_font.as_ref())
+                            .and_then(|lf| lf.font_size);
                         render_lyrics(
                             &mut svg, measure, &note_xs,
                             lyrics_base_y, staff_filter,
+                            lyric_font_family, lyric_font_size,
                         );
                     }
                 }

@@ -59,6 +59,10 @@ pub struct Defaults {
     pub right_margin: Option<f64>,
     pub top_margin: Option<f64>,
     pub bottom_margin: Option<f64>,
+    /// Global default font for `<words>` direction elements (`<word-font>`).
+    pub word_font: Option<TextStyle>,
+    /// Global default font for `<lyric>` elements (`<lyric-font>`).
+    pub lyric_font: Option<TextStyle>,
 }
 
 /// A musical part (one instrument or voice).
@@ -66,10 +70,12 @@ pub struct Defaults {
 pub struct Part {
     /// Part identifier (e.g., "P1")
     pub id: String,
-    /// Part name (e.g., "Classical Guitar")
+    /// Part name from `<part-name>` (e.g., "Classical Guitar")
     pub name: String,
-    /// Abbreviated name (e.g., "Guit.")
+    /// Abbreviated name from `<part-abbreviation>` (e.g., "Guit.")
     pub abbreviation: Option<String>,
+    /// Instrument name from `<score-instrument><instrument-name>` (e.g., "Piano")
+    pub instrument_name: Option<String>,
     /// MIDI program number
     pub midi_program: Option<i32>,
     /// MIDI channel

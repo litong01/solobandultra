@@ -70,12 +70,15 @@ fn precompute_measure_states(
             }
         }
 
-        // Update tempo from directions
+        // Update tempo from directions.
+        // <sound tempo="X"/> is always quarter-notes-per-minute (MusicXML spec) — use directly.
+        // <metronome> marks the beat unit explicitly (half, quarter, eighth, etc.) and must be
+        // converted to quarter-notes-per-minute so all tempo math stays in a single unit.
         for dir in &measure.directions {
             if let Some(t) = dir.sound_tempo {
                 tempo = t;
             } else if let Some(ref metro) = dir.metronome {
-                tempo = metro.per_minute as f64;
+                tempo = metro.per_minute as f64 * quarters_per_beat(&metro.beat_unit, metro.dotted);
             }
         }
 
@@ -192,4 +195,85 @@ fn actual_note_quarters(measure: &crate::model::Measure, divisions: i32) -> f64 
 /// Total duration of the entire timemap in milliseconds.
 pub fn total_duration_ms(timemap: &[TimemapEntry]) -> f64 {
     timemap.last().map_or(0.0, |e| e.timestamp_ms + e.duration_ms)
+}
+
+/// Convert a metronome beat unit to its quarter-note equivalent multiplier.
+///
+/// MusicXML metronome marks specify "X note-type = Y beats per minute".
+/// All internal tempo calculations use quarter-notes-per-minute, so we
+/// multiply `per_minute` by this factor to normalise.
+///
+/// Examples:
+/// - `half = 60`          → 60 × 2.0 = 120 quarter/min
+/// - `dotted quarter = 80` → 80 × 1.5 = 120 quarter/min
+/// - `eighth = 240`        → 240 × 0.5 = 120 quarter/min
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quarters_per_beat_standard_units() {
+        assert_eq!(quarters_per_beat("whole",   false), 4.0);
+        assert_eq!(quarters_per_beat("half",    false), 2.0);
+        assert_eq!(quarters_per_beat("quarter", false), 1.0);
+        assert_eq!(quarters_per_beat("eighth",  false), 0.5);
+        assert_eq!(quarters_per_beat("16th",    false), 0.25);
+        assert_eq!(quarters_per_beat("32nd",    false), 0.125);
+        println!("✓ quarters_per_beat: all standard units correct");
+    }
+
+    #[test]
+    fn quarters_per_beat_dotted_units() {
+        assert_eq!(quarters_per_beat("half",    true), 3.0);   // dotted half = 3 quarters
+        assert_eq!(quarters_per_beat("quarter", true), 1.5);   // dotted quarter = 1.5 quarters
+        assert_eq!(quarters_per_beat("eighth",  true), 0.75);  // dotted eighth = 0.75 quarters
+        println!("✓ quarters_per_beat: dotted units correct");
+    }
+
+    #[test]
+    fn half_note_60_bpm_yields_120_quarter_bpm() {
+        // "half = 60" is a common slow-swing tempo — equals 120 quarter/min
+        let bpm = 60.0 * quarters_per_beat("half", false);
+        assert!((bpm - 120.0).abs() < 0.001,
+            "half=60 should yield 120 quarter/min, got {}", bpm);
+        println!("✓ half=60 → 120 quarter/min");
+    }
+
+    #[test]
+    fn dotted_quarter_80_bpm_yields_120_quarter_bpm() {
+        // "dotted quarter = 80" → 80 × 1.5 = 120 quarter/min
+        let bpm = 80.0 * quarters_per_beat("quarter", true);
+        assert!((bpm - 120.0).abs() < 0.001,
+            "dotted quarter=80 should yield 120 quarter/min, got {}", bpm);
+        println!("✓ dotted quarter=80 → 120 quarter/min");
+    }
+
+    #[test]
+    fn eighth_240_bpm_yields_120_quarter_bpm() {
+        // "eighth = 240" → 240 × 0.5 = 120 quarter/min
+        let bpm = 240.0 * quarters_per_beat("eighth", false);
+        assert!((bpm - 120.0).abs() < 0.001,
+            "eighth=240 should yield 120 quarter/min, got {}", bpm);
+        println!("✓ eighth=240 → 120 quarter/min");
+    }
+
+    #[test]
+    fn unknown_beat_unit_defaults_to_quarter() {
+        // Unknown unit should default to quarter (multiplier 1.0)
+        assert_eq!(quarters_per_beat("unknown", false), 1.0);
+        println!("✓ unknown beat unit defaults to quarter");
+    }
+}
+
+fn quarters_per_beat(beat_unit: &str, dotted: bool) -> f64 {
+    let base: f64 = match beat_unit {
+        "whole"   => 4.0,
+        "half"    => 2.0,
+        "quarter" => 1.0,
+        "eighth"  => 0.5,
+        "16th"    => 0.25,
+        "32nd"    => 0.125,
+        _         => 1.0, // unknown unit — treat as quarter
+    };
+    if dotted { base * 1.5 } else { base }
 }

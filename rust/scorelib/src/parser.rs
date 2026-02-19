@@ -89,6 +89,17 @@ fn parse_identification(node: &Node, score: &mut Score) {
 
 // ─── Defaults ────────────────────────────────────────────────────────
 
+/// Parse font attributes (font-family, font-size, font-style, font-weight)
+/// from any element that carries them as XML attributes.
+fn parse_text_style_attrs(node: &Node) -> TextStyle {
+    TextStyle {
+        font_family: node.attribute("font-family").map(|s| s.trim().to_string()),
+        font_size: node.attribute("font-size").and_then(|s| s.trim().parse::<f64>().ok()),
+        font_weight: node.attribute("font-weight").map(|s| s.trim().to_string()),
+        font_style: node.attribute("font-style").map(|s| s.trim().to_string()),
+    }
+}
+
 fn parse_defaults(node: &Node) -> Defaults {
     let mut defaults = Defaults {
         millimeters: None,
@@ -99,6 +110,8 @@ fn parse_defaults(node: &Node) -> Defaults {
         right_margin: None,
         top_margin: None,
         bottom_margin: None,
+        word_font: None,
+        lyric_font: None,
     };
 
     for child in node.children().filter(|n| n.is_element()) {
@@ -131,6 +144,12 @@ fn parse_defaults(node: &Node) -> Defaults {
                         _ => {}
                     }
                 }
+            }
+            "word-font" => {
+                defaults.word_font = Some(parse_text_style_attrs(&child));
+            }
+            "lyric-font" => {
+                defaults.lyric_font = Some(parse_text_style_attrs(&child));
             }
             _ => {}
         }
@@ -229,6 +248,7 @@ fn parse_part_list(node: &Node, score: &mut Score) {
                 id,
                 name: String::new(),
                 abbreviation: None,
+                instrument_name: None,
                 midi_program: None,
                 midi_channel: None,
                 measures: Vec::new(),
@@ -242,6 +262,18 @@ fn parse_part_list(node: &Node, score: &mut Score) {
                     "part-abbreviation" => {
                         part.abbreviation =
                             sp_child.text().map(|t| t.trim().to_string());
+                    }
+                    "score-instrument" => {
+                        for si_child in sp_child.children().filter(|n| n.is_element()) {
+                            if si_child.tag_name().name() == "instrument-name" {
+                                if let Some(t) = si_child.text() {
+                                    let s = t.trim().to_string();
+                                    if !s.is_empty() {
+                                        part.instrument_name = Some(s);
+                                    }
+                                }
+                            }
+                        }
                     }
                     "midi-instrument" => {
                         for midi in sp_child.children().filter(|n| n.is_element()) {

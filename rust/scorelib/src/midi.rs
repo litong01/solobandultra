@@ -566,6 +566,7 @@ mod tests {
             id: "P1".into(),
             name: "Alto Saxophone".into(),
             abbreviation: None,
+            instrument_name: None,
             midi_program: Some(65), // Alto Sax GM program
             midi_channel: Some(1),
             measures: vec![],
