@@ -211,9 +211,25 @@ fn extract_melody(
 ) -> Vec<MidiEvent> {
     let mut events: Vec<MidiEvent> = Vec::new();
 
+    // Instrument transposition from the MusicXML <transpose> element.
+    // Converts written pitch (what appears on the page) to concert pitch
+    // (what actually sounds). Per MusicXML spec: sounding = written + chromatic.
+    // Examples: Alto Sax (Eb instrument) = -9, Bb Clarinet = -2, Piano = 0.
+    // Carried forward across measures and only updated when attributes change.
+    let mut instrument_transpose: i32 = 0;
+
     for (i, um) in unrolled.iter().enumerate() {
         let measure = &part.measures[um.original_index];
         let entry = &timemap[i];
+
+        // Update instrument transposition whenever attributes carry a new
+        // <transpose> element (key/time/clef changes share the same block).
+        if let Some(ref attrs) = measure.attributes {
+            if let Some(ref t) = attrs.transpose {
+                instrument_transpose =
+                    t.chromatic + t.octave_change.unwrap_or(0) * 12;
+            }
+        }
         let divisions = entry.divisions.max(1) as f64;
         // Guard against zero/negative effective_quarters from degenerate measures
         // to prevent NaN/Infinity propagation into MIDI tick calculations.
@@ -264,7 +280,7 @@ fn extract_melody(
 
                 for (gi, gnote) in pending_graces.iter().enumerate() {
                     if let Some(ref pitch) = gnote.pitch {
-                        let midi_note = pitch.to_midi().max(0).min(127) as u8;
+                        let midi_note = (pitch.to_midi() + instrument_transpose).max(0).min(127) as u8;
                         let offset = (num_graces - gi) as f64 * grace_dur_ms;
                         let onset_ms = (main_onset_ms - offset).max(0.0);
                         let off_ms = onset_ms + grace_dur_ms;
@@ -292,7 +308,7 @@ fn extract_melody(
             if note.chord {
                 if emit && !note.rest {
                     if let Some(ref pitch) = note.pitch {
-                        let midi_note = pitch.to_midi().max(0).min(127) as u8;
+                        let midi_note = (pitch.to_midi() + instrument_transpose).max(0).min(127) as u8;
                         let onset = voice_last_onset.get(&vk).copied().unwrap_or(0.0);
                         let note_time_ms = entry.timestamp_ms
                             + (onset / divisions / quarter_notes_in_measure)
@@ -328,7 +344,7 @@ fn extract_melody(
             }
 
             if let Some(ref pitch) = note.pitch {
-                let midi_note = pitch.to_midi().max(0).min(127) as u8;
+                let midi_note = (pitch.to_midi() + instrument_transpose).max(0).min(127) as u8;
                 voice_last_onset.insert(vk, *pos_div);
 
                 if emit {
@@ -536,6 +552,148 @@ fn detect_staves(part: &crate::model::Part) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn instrument_transpose_shifts_midi_notes() {
+        // Verify that a part with <transpose chromatic="-9"/> (alto saxophone)
+        // produces MIDI notes 9 semitones lower than the written pitch.
+        // Written C4 (MIDI 60) should sound as Eb3 (MIDI 51).
+        use crate::model::*;
+        use crate::unroller::UnrolledMeasure;
+        use crate::timemap::TimemapEntry;
+
+        let mut part = Part {
+            id: "P1".into(),
+            name: "Alto Saxophone".into(),
+            abbreviation: None,
+            midi_program: Some(65), // Alto Sax GM program
+            midi_channel: Some(1),
+            measures: vec![],
+        };
+
+        // Build one measure with a written C4 note and <transpose chromatic="-9">
+        let mut measure = Measure {
+            number: 1,
+            implicit: false,
+            width: None,
+            attributes: Some(Attributes {
+                divisions: Some(2),
+                key: Some(Key { fifths: 0, mode: Some("major".into()) }),
+                time: Some(TimeSignature { beats: 4, beat_type: 4 }),
+                clefs: vec![],
+                transpose: Some(Transpose { diatonic: -6, chromatic: -9, octave_change: None }),
+                staves: None,
+            }),
+            notes: vec![Note {
+                pitch: Some(Pitch { step: "C".into(), alter: None, octave: 4 }),
+                duration: 2,
+                voice: Some(1),
+                note_type: Some("quarter".into()),
+                stem: None,
+                beams: vec![],
+                rest: false,
+                measure_rest: false,
+                chord: false,
+                dot: false,
+                accidental: None,
+                grace: false,
+                grace_slash: false,
+                staff: Some(1),
+                tie_start: false,
+                tie_stop: false,
+                default_x: None,
+                default_y: None,
+                lyrics: vec![],
+                slurs: vec![],
+            }],
+            harmonies: vec![],
+            barlines: vec![],
+            directions: vec![],
+            new_system: false,
+            new_page: false,
+        };
+        part.measures.push(measure.clone());
+
+        // Also add a measure without attributes (transpose must carry forward)
+        measure.attributes = None;
+        part.measures.push(measure);
+
+        let score = Score {
+            title: Some("Test".into()),
+            title_style: None,
+            subtitle: None,
+            subtitle_style: None,
+            composer: None,
+            composer_style: None,
+            arranger: None,
+            version: None,
+            software: None,
+            defaults: None,
+            parts: vec![part],
+        };
+
+        let unrolled: Vec<UnrolledMeasure> = (0..2)
+            .map(|i| UnrolledMeasure { original_index: i })
+            .collect();
+
+        let timemap: Vec<TimemapEntry> = (0..2)
+            .map(|i| TimemapEntry {
+                index: i,
+                original_index: i,
+                timestamp_ms: i as f64 * 2000.0,
+                duration_ms: 2000.0,
+                tempo_bpm: 120.0,
+                time_sig: (4, 4),
+                divisions: 2,
+                effective_quarters: 4.0,
+            })
+            .collect();
+
+        let options = MidiOptions { include_metronome: false, ..MidiOptions::default() };
+        let midi = generate_midi(&score, 0, &unrolled, &timemap, &options);
+
+        // Scan for note-on events (status byte 0x90 on channel 0)
+        // and collect all MIDI note numbers played.
+        let mut note_ons: Vec<u8> = Vec::new();
+        let mut pos = 14; // skip MThd (14 bytes)
+        while pos + 4 < midi.len() {
+            if &midi[pos..pos+4] == b"MTrk" {
+                let track_len = u32::from_be_bytes([midi[pos+4], midi[pos+5], midi[pos+6], midi[pos+7]]) as usize;
+                let track_start = pos + 8;
+                let track_end = (track_start + track_len).min(midi.len());
+                let mut p = track_start;
+                while p < track_end.saturating_sub(1) {
+                    // Skip VLQ delta time
+                    while p < track_end && midi[p] & 0x80 != 0 { p += 1; }
+                    p += 1; // last VLQ byte
+                    if p >= track_end { break; }
+                    let status = midi[p];
+                    if status & 0xF0 == 0x90 && p + 2 < track_end {
+                        // Note-on: status, note, velocity
+                        note_ons.push(midi[p + 1]);
+                        p += 3;
+                    } else {
+                        p += 1;
+                    }
+                }
+                pos = track_end;
+            } else {
+                pos += 1;
+            }
+        }
+
+        // Written C4 = MIDI 60; with alto sax transpose (-9) = MIDI 51 (Eb3)
+        assert!(
+            note_ons.iter().any(|&n| n == 51),
+            "Expected MIDI note 51 (Eb3, concert pitch of written C4 for alto sax), got: {:?}",
+            note_ons
+        );
+        assert!(
+            !note_ons.iter().any(|&n| n == 60),
+            "MIDI note 60 (written C4) should NOT appear — must be transposed to concert pitch"
+        );
+        println!("✓ Alto sax instrument_transpose(-9): written C4 → concert Eb3 (MIDI 51)");
+    }
 
     #[test]
     fn vlq_encoding() {
