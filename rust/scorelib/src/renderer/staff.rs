@@ -4,6 +4,7 @@ use crate::model::*;
 use super::constants::*;
 use super::glyphs::*;
 use super::svg_builder::{SvgBuilder, vexflow_outline_to_svg};
+use super::lyrics::font_for_text;
 
 // ═══════════════════════════════════════════════════════════════════════
 // Header rendering
@@ -12,30 +13,19 @@ use super::svg_builder::{SvgBuilder, vexflow_outline_to_svg};
 pub(super) fn render_header(svg: &mut SvgBuilder, score: &Score, page_width: f64) {
     let center_x = page_width / 2.0;
 
-    // The global <word-font> from <defaults> is the fallback font-family for all
-    // header text when individual <credit-words> elements don't carry their own.
-    let default_font_family = score.defaults.as_ref()
-        .and_then(|d| d.word_font.as_ref())
-        .and_then(|wf| wf.font_family.as_deref());
+    // Font selection is purely content-driven: CJK text → 楷体, everything else → Lora.
+    // MusicXML-specified fonts are intentionally ignored for visual consistency.
 
     if let Some(ref title) = score.title {
-        let style = score.title_style.as_ref();
-        let size = style.and_then(|s| s.font_size).unwrap_or(22.0);
-        let weight = style.and_then(|s| s.font_weight.as_deref()).unwrap_or("bold");
-        let family = style.and_then(|s| s.font_family.as_deref()).or(default_font_family);
-        let font_style = style.and_then(|s| s.font_style.as_deref());
-        svg.styled_text(center_x, PAGE_MARGIN_TOP + 22.0, title, size, weight,
-                        HEADER_COLOR, "middle", family, font_style);
+        let size = score.title_style.as_ref().and_then(|s| s.font_size).unwrap_or(22.0);
+        svg.styled_text(center_x, PAGE_MARGIN_TOP + 22.0, title, size, "bold",
+                        HEADER_COLOR, "middle", Some(font_for_text(title)), None);
     }
 
     if let Some(ref subtitle) = score.subtitle {
-        let style = score.subtitle_style.as_ref();
-        let size = style.and_then(|s| s.font_size).unwrap_or(14.0);
-        let weight = style.and_then(|s| s.font_weight.as_deref()).unwrap_or("normal");
-        let family = style.and_then(|s| s.font_family.as_deref()).or(default_font_family);
-        let font_style = style.and_then(|s| s.font_style.as_deref());
-        svg.styled_text(center_x, PAGE_MARGIN_TOP + 40.0, subtitle, size, weight,
-                        HEADER_COLOR, "middle", family, font_style);
+        let size = score.subtitle_style.as_ref().and_then(|s| s.font_size).unwrap_or(14.0);
+        svg.styled_text(center_x, PAGE_MARGIN_TOP + 40.0, subtitle, size, "normal",
+                        HEADER_COLOR, "middle", Some(font_for_text(subtitle)), None);
     }
 
     if let Some(ref composer) = score.composer {
@@ -44,13 +34,10 @@ pub(super) fn render_header(svg: &mut SvgBuilder, score: &Score, page_width: f64
         } else {
             composer.clone()
         };
-        let style = score.composer_style.as_ref();
-        let size = style.and_then(|s| s.font_size).unwrap_or(11.0);
-        let weight = style.and_then(|s| s.font_weight.as_deref()).unwrap_or("normal");
-        let family = style.and_then(|s| s.font_family.as_deref()).or(default_font_family);
-        let font_style = style.and_then(|s| s.font_style.as_deref());
+        let size = score.composer_style.as_ref().and_then(|s| s.font_size).unwrap_or(11.0);
         svg.styled_text(page_width - PAGE_MARGIN_RIGHT, PAGE_MARGIN_TOP + 55.0,
-                        &label, size, weight, HEADER_COLOR, "end", family, font_style);
+                        &label, size, "normal", HEADER_COLOR, "end",
+                        Some(font_for_text(&label)), None);
     }
 }
 

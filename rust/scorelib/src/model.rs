@@ -232,6 +232,8 @@ pub struct Lyric {
     pub text: String,
     /// Syllabic type: "single", "begin", "middle", "end"
     pub syllabic: Option<String>,
+    /// Font family from `<text font-family="…">`, overrides the global lyric-font default.
+    pub font_family: Option<String>,
 }
 
 /// Pitch of a note.

@@ -635,16 +635,9 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                         let note_xs = note_x_positions_from_beat_map(
                             &measure.notes, ps.divisions, &ml.beat_x_map,
                         );
-                        let lyric_font_family = score.defaults.as_ref()
-                            .and_then(|d| d.lyric_font.as_ref())
-                            .and_then(|lf| lf.font_family.as_deref());
-                        let lyric_font_size = score.defaults.as_ref()
-                            .and_then(|d| d.lyric_font.as_ref())
-                            .and_then(|lf| lf.font_size);
                         render_lyrics(
                             &mut svg, measure, &note_xs,
                             lyrics_base_y, staff_filter,
-                            lyric_font_family, lyric_font_size,
                         );
                     }
                 }

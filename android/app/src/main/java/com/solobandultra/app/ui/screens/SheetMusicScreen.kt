@@ -1237,7 +1237,8 @@ private fun SvgWebView(
 
             webView.tag = newTag
             val html = buildHtml(svg, playbackMapJson, cursorBarVisible)
-            webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+            // Use Android assets as base URL so @font-face can resolve bundled font files.
+            webView.loadDataWithBaseURL("file:///android_asset/", html, "text/html", "UTF-8", null)
         },
         onRelease = {
             // Clear the stale reference when the WebView leaves composition,
@@ -1277,6 +1278,24 @@ private fun buildHtml(svg: String, playbackMapJson: String?, cursorBarVisible: B
         <head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes">
         <style>
+            @font-face {
+                font-family: 'Lora';
+                src: url('fonts/Lora-Regular.ttf') format('truetype');
+                font-weight: 100 900;
+                font-style: normal;
+            }
+            @font-face {
+                font-family: 'Lora';
+                src: url('fonts/Lora-Italic.ttf') format('truetype');
+                font-weight: 100 900;
+                font-style: italic;
+            }
+            @font-face {
+                font-family: 'Ma Shan Zheng';
+                src: url('fonts/MaShanZheng-Regular.ttf') format('truetype');
+                font-weight: normal;
+                font-style: normal;
+            }
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body {
                 background: white;

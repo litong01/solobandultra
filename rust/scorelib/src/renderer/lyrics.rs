@@ -5,6 +5,37 @@ use super::constants::*;
 use super::svg_builder::SvgBuilder;
 use super::beat_map::compute_note_beat_times;
 
+/// The app-bundled Latin serif font used for all non-CJK text.
+/// The app layer must register this via `@font-face` in its WebView HTML.
+pub(super) const LATIN_FONT_STACK: &str = "Lora, Georgia, serif";
+
+/// The CJK regular-script (楷体) font stack used for all Chinese/Japanese/Korean text.
+/// "Ma Shan Zheng" is the app-bundled Kaiti font (declared via @font-face in the WebView HTML)
+/// and will always be available.  The remaining entries are system-font fallbacks for any
+/// characters not covered by the bundled font, or on platforms where the @font-face hasn't
+/// loaded yet.
+pub(super) const CJK_FONT_STACK: &str =
+    "Ma Shan Zheng, Kaiti TC, Kaiti SC, KaiTi, STKaiti, PingFang SC, Noto Sans CJK SC, sans-serif";
+
+/// Returns true if `text` contains any CJK Unified Ideograph character.
+pub(super) fn has_cjk(text: &str) -> bool {
+    text.chars().any(|c| {
+        matches!(c,
+            '\u{4E00}'..='\u{9FFF}'     // CJK Unified Ideographs
+            | '\u{3400}'..='\u{4DBF}'   // CJK Extension A
+            | '\u{F900}'..='\u{FAFF}'   // CJK Compatibility Ideographs
+            | '\u{3000}'..='\u{303F}'   // CJK Symbols and Punctuation
+            | '\u{FF00}'..='\u{FFEF}'   // Halfwidth/Fullwidth Forms
+        )
+    })
+}
+
+/// Choose the correct font stack for a piece of text:
+/// 楷体 for CJK, Lora for everything else.
+pub(super) fn font_for_text(text: &str) -> &'static str {
+    if has_cjk(text) { CJK_FONT_STACK } else { LATIN_FONT_STACK }
+}
+
 // ── Lyrics constants ────────────────────────────────────────────────
 
 pub(super) const LYRICS_COLOR: &str = "#333333";
@@ -26,10 +57,21 @@ pub(super) const MAX_LYRICS_ELONGATION_FACTOR: f64 = 2.5;
 // ── Text width helpers ──────────────────────────────────────────────
 
 /// Estimate the rendered width of a text string in pixels for a given font size.
-/// Uses character count (not byte length) so CJK and other multibyte characters
-/// are measured correctly.
+///
+/// Latin characters average ~55% of the em width.
+/// CJK characters are full-width square glyphs: exactly 1.0em wide.
+/// Mixed strings are measured per-character so the estimate stays accurate.
 pub(super) fn estimate_text_width(text: &str, font_size: f64) -> f64 {
-    text.chars().count() as f64 * font_size * LYRICS_CHAR_WIDTH_FACTOR
+    text.chars().map(|c| {
+        let factor = if matches!(c,
+            '\u{4E00}'..='\u{9FFF}'
+            | '\u{3400}'..='\u{4DBF}'
+            | '\u{F900}'..='\u{FAFF}'
+            | '\u{3000}'..='\u{303F}'
+            | '\u{FF00}'..='\u{FFEF}'
+        ) { 1.0 } else { LYRICS_CHAR_WIDTH_FACTOR };
+        font_size * factor
+    }).sum()
 }
 
 // ── LyricEvent ──────────────────────────────────────────────────────
@@ -177,10 +219,8 @@ pub(super) fn render_lyrics(
     note_positions: &[f64],
     lyrics_base_y: f64,
     staff_filter: Option<i32>,
-    lyric_font_family: Option<&str>,
-    lyric_font_size: Option<f64>,
 ) {
-    let font_size = lyric_font_size.unwrap_or(LYRICS_FONT_SIZE);
+    let font_size = LYRICS_FONT_SIZE;
 
     for (i, note) in measure.notes.iter().enumerate() {
         if let Some(sf) = staff_filter {
@@ -198,6 +238,9 @@ pub(super) fn render_lyrics(
                 _ => lyric.text.clone(),
             };
 
+            // Choose Lora or 楷体 based on the actual lyric text content.
+            let family = font_for_text(&lyric.text);
+
             svg.styled_text(
                 nx, ly,
                 &display_text,
@@ -205,7 +248,7 @@ pub(super) fn render_lyrics(
                 "normal",
                 LYRICS_COLOR,
                 "middle",
-                lyric_font_family,
+                Some(family),
                 None,
             );
         }

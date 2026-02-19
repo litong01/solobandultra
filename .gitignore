@@ -80,6 +80,11 @@ android/app/src/main/jniLibs/
 ios/SoloBandUltra/SoloBandUltra/sheetmusic/
 android/app/src/main/assets/sheetmusic/
 
+# Bundled fonts (source of truth is assets/fonts/ at the repo root;
+# platform copies are deployed by build-rust.sh)
+ios/SoloBandUltra/SoloBandUltra/Fonts/
+android/app/src/main/assets/fonts/
+
 # =========================
 # Docker
 # =========================

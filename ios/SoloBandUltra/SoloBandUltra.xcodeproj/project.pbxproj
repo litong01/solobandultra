@@ -10,6 +10,8 @@
 		AA00000000000000000001B1 /* SoloBandUltraApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000001A1 /* SoloBandUltraApp.swift */; };
 		AA00000000000000000002B1 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000002A1 /* ContentView.swift */; };
 		AA00000000000000000003B1 /* SheetMusicView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000003A1 /* SheetMusicView.swift */; };
+		HH00000000000000000001B1 /* LoraFontData.swift in Sources */ = {isa = PBXBuildFile; fileRef = HH00000000000000000001A1 /* LoraFontData.swift */; };
+		HH00000000000000000002B1 /* KaitiFontData.swift in Sources */ = {isa = PBXBuildFile; fileRef = HH00000000000000000002A1 /* KaitiFontData.swift */; };
 		AA00000000000000000004B1 /* AudioSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000004A1 /* AudioSessionManager.swift */; };
 		AA00000000000000000005B1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000005A1 /* Assets.xcassets */; };
 		BB00000000000000000001B1 /* ScoreLibBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000000000000000001A1 /* ScoreLibBridge.swift */; };
@@ -27,6 +29,8 @@
 		AA00000000000000000001A1 /* SoloBandUltraApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoloBandUltraApp.swift; sourceTree = "<group>"; };
 		AA00000000000000000002A1 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		AA00000000000000000003A1 /* SheetMusicView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SheetMusicView.swift; sourceTree = "<group>"; };
+		HH00000000000000000001A1 /* LoraFontData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoraFontData.swift; sourceTree = "<group>"; };
+		HH00000000000000000002A1 /* KaitiFontData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KaitiFontData.swift; sourceTree = "<group>"; };
 		AA00000000000000000004A1 /* AudioSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSessionManager.swift; sourceTree = "<group>"; };
 		AA00000000000000000005A1 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AA00000000000000000006A1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -70,6 +74,8 @@
 				AA00000000000000000001A1 /* SoloBandUltraApp.swift */,
 				AA00000000000000000002A1 /* ContentView.swift */,
 				AA00000000000000000003A1 /* SheetMusicView.swift */,
+				HH00000000000000000001A1 /* LoraFontData.swift */,
+				HH00000000000000000002A1 /* KaitiFontData.swift */,
 				AA00000000000000000004A1 /* AudioSessionManager.swift */,
 				BB00000000000000000001A1 /* ScoreLibBridge.swift */,
 				DD00000000000000000001A1 /* PlaybackManager.swift */,
@@ -174,6 +180,8 @@
 				AA00000000000000000001B1 /* SoloBandUltraApp.swift in Sources */,
 				AA00000000000000000002B1 /* ContentView.swift in Sources */,
 				AA00000000000000000003B1 /* SheetMusicView.swift in Sources */,
+				HH00000000000000000001B1 /* LoraFontData.swift in Sources */,
+				HH00000000000000000002B1 /* KaitiFontData.swift in Sources */,
 				AA00000000000000000004B1 /* AudioSessionManager.swift in Sources */,
 				BB00000000000000000001B1 /* ScoreLibBridge.swift in Sources */,
 				DD00000000000000000001B1 /* PlaybackManager.swift in Sources */,

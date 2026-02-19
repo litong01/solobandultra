@@ -616,10 +616,17 @@ fn parse_note(node: &Node) -> Note {
                     .unwrap_or(1);
                 let mut text = String::new();
                 let mut syllabic = None;
+                let mut lyric_font_family: Option<String> = None;
                 for lc in child.children().filter(|n| n.is_element()) {
                     match lc.tag_name().name() {
                         "text" => {
                             text = lc.text().unwrap_or("").trim().to_string();
+                            // Capture per-syllable font-family if present
+                            if lyric_font_family.is_none() {
+                                lyric_font_family = lc.attribute("font-family")
+                                    .map(|s| s.trim().to_string())
+                                    .filter(|s| !s.is_empty());
+                            }
                         }
                         "syllabic" => {
                             syllabic = lc.text().map(|t| t.trim().to_string());
@@ -628,7 +635,7 @@ fn parse_note(node: &Node) -> Note {
                     }
                 }
                 if !text.is_empty() {
-                    note.lyrics.push(Lyric { number, text, syllabic });
+                    note.lyrics.push(Lyric { number, text, syllabic, font_family: lyric_font_family });
                 }
             }
             _ => {}
