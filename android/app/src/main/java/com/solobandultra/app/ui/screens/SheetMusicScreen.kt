@@ -733,8 +733,10 @@ private fun pasteFromClipboard(
 // Single source of truth for all option labels in the settings screen.
 // The actual size is controlled by the settingsTypography MaterialTheme
 // override at the call site. Change bodySmall there to restyle every label.
-@Composable private fun settingsLabelStyle() = MaterialTheme.typography.bodySmall
-@Composable private fun settingsLabelChineseStyle() = MaterialTheme.typography.bodySmall.copy(fontFamily = WenKaiFontFamily)
+@Composable private fun settingsLabelStyle() =
+    MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurface)
+@Composable private fun settingsLabelChineseStyle() =
+    MaterialTheme.typography.bodySmall.copy(fontFamily = WenKaiFontFamily, color = MaterialTheme.colorScheme.onSurface)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
