@@ -621,6 +621,14 @@ fun SheetMusicScreen(
             onDismissRequest = { showSettings = false },
             sheetState = sheetState
         ) {
+            // Scope smaller font sizes to the settings sheet only.
+            val settingsTypography = MaterialTheme.typography.copy(
+                headlineSmall = MaterialTheme.typography.headlineSmall.copy(fontSize = 20.sp),
+                titleMedium   = MaterialTheme.typography.titleMedium.copy(fontSize = 14.sp),
+                bodyMedium    = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
+                bodySmall     = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+            )
+            MaterialTheme(typography = settingsTypography) {
             SettingsSheetContent(
                 musicSources = musicSources,
                 initialSelectedSourceId = selectedSourceId,
@@ -653,6 +661,7 @@ fun SheetMusicScreen(
                     showSettings = false
                 }
             )
+            } // end MaterialTheme(typography = settingsTypography)
         }
     }
 }
@@ -719,6 +728,13 @@ private fun pasteFromClipboard(
 // ═══════════════════════════════════════════════════════════════════════
 // Settings sheet content
 // ═══════════════════════════════════════════════════════════════════════
+
+// ── Settings label style tokens ──────────────────────────────────────────
+// Single source of truth for all option labels in the settings screen.
+// The actual size is controlled by the settingsTypography MaterialTheme
+// override at the call site. Change bodySmall there to restyle every label.
+@Composable private fun settingsLabelStyle() = MaterialTheme.typography.bodySmall
+@Composable private fun settingsLabelChineseStyle() = MaterialTheme.typography.bodySmall.copy(fontFamily = WenKaiFontFamily)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -796,8 +812,7 @@ private fun SettingsSheetContent(
             ) {
                 Text(
                     "Playlist",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = settingsLabelStyle(),
                     modifier = Modifier.width(72.dp)
                 )
                 ExposedDropdownMenuBox(
@@ -820,7 +835,7 @@ private fun SettingsSheetContent(
                     ) {
                         Text(
                             selectedSource?.name ?: "",
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = settingsLabelStyle(),
                             modifier = Modifier.weight(1f)
                         )
                         ExposedDropdownMenuDefaults.TrailingIcon(expanded = sourceExpanded)
@@ -831,7 +846,7 @@ private fun SettingsSheetContent(
                     ) {
                         musicSources.forEach { source ->
                             DropdownMenuItem(
-                                text = { Text(source.name, style = MaterialTheme.typography.bodyMedium) },
+                                text = { Text(source.name, style = settingsLabelStyle()) },
                                 onClick = {
                                     selectedSourceId = source.id
                                     sourceExpanded = false
@@ -857,8 +872,7 @@ private fun SettingsSheetContent(
                 ) {
                     Text(
                         "Music",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = settingsLabelStyle(),
                         modifier = Modifier.width(72.dp)
                     )
                     ExposedDropdownMenuBox(
@@ -881,7 +895,7 @@ private fun SettingsSheetContent(
                         ) {
                             Text(
                                 selectedFile?.name ?: "",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = WenKaiFontFamily),
+                                style = settingsLabelChineseStyle(),
                                 modifier = Modifier.weight(1f)
                             )
                             ExposedDropdownMenuDefaults.TrailingIcon(expanded = fileExpanded)
@@ -892,7 +906,7 @@ private fun SettingsSheetContent(
                         ) {
                             selectedSource.items.forEach { item ->
                                 DropdownMenuItem(
-                                    text = { Text(item.name, style = MaterialTheme.typography.bodyMedium.copy(fontFamily = WenKaiFontFamily)) },
+                                    text = { Text(item.name, style = settingsLabelChineseStyle()) },
                                     onClick = {
                                         selectedFileUrl = item.url
                                         fileExpanded = false
@@ -946,37 +960,40 @@ private fun SettingsSheetContent(
             }
 
             // ── Reusable pieces ──
+            // Each control is wrapped in its own Row so it emits a single
+            // child node into any parent layout, making space distribution
+            // predictable regardless of sheet or screen width.
 
             @Composable
             fun SpeedInput() {
-                Text(
-                    text = "Speed",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                BasicTextField(
-                    value = speedText,
-                    onValueChange = { newText ->
-                        speedText = newText
-                        newText.toDoubleOrNull()?.let { playbackSpeed = it }
-                    },
-                    modifier = Modifier
-                        .width(48.dp)
-                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(6.dp))
-                        .padding(horizontal = 6.dp, vertical = 6.dp),
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.bodySmall.copy(
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.onSurface
-                    ),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
-                )
-                Text(
-                    text = "×",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Speed",
+                        style = settingsLabelStyle()
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    BasicTextField(
+                        value = speedText,
+                        onValueChange = { newText ->
+                            speedText = newText
+                            newText.toDoubleOrNull()?.let { playbackSpeed = it }
+                        },
+                        modifier = Modifier
+                            .width(48.dp)
+                            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(6.dp))
+                            .padding(horizontal = 6.dp, vertical = 6.dp),
+                        singleLine = true,
+                        textStyle = settingsLabelStyle().copy(
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onSurface
+                        ),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                    )
+                    Text(
+                        text = "×",
+                        style = settingsLabelStyle()
+                    )
+                }
             }
 
             @Composable
@@ -988,7 +1005,7 @@ private fun SettingsSheetContent(
                         .padding(vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = "Mute", style = MaterialTheme.typography.bodySmall)
+                    Text(text = "Mute", style = settingsLabelStyle())
                     Spacer(modifier = Modifier.width(4.dp))
                     Checkbox(checked = muteMusic, onCheckedChange = null, modifier = Modifier.size(20.dp))
                 }
@@ -1003,7 +1020,7 @@ private fun SettingsSheetContent(
                         .padding(vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = "Cursor", style = MaterialTheme.typography.bodySmall)
+                    Text(text = "Cursor", style = settingsLabelStyle())
                     Spacer(modifier = Modifier.width(4.dp))
                     Checkbox(checked = showCursor, onCheckedChange = null, modifier = Modifier.size(20.dp))
                 }
@@ -1011,67 +1028,68 @@ private fun SettingsSheetContent(
 
             @Composable
             fun RepeatStepper() {
-                Text(
-                    text = "Repeat",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                FilledTonalIconButton(
-                    onClick = { if (repeatCount > 1) repeatCount -= 1 },
-                    enabled = repeatCount > 1,
-                    modifier = Modifier.size(28.dp)
-                ) {
-                    Icon(Icons.Default.Remove, "Decrease", Modifier.size(14.dp))
-                }
-                Text(
-                    text = "${repeatCount}×",
-                    style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.width(28.dp)
-                )
-                FilledTonalIconButton(
-                    onClick = { repeatCount += 1 },
-                    modifier = Modifier.size(28.dp)
-                ) {
-                    Icon(Icons.Default.Add, "Increase", Modifier.size(14.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Repeat",
+                        style = settingsLabelStyle()
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    FilledTonalIconButton(
+                        onClick = { if (repeatCount > 1) repeatCount -= 1 },
+                        enabled = repeatCount > 1,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(Icons.Default.Remove, "Decrease", Modifier.size(14.dp))
+                    }
+                    Text(
+                        text = "${repeatCount}×",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.width(28.dp)
+                    )
+                    FilledTonalIconButton(
+                        onClick = { repeatCount += 1 },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(Icons.Default.Add, "Increase", Modifier.size(14.dp))
+                    }
                 }
             }
 
             // ── Layout ──
 
             if (isNarrow) {
-                // Phone: two rows
+                // Phone portrait: two rows — Speed | Mute, then Cursor | Repeat
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         SpeedInput()
-                        Spacer(modifier = Modifier.weight(1f))
-                        RepeatStepper()
+                        MuteCheckbox()
                     }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        MuteCheckbox()
-                        Spacer(modifier = Modifier.width(24.dp))
                         CursorCheckbox()
+                        RepeatStepper()
                     }
                 }
             } else {
-                // Tablet / wide: single row
+                // Tablet / wide: all four in one row, evenly distributed.
+                // SpaceBetween on 4 single-node children is reliable regardless
+                // of the sheet's actual container width.
                 Row(
                     modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     SpeedInput()
-                    Spacer(modifier = Modifier.weight(1f))
                     MuteCheckbox()
-                    Spacer(modifier = Modifier.weight(1f))
                     CursorCheckbox()
-                    Spacer(modifier = Modifier.weight(1f))
                     RepeatStepper()
                 }
             }
@@ -1087,8 +1105,7 @@ private fun SettingsSheetContent(
             ) {
                 Text(
                     text = "Semitones",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    style = settingsLabelStyle()
                 )
 
                 Spacer(modifier = Modifier.weight(1f))
@@ -1176,7 +1193,7 @@ private fun CompactCheckbox(
         Spacer(modifier = Modifier.width(4.dp))
         Text(
             text = label,
-            style = MaterialTheme.typography.bodySmall,
+            style = settingsLabelStyle(),
             maxLines = 1,
             modifier = Modifier.weight(1f)
         )

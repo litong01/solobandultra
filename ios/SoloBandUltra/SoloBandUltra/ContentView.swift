@@ -352,40 +352,58 @@ struct SettingsSheet: View {
                 VStack(spacing: 24) {
                     // ── 1. Music Source ───────────────────────────
                     SettingsSection("Music Source") {
-                        // Playlist dropdown
+                        // Playlist dropdown — use Menu so the collapsed label
+                        // respects .settingsLabel font (Picker ignores custom
+                        // fonts on its closed-state button label).
                         HStack {
                             Text("Playlist")
-                                .font(.lora(.subheadline))
-                                .foregroundStyle(.secondary)
+                                .font(.settingsLabel)
                                 .fixedSize()
                             Spacer()
-                            Picker("", selection: $selectedSourceId) {
+                            Menu {
                                 ForEach(musicSources) { source in
-                                    Text(source.name)
-                                        .font(.lora(.subheadline))
-                                        .tag(source.id)
+                                    Button {
+                                        selectedSourceId = source.id
+                                    } label: {
+                                        Text(source.name).font(.settingsLabel)
+                                    }
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text(selectedSource?.name ?? "")
+                                        .font(.settingsLabel)
+                                    Image(systemName: "chevron.up.chevron.down")
+                                        .font(.settingsLabel)
+                                        .foregroundStyle(.secondary)
                                 }
                             }
-                            .pickerStyle(.menu)
                             .tint(.primary)
                         }
 
-                        // File picker (shown when a source is selected)
+                        // Music file dropdown
                         if let source = selectedSource, !source.items.isEmpty {
                             HStack {
                                 Text("Music")
-                                    .font(.lora(.subheadline))
-                                    .foregroundStyle(.secondary)
+                                    .font(.settingsLabel)
                                     .fixedSize()
                                 Spacer()
-                                Picker("", selection: $selectedFileUrl) {
+                                Menu {
                                     ForEach(source.items) { item in
-                                        Text(item.name)
-                                            .font(.wenKaiSubheadline)
-                                            .tag(item.url)
+                                        Button {
+                                            selectedFileUrl = item.url
+                                        } label: {
+                                            Text(item.name).font(.settingsLabelChinese)
+                                        }
+                                    }
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Text(source.items.first(where: { $0.url == selectedFileUrl })?.name ?? "")
+                                            .font(.settingsLabelChinese)
+                                        Image(systemName: "chevron.up.chevron.down")
+                                            .font(.settingsLabel)
+                                            .foregroundStyle(.secondary)
                                     }
                                 }
-                                .pickerStyle(.menu)
                                 .tint(.primary)
                             }
                         }
@@ -421,8 +439,7 @@ struct SettingsSheet: View {
                     SettingsSection("Transpose") {
                         HStack(spacing: 16) {
                             Text("Semitones")
-                                .font(.lora(.subheadline))
-                                .foregroundStyle(.secondary)
+                                .font(.settingsLabel)
 
                             Spacer()
 
@@ -462,7 +479,7 @@ struct SettingsSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Apply") { applySettings() }
-                        .font(.lora(.subheadline))
+                        .font(.settingsLabel)
                 }
             }
             .onAppear { loadFromSettings() }
@@ -512,8 +529,14 @@ private extension Font {
         .custom("Lora-Regular", size: style.basePointSize, relativeTo: style)
     }
 
-    static let wenKaiSubheadline = Font.custom("LXGWWenKai-Regular", size: 15, relativeTo: .subheadline)
-    static let wenKaiBody = Font.custom("LXGWWenKai-Regular", size: 17, relativeTo: .body)
+    static let wenKaiSubheadline = Font.custom("LXGWWenKai-Regular", size: 13, relativeTo: .subheadline)
+    static let wenKaiBody = Font.custom("LXGWWenKai-Regular", size: 15, relativeTo: .body)
+
+    // ── Settings label tokens ────────────────────────────────────────
+    // Single source of truth for all option labels in the settings screen.
+    // Change these two lines to restyle every label at once.
+    static let settingsLabel: Font = .lora(.subheadline)
+    static let settingsLabelChinese: Font = .wenKaiSubheadline
 }
 
 private extension Font.TextStyle {
@@ -525,15 +548,15 @@ private extension Font.TextStyle {
         case .largeTitle:  return 34
         case .title:       return 28
         case .title2:      return 22
-        case .title3:      return 20
-        case .headline:    return 17
-        case .subheadline: return 15
-        case .body:        return 17
-        case .callout:     return 16
-        case .footnote:    return 13
-        case .caption:     return 12
-        case .caption2:    return 11
-        @unknown default:  return 17
+        case .title3:      return 18
+        case .headline:    return 15
+        case .subheadline: return 13
+        case .body:        return 15
+        case .callout:     return 14
+        case .footnote:    return 12
+        case .caption:     return 11
+        case .caption2:    return 10
+        @unknown default:  return 15
         }
     }
 }
@@ -584,8 +607,7 @@ private struct CheckboxToggle: View {
                     .foregroundStyle(isOn ? Color.accentColor : .secondary)
                     .font(.lora(.callout))
                 Text(label)
-                    .font(.lora(.subheadline))
-                    .foregroundStyle(.primary)
+                    .font(.settingsLabel)
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }
@@ -595,34 +617,27 @@ private struct CheckboxToggle: View {
 }
 
 /// Adaptive playback settings layout:
-/// - **Narrow** (compact horizontal size class, e.g. iPhone portrait): two rows
-///   so nothing gets squeezed.
-/// - **Wide** (regular horizontal size class, e.g. iPad / landscape): single row.
+/// - **Portrait phone** (compact horizontal + regular vertical): two rows,
+///   Speed | Mute on the first row, Cursor | Repeat on the second.
+/// - **Landscape phone** (compact vertical) or **iPad** (regular horizontal):
+///   all four controls in a single row.
 private struct PlaybackSettingsContent: View {
     @Binding var playbackSpeed: Double
     @Binding var muteMusic: Bool
     @Binding var showCursor: Bool
     @Binding var repeatCount: Int
 
-    @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.horizontalSizeClass) private var hSizeClass
+    @Environment(\.verticalSizeClass) private var vSizeClass
+
+    /// Single-row when landscape (compact vertical) or on iPad (regular horizontal).
+    private var useSingleRow: Bool {
+        hSizeClass == .regular || vSizeClass == .compact
+    }
 
     var body: some View {
-        if sizeClass == .compact {
-            // Phone — two rows to avoid squeezing
-            VStack(spacing: 12) {
-                HStack(alignment: .center) {
-                    speedControl
-                    Spacer()
-                    repeatControl
-                }
-                HStack(alignment: .center) {
-                    muteToggle
-                    Spacer()
-                    cursorToggle
-                }
-            }
-        } else {
-            // Tablet / wide — single row with more breathing room
+        if useSingleRow {
+            // Landscape phone or iPad — all four in one row
             HStack(alignment: .center) {
                 speedControl
                 Spacer()
@@ -632,6 +647,20 @@ private struct PlaybackSettingsContent: View {
                 Spacer()
                 repeatControl
             }
+        } else {
+            // Portrait phone — two rows: Speed | Mute, then Cursor | Repeat
+            VStack(spacing: 12) {
+                HStack(alignment: .center) {
+                    speedControl
+                    Spacer()
+                    muteToggle
+                }
+                HStack(alignment: .center) {
+                    cursorToggle
+                    Spacer()
+                    repeatControl
+                }
+            }
         }
     }
 
@@ -640,13 +669,12 @@ private struct PlaybackSettingsContent: View {
     private var speedControl: some View {
         HStack(spacing: 4) {
             Text("Speed")
-                .font(.lora(.subheadline))
-                .foregroundStyle(.secondary)
+                .font(.settingsLabel)
             TextField("1.0", value: $playbackSpeed, format: .number)
                 .textFieldStyle(.roundedBorder)
                 .keyboardType(.decimalPad)
                 .frame(width: 40)
-                .font(.lora(.subheadline))
+                .font(.settingsLabel)
         }
     }
 
@@ -654,8 +682,7 @@ private struct PlaybackSettingsContent: View {
         Button { muteMusic.toggle() } label: {
             HStack(spacing: 3) {
                 Text("Mute")
-                    .font(.lora(.subheadline))
-                    .foregroundStyle(.primary)
+                    .font(.settingsLabel)
                 Image(systemName: muteMusic ? "checkmark.square.fill" : "square")
                     .foregroundStyle(muteMusic ? Color.accentColor : .secondary)
                     .font(.lora(.callout))
@@ -668,8 +695,7 @@ private struct PlaybackSettingsContent: View {
         Button { showCursor.toggle() } label: {
             HStack(spacing: 3) {
                 Text("Cursor")
-                    .font(.lora(.subheadline))
-                    .foregroundStyle(.primary)
+                    .font(.settingsLabel)
                 Image(systemName: showCursor ? "checkmark.square.fill" : "square")
                     .foregroundStyle(showCursor ? Color.accentColor : .secondary)
                     .font(.lora(.callout))
@@ -681,13 +707,12 @@ private struct PlaybackSettingsContent: View {
     private var repeatControl: some View {
         HStack(spacing: 4) {
             Text("Repeat")
-                .font(.lora(.subheadline))
-                .foregroundStyle(.secondary)
+                .font(.settingsLabel)
             TextField("1", value: $repeatCount, format: .number)
                 .textFieldStyle(.roundedBorder)
                 .keyboardType(.numberPad)
                 .frame(width: 40)
-                .font(.lora(.subheadline))
+                .font(.settingsLabel)
         }
     }
 }
