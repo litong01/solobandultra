@@ -509,7 +509,7 @@ struct SettingsSheet: View {
 
 private extension Font {
     static func lora(_ style: Font.TextStyle) -> Font {
-        .custom("Lora-Regular", size: UIFont.preferredFont(forTextStyle: style.uiTextStyle).pointSize, relativeTo: style)
+        .custom("Lora-Regular", size: style.basePointSize, relativeTo: style)
     }
 
     static let wenKaiSubheadline = Font.custom("LXGWWenKai-Regular", size: 15, relativeTo: .subheadline)
@@ -517,20 +517,23 @@ private extension Font {
 }
 
 private extension Font.TextStyle {
-    var uiTextStyle: UIFont.TextStyle {
+    /// Apple's default (non-scaled) base sizes for each text style.
+    /// Using these as the anchor lets `relativeTo:` handle Dynamic Type
+    /// scaling correctly without inflating on iPad or large-text settings.
+    var basePointSize: CGFloat {
         switch self {
-        case .largeTitle: return .largeTitle
-        case .title: return .title1
-        case .title2: return .title2
-        case .title3: return .title3
-        case .headline: return .headline
-        case .subheadline: return .subheadline
-        case .body: return .body
-        case .callout: return .callout
-        case .footnote: return .footnote
-        case .caption: return .caption1
-        case .caption2: return .caption2
-        @unknown default: return .body
+        case .largeTitle:  return 34
+        case .title:       return 28
+        case .title2:      return 22
+        case .title3:      return 20
+        case .headline:    return 17
+        case .subheadline: return 15
+        case .body:        return 17
+        case .callout:     return 16
+        case .footnote:    return 13
+        case .caption:     return 12
+        case .caption2:    return 11
+        @unknown default:  return 17
         }
     }
 }
