@@ -307,8 +307,8 @@ struct SettingsSheet: View {
     @State private var includePiano: Bool = false
     @State private var includeBass: Bool = false
     @State private var includeStrings: Bool = false
-    @State private var includeDrums: Bool = false
-    @State private var includeMetronome: Bool = true
+    @State private var includeDrums: Bool = true
+    @State private var includeMetronome: Bool = false
     @State private var playbackSpeed: Double = 1.0
     @State private var muteMusic: Bool = false
     @State private var repeatCount: Int = 1

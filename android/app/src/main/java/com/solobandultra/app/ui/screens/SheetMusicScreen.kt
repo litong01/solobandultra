@@ -139,8 +139,8 @@ fun SheetMusicScreen(
     var includePiano by rememberSaveable { mutableStateOf(false) }
     var includeBass by rememberSaveable { mutableStateOf(false) }
     var includeStrings by rememberSaveable { mutableStateOf(false) }
-    var includeDrums by rememberSaveable { mutableStateOf(false) }
-    var includeMetronome by rememberSaveable { mutableStateOf(true) }
+    var includeDrums by rememberSaveable { mutableStateOf(true) }
+    var includeMetronome by rememberSaveable { mutableStateOf(false) }
     val energy = EnergyLevel.Strong  // Hardcoded; not user-facing
     var playbackSpeed by rememberSaveable { mutableStateOf(1.0) }
     var muteMusic by rememberSaveable { mutableStateOf(false) }
