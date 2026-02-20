@@ -520,12 +520,18 @@ pub(super) fn render_barlines(
             Some("heavy-light") => {
                 svg.line(bx, staff_y, bx, staff_y + STAFF_HEIGHT, BARLINE_COLOR, 3.0);
                 svg.line(bx + 5.0, staff_y, bx + 5.0, staff_y + STAFF_HEIGHT, BARLINE_COLOR, BARLINE_WIDTH);
-                svg.circle(bx + 10.0, staff_y + 15.0, 2.0, BARLINE_COLOR);
-                svg.circle(bx + 10.0, staff_y + 25.0, 2.0, BARLINE_COLOR);
+                // Dots only when this is also a forward-repeat barline.
+                if barline.repeat.as_ref().map_or(false, |r| r.direction == "forward") {
+                    svg.circle(bx + 10.0, staff_y + 15.0, 2.0, BARLINE_COLOR);
+                    svg.circle(bx + 10.0, staff_y + 25.0, 2.0, BARLINE_COLOR);
+                }
             }
             Some("light-heavy") => {
-                svg.circle(bx - 10.0, staff_y + 15.0, 2.0, BARLINE_COLOR);
-                svg.circle(bx - 10.0, staff_y + 25.0, 2.0, BARLINE_COLOR);
+                // Dots only when this is also a backward-repeat barline.
+                if barline.repeat.as_ref().map_or(false, |r| r.direction == "backward") {
+                    svg.circle(bx - 10.0, staff_y + 15.0, 2.0, BARLINE_COLOR);
+                    svg.circle(bx - 10.0, staff_y + 25.0, 2.0, BARLINE_COLOR);
+                }
                 svg.line(bx - 5.0, staff_y, bx - 5.0, staff_y + STAFF_HEIGHT, BARLINE_COLOR, BARLINE_WIDTH);
                 svg.line(bx, staff_y, bx, staff_y + STAFF_HEIGHT, BARLINE_COLOR, 3.0);
             }
