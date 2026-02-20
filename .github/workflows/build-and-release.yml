@@ -30,6 +30,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Copy fonts to iOS bundle
+        run: |
+          mkdir -p ios/SoloBandUltra/SoloBandUltra/Fonts
+          cp assets/fonts/Lora-Regular.ttf ios/SoloBandUltra/SoloBandUltra/Fonts/
+          cp assets/fonts/Lora-Italic.ttf ios/SoloBandUltra/SoloBandUltra/Fonts/
+          cp assets/fonts/LXGWWenKai-Regular.ttf ios/SoloBandUltra/SoloBandUltra/Fonts/
+
       - name: Show Xcode version
         run: xcodebuild -version
 

@@ -40,6 +40,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import com.solobandultra.app.ui.theme.WenKaiFontFamily
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -880,7 +881,7 @@ private fun SettingsSheetContent(
                         ) {
                             Text(
                                 selectedFile?.name ?: "",
-                                style = MaterialTheme.typography.bodyMedium,
+                                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = WenKaiFontFamily),
                                 modifier = Modifier.weight(1f)
                             )
                             ExposedDropdownMenuDefaults.TrailingIcon(expanded = fileExpanded)
@@ -891,7 +892,7 @@ private fun SettingsSheetContent(
                         ) {
                             selectedSource.items.forEach { item ->
                                 DropdownMenuItem(
-                                    text = { Text(item.name, style = MaterialTheme.typography.bodyMedium) },
+                                    text = { Text(item.name, style = MaterialTheme.typography.bodyMedium.copy(fontFamily = WenKaiFontFamily)) },
                                     onClick = {
                                         selectedFileUrl = item.url
                                         fileExpanded = false

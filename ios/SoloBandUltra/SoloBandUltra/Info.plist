@@ -99,6 +99,12 @@
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<true/>
 	</dict>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Fonts/Lora-Regular.ttf</string>
+		<string>Fonts/Lora-Italic.ttf</string>
+		<string>Fonts/LXGWWenKai-Regular.ttf</string>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
