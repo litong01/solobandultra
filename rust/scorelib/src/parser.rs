@@ -737,7 +737,10 @@ fn parse_barline(node: &Node) -> Barline {
                     .attribute("direction")
                     .unwrap_or("forward")
                     .to_string();
-                barline.repeat = Some(Repeat { direction });
+                let times = child
+                    .attribute("times")
+                    .and_then(|t| t.parse::<i32>().ok());
+                barline.repeat = Some(Repeat { direction, times });
             }
             "ending" => {
                 let number = child.attribute("number").unwrap_or("1").to_string();

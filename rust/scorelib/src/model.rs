@@ -299,6 +299,9 @@ pub struct Barline {
 pub struct Repeat {
     /// "forward" or "backward"
     pub direction: String,
+    /// Number of times the section should be played in total (from the `times`
+    /// attribute on a backward repeat).  `None` means "not specified" (default 2).
+    pub times: Option<i32>,
 }
 
 /// A volta bracket (1st/2nd ending).

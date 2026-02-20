@@ -82,10 +82,20 @@ pub fn unroll(score: &Score, part_idx: usize) -> Vec<UnrolledMeasure> {
     // ── Pre-scan: compute max passes per repeat section ────────────
     // For each forward-repeat position, find the highest volta ending
     // number in its section.  This tells us how many passes to take.
+    //
+    // Key insight: if the highest-numbered ending *also* has a backward-repeat
+    // barline, the convention is "play this ending, jump back, then do one
+    // final pass that skips all ending brackets and continues forward."
+    // In that case max_pass = highest_ending_number + 1.
+    // If the last ending has NO backward repeat, max_pass = highest_ending_number
+    // (that ending is the final pass; it falls through naturally).
     let mut section_max_passes: std::collections::HashMap<usize, i32> = std::collections::HashMap::new();
     {
-        // Start with 0 as the implicit forward repeat position (handles
-        // backward repeats that have no explicit forward repeat barline).
+        // Track whether the highest-numbered ending for each section also
+        // carries a backward-repeat barline.
+        let mut section_last_ending_has_backward: std::collections::HashMap<usize, bool> =
+            std::collections::HashMap::new();
+
         let mut current_forward: usize = 0;
         for (i, m) in measures.iter().enumerate() {
             for bl in &m.barlines {
@@ -99,11 +109,29 @@ pub fn unroll(score: &Score, part_idx: usize) -> Vec<UnrolledMeasure> {
             }
             if let Some(nums) = volta_map.get(&i) {
                 let entry = section_max_passes.entry(current_forward).or_insert(2);
+                let has_backward = m.barlines.iter().any(|bl| {
+                    bl.location == "right"
+                        && bl.repeat.as_ref().map_or(false, |r| r.direction == "backward")
+                });
                 for &n in nums {
                     if n > *entry {
                         *entry = n;
+                        section_last_ending_has_backward.insert(current_forward, has_backward);
+                    } else if n == *entry && has_backward {
+                        section_last_ending_has_backward.insert(current_forward, true);
                     }
                 }
+            }
+        }
+
+        // Apply the +1 for sections whose last ending has a backward repeat.
+        for (fw, max) in section_max_passes.iter_mut() {
+            if section_last_ending_has_backward
+                .get(fw)
+                .copied()
+                .unwrap_or(false)
+            {
+                *max += 1;
             }
         }
     }
@@ -151,6 +179,29 @@ pub fn unroll(score: &Score, part_idx: usize) -> Vec<UnrolledMeasure> {
         if let Some(nums) = volta_map.get(&pos) {
             if !nums.contains(&repeat_pass) {
                 pos += 1;
+                // Mirror the section-exit reset check from the bottom of the
+                // loop.  On an extra pass enabled by the `times` attribute,
+                // every volta ending is skipped, so `continue` below would
+                // bypass the main reset and leave `repeat_pass` elevated,
+                // corrupting any later repeat sections.  We apply the same
+                // condition: the measure we just skipped had a backward repeat
+                // AND the next position is outside the volta section.
+                if repeat_pass > 1 {
+                    let prev_had_backward =
+                        measures.get(pos.wrapping_sub(1)).map_or(false, |pm| {
+                            pm.barlines.iter().any(|bl| {
+                                bl.location == "right"
+                                    && bl
+                                        .repeat
+                                        .as_ref()
+                                        .map_or(false, |r| r.direction == "backward")
+                            })
+                        });
+                    if prev_had_backward && !volta_map.contains_key(&pos) {
+                        repeat_pass = 1;
+                        repeat_start = pos;
+                    }
+                }
                 continue;
             }
         }
@@ -192,12 +243,14 @@ pub fn unroll(score: &Score, part_idx: usize) -> Vec<UnrolledMeasure> {
                 if bl.location == "right" {
                     if let Some(ref rep) = bl.repeat {
                         if rep.direction == "backward" {
-                            // Determine how many total passes this section needs
-                            // from the pre-computed map; default to 2 (simple repeat).
-                            let max_pass = section_max_passes
+                            // Determine how many total passes this section needs.
+                            // Use the highest of: volta-derived max, the repeat's
+                            // `times` attribute, and the default of 2.
+                            let volta_max = section_max_passes
                                 .get(&repeat_start)
                                 .copied()
                                 .unwrap_or(2);
+                            let max_pass = volta_max.max(rep.times.unwrap_or(2));
                             if repeat_pass < max_pass {
                                 repeat_pass += 1;
                                 pos = repeat_start;
@@ -348,11 +401,12 @@ mod tests {
         // 童年 has:
         //   - Intro (2 measures, repeated once = 4)
         //   - Body gap (4 measures)
-        //   - Main section (16 body + 1 ending) × 6 volta endings = 102
+        //   - Main section: 6 endings ALL with backward repeat → 7 total plays
+        //     7 body plays × 16 measures + 6 ending measures = 118
         //   - Bridge (1 measure)
         //   - Chorus (3 body + 1 ending) × 2 volta endings = 8
         //   - Coda (6 measures)
-        // Total: 4 + 4 + 102 + 1 + 8 + 6 = 125
+        // Total: 4 + 4 + 118 + 1 + 8 + 6 = 141
         assert!(
             unrolled.len() > raw_count,
             "Unrolled length {} should be > raw measure count {} (multiple endings)",
