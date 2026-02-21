@@ -13,6 +13,61 @@ struct ContentView: View {
     @State private var isDownloading = false
     @State private var downloadError: String?
     @State private var clipboardHasUrl = false
+    @State private var showPdfViewer = false
+
+    // MARK: - Bundle navigation helpers
+
+    /// The currently active bundle, if any.
+    private var activeBundle: BookBundle? { midiSettings.activeBundle }
+
+    /// Unlocked pieces in the active bundle.
+    private var unlockedPieces: [BookPiece] { activeBundle?.unlockedPieces ?? [] }
+
+    /// Index of the current piece within unlockedPieces.
+    private var currentPieceIndex: Int? {
+        guard let bundle = activeBundle else { return nil }
+        let url = midiSettings.selectedFileUrl
+        let prefix = "mbk://\(bundle.bookId)/"
+        guard url.hasPrefix(prefix) else { return nil }
+        let xml = String(url.dropFirst(prefix.count))
+        return unlockedPieces.firstIndex(where: { $0.xml == xml })
+    }
+
+    private var canGoPrev: Bool {
+        guard let idx = currentPieceIndex else { return false }
+        return idx > 0
+    }
+
+    private var canGoNext: Bool {
+        guard let idx = currentPieceIndex else { return false }
+        return idx < unlockedPieces.count - 1
+    }
+
+    private func selectPiece(_ piece: BookPiece) {
+        guard let bundle = activeBundle else { return }
+        playbackManager.stop()
+        midiSettings.selectedFileUrl = "mbk://\(bundle.bookId)/\(piece.xml)"
+    }
+
+    private func goToPrev() {
+        guard let idx = currentPieceIndex, idx > 0 else { return }
+        selectPiece(unlockedPieces[idx - 1])
+    }
+
+    private func goToNext() {
+        guard let idx = currentPieceIndex, idx < unlockedPieces.count - 1 else { return }
+        selectPiece(unlockedPieces[idx + 1])
+    }
+
+    /// 1-based PDF page for the currently selected piece.
+    private var currentPdfPage: Int {
+        guard let bundle = activeBundle else { return 1 }
+        let url = midiSettings.selectedFileUrl
+        let prefix = "mbk://\(bundle.bookId)/"
+        guard url.hasPrefix(prefix) else { return 1 }
+        let xml = String(url.dropFirst(prefix.count))
+        return bundle.pdfPage(forXml: xml)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -69,19 +124,30 @@ struct ContentView: View {
             // Playback controls
             PlaybackControlBar(
                 isPlaying: $playbackManager.isPlaying,
-                onPlayPause: {
-                    playbackManager.togglePlayPause()
-                },
-                onStop: {
-                    playbackManager.stop()
-                },
-                onSettings: {
-                    requireAuth(for: .showSettings)
-                }
+                bundleActive: activeBundle != nil,
+                canGoPrev: canGoPrev,
+                canGoNext: canGoNext,
+                onPrev:     goToPrev,
+                onPlayPause: { playbackManager.togglePlayPause() },
+                onStop:      { playbackManager.stop() },
+                onNext:     goToNext,
+                onSettings:  { requireAuth(for: .showSettings) },
+                onBook:      { showPdfViewer = true }
             )
             .padding(.horizontal)
             .padding(.vertical, 12)
             .background(.ultraThinMaterial)
+        }
+        .fullScreenCover(isPresented: $showPdfViewer) {
+            if let bundle = activeBundle {
+                PdfViewerView(
+                    bundle: bundle,
+                    startPage: currentPdfPage,
+                    isPresented: $showPdfViewer
+                ) { piece in
+                    selectPiece(piece)
+                }
+            }
         }
         .overlay {
             if isDownloading {
@@ -108,9 +174,17 @@ struct ContentView: View {
         } message: {
             Text(downloadError ?? "")
         }
+        .alert("Bundle Error", isPresented: .init(
+            get: { midiSettings.errorMessage != nil },
+            set: { if !$0 { midiSettings.errorMessage = nil } }
+        )) {
+            Button("OK") { midiSettings.errorMessage = nil }
+        } message: {
+            Text(midiSettings.errorMessage ?? "")
+        }
         .fileImporter(
             isPresented: $showFilePicker,
-            allowedContentTypes: [.xml, .data],
+            allowedContentTypes: [.xml, .data, .zip],
             allowsMultipleSelection: false
         ) { result in
             switch result {
@@ -123,13 +197,29 @@ struct ContentView: View {
                 let filename = url.lastPathComponent
                 let ext = (filename as NSString).pathExtension.lowercased()
 
-                guard ext == "musicxml" || ext == "mxl" || ext == "xml" else { return }
-
-                midiSettings.externalFileData = data
-                midiSettings.externalFileName = filename
-                midiSettings.externalFileVersion += 1
-                midiSettings.selectedSourceId = "external"
-                midiSettings.selectedFileUrl = "external://\(filename)"
+                if ext == "mbk" {
+                    Task.detached(priority: .userInitiated) {
+                        do {
+                            let bundle = try SoloBandUltraApp.extractAndParseMbk(data: data)
+                            await MainActor.run {
+                                midiSettings.activeBundles[bundle.bookId] = bundle
+                                midiSettings.selectedSourceId = "mbk:\(bundle.bookId)"
+                                if let first = bundle.unlockedPieces.first ?? bundle.allPieces.first {
+                                    midiSettings.selectedFileUrl = "mbk://\(bundle.bookId)/\(first.xml)"
+                                }
+                            }
+                        } catch {
+                            let msg = "Could not open \"\(filename)\": \(error.localizedDescription)"
+                            await MainActor.run { midiSettings.errorMessage = msg }
+                        }
+                    }
+                } else if ext == "musicxml" || ext == "mxl" || ext == "xml" {
+                    midiSettings.externalFileData = data
+                    midiSettings.externalFileName = filename
+                    midiSettings.externalFileVersion += 1
+                    midiSettings.selectedSourceId = "external"
+                    midiSettings.selectedFileUrl = "external://\(filename)"
+                }
             case .failure:
                 break
             }
@@ -260,33 +350,82 @@ struct ContentView: View {
 
 struct PlaybackControlBar: View {
     @Binding var isPlaying: Bool
+    /// True when a bundle is loaded (shows prev/next/book buttons).
+    var bundleActive: Bool = false
+    var canGoPrev: Bool = false
+    var canGoNext: Bool = false
+    var onPrev: (() -> Void)?
     let onPlayPause: () -> Void
     let onStop: () -> Void
+    var onNext: (() -> Void)?
     let onSettings: () -> Void
+    var onBook: (() -> Void)?
 
     var body: some View {
-        HStack(spacing: 32) {
+        HStack(spacing: 0) {
             Spacer()
 
-            // Stop button
+            // ── Bundle navigation (shown only when a bundle is active) ──
+            if bundleActive {
+                Button(action: { onPrev?() }) {
+                    Image(systemName: "backward.end.fill")
+                        .font(.title3)
+                        .foregroundStyle(canGoPrev ? .primary : .tertiary)
+                }
+                .disabled(!canGoPrev)
+                .frame(minWidth: 40)
+            }
+
+            // Stop
             Button(action: onStop) {
                 Image(systemName: "stop.fill")
                     .font(.title2)
                     .foregroundStyle(.primary)
             }
+            .frame(minWidth: 44)
 
-            // Play/Pause button
+            // Play / Pause (large)
             Button(action: onPlayPause) {
                 Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
                     .font(.system(size: 52))
                     .foregroundStyle(.tint)
             }
+            .padding(.horizontal, 16)
 
-            // Settings button
+            // Next (bundle)
+            if bundleActive {
+                Button(action: { onNext?() }) {
+                    Image(systemName: "forward.end.fill")
+                        .font(.title3)
+                        .foregroundStyle(canGoNext ? .primary : .tertiary)
+                }
+                .disabled(!canGoNext)
+                .frame(minWidth: 40)
+            }
+
+            // Separator
+            if bundleActive {
+                Divider()
+                    .frame(height: 24)
+                    .padding(.horizontal, 6)
+            }
+
+            // Settings
             Button(action: onSettings) {
                 Image(systemName: "gear")
                     .font(.title2)
                     .foregroundStyle(.primary)
+            }
+            .frame(minWidth: 44)
+
+            // Book (bundle PDF viewer)
+            if bundleActive {
+                Button(action: { onBook?() }) {
+                    Image(systemName: "book.fill")
+                        .font(.title2)
+                        .foregroundStyle(.tint)
+                }
+                .frame(minWidth: 44)
             }
 
             Spacer()
@@ -314,14 +453,36 @@ struct SettingsSheet: View {
     @State private var repeatCount: Int = 1
     @State private var transpose: Int = 0
     @State private var showCursor: Bool = true
+    @State private var showLockedAlert: Bool = false
 
-    /// Available music sources (currently just bundled files).
+    /// Available music sources: built-in bundle + any loaded .mbk bundles.
     private var musicSources: [MusicSource] {
-        [MusicSource(id: "bundled", name: "Bundled Sheet Music", items: Self.discoverBundledFiles())]
+        var sources = [MusicSource(id: "bundled", name: "Bundled Sheet Music", items: Self.discoverBundledFiles())]
+        for (_, bundle) in midiSettings.activeBundles.sorted(by: { $0.key < $1.key }) {
+            let items = bundle.allPieces.map { piece in
+                MusicItem(
+                    name: piece.locked ? "\(piece.title) 🔒" : piece.title,
+                    url: "mbk://\(bundle.bookId)/\(piece.xml)"
+                )
+            }
+            sources.append(MusicSource(id: "mbk:\(bundle.bookId)", name: bundle.title, items: items))
+        }
+        return sources
     }
 
     private var selectedSource: MusicSource? {
         musicSources.first { $0.id == selectedSourceId }
+    }
+
+    /// Returns `true` when the given `mbk://` URL corresponds to a locked piece.
+    private func isLockedMbkUrl(_ url: String) -> Bool {
+        guard url.hasPrefix("mbk://") else { return false }
+        let path = String(url.dropFirst("mbk://".count)) // "<bookId>/<xml>"
+        let parts = path.split(separator: "/", maxSplits: 1)
+        guard parts.count == 2 else { return false }
+        let bookId = String(parts[0])
+        let xml    = String(parts[1])
+        return midiSettings.activeBundles[bookId]?.allPieces.first(where: { $0.xml == xml })?.locked == true
     }
 
     /// Scan the app bundle's SheetMusic folder for .musicxml and .mxl files.
@@ -364,6 +525,11 @@ struct SettingsSheet: View {
                                 ForEach(musicSources) { source in
                                     Button {
                                         selectedSourceId = source.id
+                                        // Auto-select the first non-locked item of the new source.
+                                        if let first = source.items.first(where: { !isLockedMbkUrl($0.url) })
+                                            ?? source.items.first {
+                                            selectedFileUrl = first.url
+                                        }
                                     } label: {
                                         Text(source.name).font(.settingsLabel)
                                     }
@@ -390,7 +556,11 @@ struct SettingsSheet: View {
                                 Menu {
                                     ForEach(source.items) { item in
                                         Button {
-                                            selectedFileUrl = item.url
+                                            if isLockedMbkUrl(item.url) {
+                                                showLockedAlert = true
+                                            } else {
+                                                selectedFileUrl = item.url
+                                            }
                                         } label: {
                                             Text(item.name).font(.settingsLabelChinese)
                                         }
@@ -483,6 +653,11 @@ struct SettingsSheet: View {
                 }
             }
             .onAppear { loadFromSettings() }
+            .alert("Piece Locked", isPresented: $showLockedAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("This piece is not yet available. Purchase the full bundle to unlock it.")
+            }
         }
     }
 
@@ -801,9 +976,10 @@ private struct BottomSheetOverlay<Content: View>: View {
 }
 
 #Preview {
+    let asm = AudioSessionManager()
     ContentView()
-        .environmentObject(AudioSessionManager())
-        .environmentObject(PlaybackManager(audioSessionManager: AudioSessionManager()))
+        .environmentObject(asm)
+        .environmentObject(PlaybackManager(audioSessionManager: asm))
         .environmentObject(MidiSettings())
         .environmentObject(AuthManager())
 }

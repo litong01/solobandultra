@@ -49,6 +49,7 @@ android/app/*.iml
 # Ignore OpenSheetMusicDisplay
 opensheetmusicdisplay
 mysoloband
+pdfiumlib
 # Local configuration (contains SDK path specific to your machine)
 android/local.properties
 

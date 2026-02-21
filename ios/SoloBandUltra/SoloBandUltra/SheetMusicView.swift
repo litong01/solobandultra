@@ -21,6 +21,11 @@ struct SheetMusicView: View {
         midiSettings.selectedFileUrl.hasPrefix("external://")
     }
 
+    /// Whether the current file is from an SBF bundle.
+    private var isSbfFile: Bool {
+        midiSettings.selectedFileUrl.hasPrefix("mbk://")
+    }
+
     /// Extract the filename from the selected file URL.
     private var currentFile: String {
         let url = midiSettings.selectedFileUrl
@@ -30,7 +35,49 @@ struct SheetMusicView: View {
         if url.hasPrefix("file://sheetmusic/") {
             return String(url.dropFirst("file://sheetmusic/".count))
         }
+        if url.hasPrefix("mbk://") {
+            return url.components(separatedBy: "/").last ?? ""
+        }
         return url.components(separatedBy: "/").last ?? MidiSettings.defaultLandingFile
+    }
+
+    /// Resolve the current selectedFileUrl to (fileData, extension), or nil on failure.
+    private func resolveCurrentFileData() -> (Data, String)? {
+        let fileUrl = midiSettings.selectedFileUrl
+
+        if fileUrl.hasPrefix("external://") {
+            guard let data = midiSettings.externalFileData else { return nil }
+            let filename = String(fileUrl.dropFirst("external://".count))
+            let ext = (filename as NSString).pathExtension
+            return (data, ext)
+        }
+
+        if fileUrl.hasPrefix("mbk://") {
+            // mbk://<bookId>/music/piece.musicxml
+            let withoutScheme = String(fileUrl.dropFirst("mbk://".count))
+            guard let slashIdx = withoutScheme.firstIndex(of: "/") else { return nil }
+            let bookId = String(withoutScheme[withoutScheme.startIndex..<slashIdx])
+            guard let bundle = midiSettings.activeBundles[bookId] else { return nil }
+            guard let localURL = bundle.resolveToLocalURL(fileUrl) else { return nil }
+            guard let data = try? Data(contentsOf: localURL) else { return nil }
+            let ext = localURL.pathExtension
+            return (data, ext)
+        }
+
+        // Bundled file: file://sheetmusic/<name>
+        let filename = currentFile
+        let ext  = (filename as NSString).pathExtension
+        let name = (filename as NSString).deletingPathExtension
+        let url: URL
+        if let u = Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "sheetmusic") {
+            url = u
+        } else if let u = Bundle.main.url(forResource: name, withExtension: ext) {
+            url = u
+        } else {
+            return nil
+        }
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return (data, ext)
     }
 
     var body: some View {
@@ -82,6 +129,9 @@ struct SheetMusicView: View {
                 if isExternalFile {
                     loadScore(width: geometry.size.width)
                 }
+            }
+            .onChange(of: midiSettings.activeBundles) { _ in
+                if isSbfFile { loadScore(width: geometry.size.width) }
             }
             .onChange(of: midiSettings.transpose) { _ in
                 loadScore(width: geometry.size.width)
@@ -136,8 +186,13 @@ struct SheetMusicView: View {
         lastOptionsJson = optionsJson
         let transposeVal = Int32(midiSettings.transpose)
 
-        // Capture values on the main thread before dispatching to background.
-        let externalData = isExternalFile ? midiSettings.externalFileData : nil
+        // Capture resolved file data on the main thread before going to background.
+        guard let (resolvedData, ext) = resolveCurrentFileData() else {
+            isLoading = false
+            errorMessage = "No music file selected"
+            return
+        }
+        let data = resolvedData
         let filename = currentFile
 
         DispatchQueue.global(qos: .userInitiated).async {
@@ -149,39 +204,8 @@ struct SheetMusicView: View {
                 }
                 return
             }
-            let ext = (filename as NSString).pathExtension
 
-            // Resolve file data: external file vs. bundled asset
-            let data: Data
-            if let extData = externalData {
-                data = extData
-            } else {
-                let name = (filename as NSString).deletingPathExtension
-                let url: URL
-                if let folderURL = Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "sheetmusic") {
-                    url = folderURL
-                } else if let rootURL = Bundle.main.url(forResource: name, withExtension: ext) {
-                    url = rootURL
-                } else {
-                    DispatchQueue.main.async {
-                        guard thisGeneration == loadGeneration else { return }
-                        isLoading = false
-                        errorMessage = "File '\(filename)' not found in app bundle"
-                    }
-                    return
-                }
-                guard let bundleData = try? Data(contentsOf: url) else {
-                    DispatchQueue.main.async {
-                        guard thisGeneration == loadGeneration else { return }
-                        isLoading = false
-                        errorMessage = "Failed to read '\(filename)'"
-                    }
-                    return
-                }
-                data = bundleData
-            }
-
-            // Render SVG from bytes (works for both external and bundled files)
+            // Render SVG from bytes (works for external, bundled, and .mbk files)
             let svg = ScoreLib.renderData(data, extension: ext, pageWidth: pageWidth, transpose: transposeVal)
 
             // Generate playback map
@@ -221,32 +245,9 @@ struct SheetMusicView: View {
         midiGeneration += 1
         let thisMidiGen = midiGeneration
 
-        let filename = currentFile
-        guard !filename.isEmpty else { return }
-
-        let ext = (filename as NSString).pathExtension
-
-        // Capture external file data on the main thread
-        let externalData = isExternalFile ? midiSettings.externalFileData : nil
+        guard let (data, ext) = resolveCurrentFileData(), !currentFile.isEmpty else { return }
 
         DispatchQueue.global(qos: .userInitiated).async {
-            let data: Data
-            if let extData = externalData {
-                data = extData
-            } else {
-                let name = (filename as NSString).deletingPathExtension
-                let url: URL
-                if let folderURL = Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "sheetmusic") {
-                    url = folderURL
-                } else if let rootURL = Bundle.main.url(forResource: name, withExtension: ext) {
-                    url = rootURL
-                } else {
-                    return
-                }
-                guard let bundleData = try? Data(contentsOf: url) else { return }
-                data = bundleData
-            }
-
             let audio = ScoreLib.renderAudio(data, extension: ext, optionsJson: optionsJson)
 
             DispatchQueue.main.async {

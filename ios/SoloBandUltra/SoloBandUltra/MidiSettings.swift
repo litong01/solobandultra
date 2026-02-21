@@ -65,6 +65,20 @@ class MidiSettings: ObservableObject {
     /// Used to force a reload even when the filename is identical.
     @Published var externalFileVersion: Int = 0
 
+    // ── SBF bundles ──
+    /// Loaded bundles keyed by bookId.  Populated when a .mbk file is opened.
+    @Published var activeBundles: [String: BookBundle] = [:]
+
+    /// Non-nil when an error should be surfaced to the user (e.g., corrupt .mbk).
+    @Published var errorMessage: String? = nil
+
+    /// The bundle corresponding to the currently selected source, if any.
+    var activeBundle: BookBundle? {
+        guard selectedSourceId.hasPrefix("mbk:") else { return nil }
+        let bookId = String(selectedSourceId.dropFirst("mbk:".count))
+        return activeBundles[bookId]
+    }
+
     enum Energy: String, CaseIterable, Identifiable {
         case soft = "soft"
         case medium = "medium"

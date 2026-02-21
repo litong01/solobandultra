@@ -4,3 +4,4 @@
 //
 
 #include "scorelib.h"
+#include "MbkExtractor.h"

@@ -22,6 +22,9 @@
 		FF00000000000000000002B1 /* kinde-auth.json in Resources */ = {isa = PBXBuildFile; fileRef = FF00000000000000000002A1 /* kinde-auth.json */; };
 		FF00000000000000000003B1 /* KindeSDK in Frameworks */ = {isa = PBXBuildFile; productRef = FF00000000000000000004A1 /* KindeSDK */; };
 		GG00000000000000000001B1 /* GeneralUser_GS.sf2 in Resources */ = {isa = PBXBuildFile; fileRef = GG00000000000000000001A1 /* GeneralUser_GS.sf2 */; };
+		PP00000000000000000001B1 /* BundleModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP00000000000000000001A1 /* BundleModel.swift */; };
+		PP00000000000000000003B1 /* MbkExtractor.m in Sources */ = {isa = PBXBuildFile; fileRef = PP00000000000000000003A1 /* MbkExtractor.m */; };
+		PP00000000000000000004B1 /* PdfViewerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP00000000000000000004A1 /* PdfViewerView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -42,6 +45,10 @@
 		FF00000000000000000001A1 /* AuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthManager.swift; sourceTree = "<group>"; };
 		FF00000000000000000002A1 /* kinde-auth.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "kinde-auth.json"; sourceTree = "<group>"; };
 		GG00000000000000000001A1 /* GeneralUser_GS.sf2 */ = {isa = PBXFileReference; lastKnownFileType = file; path = GeneralUser_GS.sf2; sourceTree = "<group>"; };
+		PP00000000000000000001A1 /* BundleModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BundleModel.swift; sourceTree = "<group>"; };
+		PP00000000000000000002A1 /* MbkExtractor.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MbkExtractor.h; sourceTree = "<group>"; };
+		PP00000000000000000003A1 /* MbkExtractor.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MbkExtractor.m; sourceTree = "<group>"; };
+		PP00000000000000000004A1 /* PdfViewerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PdfViewerView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -55,6 +62,7 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
+/* PDFKit is a system framework — linked automatically via OTHER_LDFLAGS in build settings */
 
 /* Begin PBXGroup section */
 		AA0000000000000000000D01 = {
@@ -84,6 +92,10 @@
 				AA00000000000000000005A1 /* Assets.xcassets */,
 				AA00000000000000000006A1 /* Info.plist */,
 				GG00000000000000000001A1 /* GeneralUser_GS.sf2 */,
+				PP00000000000000000001A1 /* BundleModel.swift */,
+				PP00000000000000000002A1 /* MbkExtractor.h */,
+				PP00000000000000000003A1 /* MbkExtractor.m */,
+				PP00000000000000000004A1 /* PdfViewerView.swift */,
 			);
 			path = SoloBandUltra;
 			sourceTree = "<group>";
@@ -183,6 +195,9 @@
 				DD00000000000000000001B1 /* PlaybackManager.swift in Sources */,
 				EE00000000000000000001B1 /* MidiSettings.swift in Sources */,
 				FF00000000000000000001B1 /* AuthManager.swift in Sources */,
+				PP00000000000000000001B1 /* BundleModel.swift in Sources */,
+				PP00000000000000000003B1 /* MbkExtractor.m in Sources */,
+				PP00000000000000000004B1 /* PdfViewerView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

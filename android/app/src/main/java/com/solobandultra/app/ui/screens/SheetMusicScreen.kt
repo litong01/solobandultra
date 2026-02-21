@@ -28,6 +28,10 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -48,6 +52,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
+import com.solobandultra.app.BookBundle
+import com.solobandultra.app.BookPiece
+import com.solobandultra.app.MbkExtractor
 import com.solobandultra.app.ScoreLib
 import com.solobandultra.app.audio.PlaybackManager
 import com.solobandultra.app.ui.theme.SoloBandUltraTheme
@@ -159,34 +166,128 @@ fun SheetMusicScreen(
     var externalFileVersion by rememberSaveable { mutableIntStateOf(0) }
     var isDownloading by remember { mutableStateOf(false) }
 
+    // ── SBF bundle state ──
+    var activeBundles by remember { mutableStateOf<Map<String, BookBundle>>(emptyMap()) }
+    var showPdfViewer by remember { mutableStateOf(false) }
+    var bundleErrorMessage by remember { mutableStateOf<String?>(null) }
+
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    // ── Bundle navigation helpers ──
+    val activeBundle: BookBundle? = run {
+        if (!selectedSourceId.startsWith("mbk:")) return@run null
+        val bookId = selectedSourceId.removePrefix("mbk:")
+        activeBundles[bookId]
+    }
+    val unlockedPieces: List<BookPiece> = activeBundle?.unlockedPieces ?: emptyList()
+    val currentPieceIndex: Int? = run {
+        val bundle = activeBundle ?: return@run null
+        val prefix = "mbk://${bundle.bookId}/"
+        if (!selectedFileUrl.startsWith(prefix)) return@run null
+        val xml = selectedFileUrl.removePrefix(prefix)
+        unlockedPieces.indexOfFirst { it.xml == xml }.takeIf { it >= 0 }
+    }
+    val canGoPrev = (currentPieceIndex ?: 0) > 0
+    val canGoNext = currentPieceIndex != null && currentPieceIndex < unlockedPieces.size - 1
+
+    fun selectPiece(piece: BookPiece) {
+        val bundle = activeBundle ?: return
+        playbackManager?.stop()
+        selectedFileUrl = "mbk://${bundle.bookId}/${piece.xml}"
+    }
+
+    val currentPdfPage: Int = run {
+        val bundle = activeBundle ?: return@run 1
+        val prefix = "mbk://${bundle.bookId}/"
+        if (!selectedFileUrl.startsWith(prefix)) return@run 1
+        val xml = selectedFileUrl.removePrefix(prefix)
+        bundle.pdfPage(xml)
+    }
+
+    // On first composition, discover and load any .mbk files bundled in assets/sheetmusic/.
+    LaunchedEffect(Unit) {
+        val mbkFiles = withContext(Dispatchers.IO) {
+            context.assets.list("sheetmusic")
+                ?.filter { it.lowercase().endsWith(".mbk") }
+                ?: emptyList()
+        }
+        for (filename in mbkFiles) {
+            val bytes = withContext(Dispatchers.IO) {
+                try { context.assets.open("sheetmusic/$filename").use { it.readBytes() } }
+                catch (_: Exception) { null }
+            } ?: continue
+            val bundle = withContext(Dispatchers.IO) {
+                try { MbkExtractor.extractAndParse(bytes, MbkExtractor.mbkCacheRoot(context)) }
+                catch (_: Exception) { null }
+            } ?: continue
+            // Only register if not already present (e.g. opened via "Open With").
+            if (!activeBundles.containsKey(bundle.bookId)) {
+                activeBundles = activeBundles + (bundle.bookId to bundle)
+            }
+        }
+    }
+
+    // Re-load the bundle from cache after configuration change if activeBundles is empty
+    LaunchedEffect(selectedSourceId) {
+        if (!selectedSourceId.startsWith("mbk:") || activeBundles.isNotEmpty()) return@LaunchedEffect
+        val bookId = selectedSourceId.removePrefix("mbk:")
+        val cacheDir = java.io.File(MbkExtractor.mbkCacheRoot(context), bookId)
+        if (!cacheDir.exists()) return@LaunchedEffect
+        val jsonFile = java.io.File(cacheDir, "book.json")
+        if (!jsonFile.exists()) return@LaunchedEffect
+        try {
+            val bundle = BookBundle.parse(jsonFile.readBytes(), cacheDir)
+            activeBundles = activeBundles + (bookId to bundle)
+        } catch (_: Exception) {}
+    }
 
     /** Read a content URI on IO, validate, and set external file state. */
     fun loadFromUri(uri: Uri) {
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
+            val bytes = withContext(Dispatchers.IO) {
                 try {
-                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                        ?: return@withContext null
-                    var displayName = "unknown.musicxml"
-                    context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                        if (cursor.moveToFirst()) {
-                            val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                            if (idx >= 0) displayName = cursor.getString(idx) ?: displayName
-                        }
-                    }
-                    val ext = displayName.substringAfterLast('.', "").lowercase()
-                    if (ext == "musicxml" || ext == "mxl" || ext == "xml") {
-                        Pair(bytes, displayName)
-                    } else null
+                    context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                 } catch (_: Exception) { null }
             } ?: return@launch
-            externalFileData = result.first
-            externalFileName = result.second
-            externalFileVersion++
-            selectedSourceId = "external"
-            selectedFileUrl = "external://${result.second}"
+
+            var displayName = "unknown"
+            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (idx >= 0) displayName = cursor.getString(idx) ?: displayName
+                }
+            }
+            val ext = displayName.substringAfterLast('.', "").lowercase()
+
+            when (ext) {
+                "mbk" -> {
+                    var extractionError: String? = null
+                    val bundle = withContext(Dispatchers.IO) {
+                        try {
+                            MbkExtractor.extractAndParse(bytes, MbkExtractor.mbkCacheRoot(context))
+                        } catch (e: Exception) {
+                            extractionError = "Could not open \u201c$displayName\u201d: ${e.localizedMessage ?: e.message}"
+                            null
+                        }
+                    }
+                    if (bundle == null) {
+                        bundleErrorMessage = extractionError ?: "Failed to open \u201c$displayName\u201d."
+                        return@launch
+                    }
+                    activeBundles = activeBundles + (bundle.bookId to bundle)
+                    selectedSourceId = "mbk:${bundle.bookId}"
+                    val first = bundle.unlockedPieces.firstOrNull() ?: bundle.allPieces.firstOrNull()
+                    if (first != null) selectedFileUrl = "mbk://${bundle.bookId}/${first.xml}"
+                }
+                "musicxml", "mxl", "xml" -> {
+                    externalFileData = bytes
+                    externalFileName = displayName
+                    externalFileVersion++
+                    selectedSourceId = "external"
+                    selectedFileUrl = "external://$displayName"
+                }
+            }
         }
     }
 
@@ -206,16 +307,28 @@ fun SheetMusicScreen(
              .map { "sheetmusic/$it" }
     }
 
-    // Build music sources from available files
-    val musicSources = remember(availableFiles) {
-        val items = availableFiles.map { path ->
+    // Build music sources from available files + loaded bundles
+    val musicSources = remember(availableFiles, activeBundles) {
+        val bundledItems = availableFiles.map { path ->
             val fileName = path.substringAfterLast('/')
             MusicItem(
                 name = fileName.substringBeforeLast('.'),
                 url = "file://$path"
             )
         }
-        listOf(MusicSourceData(id = "bundled", name = "Bundled Sheet Music", items = items))
+        val sources = mutableListOf(
+            MusicSourceData(id = "bundled", name = "Bundled Sheet Music", items = bundledItems)
+        )
+        for ((bookId, bundle) in activeBundles.entries.sortedBy { it.key }) {
+            val items = bundle.allPieces.map { piece ->
+                MusicItem(
+                    name = if (piece.locked) "${piece.title} 🔒" else piece.title,
+                    url  = "mbk://$bookId/${piece.xml}"
+                )
+            }
+            sources.add(MusicSourceData(id = "mbk:$bookId", name = bundle.title, items = items))
+        }
+        sources.toList()
     }
 
     // Auto-select the first file if none is selected
@@ -306,7 +419,21 @@ fun SheetMusicScreen(
         playbackManager?.stop()
 
         val isExternal = selectedFileUrl.startsWith("external://")
+        val isMbk     = selectedFileUrl.startsWith("mbk://")
+
+        // Resolve mbk:// URL to file bytes on the calling thread (already main)
+        val mbkBytes: ByteArray? = if (isMbk) {
+            val rest   = selectedFileUrl.removePrefix("mbk://")
+            val slash  = rest.indexOf('/')
+            if (slash < 0) null else {
+                val bookId = rest.substring(0, slash)
+                activeBundles[bookId]?.resolveToLocalFile(selectedFileUrl)
+                    ?.takeIf { it.exists() }?.readBytes()
+            }
+        } else null
+
         val extBytes = if (isExternal) externalFileData else null
+
         scope.launch {
             val currentOptionsJson = optionsJson
             val currentTranspose = transpose
@@ -315,11 +442,12 @@ fun SheetMusicScreen(
                     // Ensure SoundFont is cached (no-op after first call)
                     ScoreLib.loadSoundFont(context)
 
-                    if (isExternal && extBytes != null) {
+                    val dataBytes  = mbkBytes ?: extBytes
+                    if (dataBytes != null) {
                         val ext = filePath.substringAfterLast('.', "")
-                        val svg = ScoreLib.renderData(extBytes, ext, pageWidth, currentTranspose)
-                        val pmap = ScoreLib.playbackMapFromData(extBytes, ext, pageWidth, currentTranspose)
-                        val audio = ScoreLib.renderAudioFromData(extBytes, ext, currentOptionsJson)
+                        val svg = ScoreLib.renderData(dataBytes, ext, pageWidth, currentTranspose)
+                        val pmap = ScoreLib.playbackMapFromData(dataBytes, ext, pageWidth, currentTranspose)
+                        val audio = ScoreLib.renderAudioFromData(dataBytes, ext, currentOptionsJson)
                         Triple(svg, pmap, audio)
                     } else {
                         val svg = ScoreLib.renderAsset(context, filePath, pageWidth, currentTranspose)
@@ -360,12 +488,12 @@ fun SheetMusicScreen(
         }
     }
 
-    // Re-render when screen width, selected file, or transpose changes
-    LaunchedEffect(screenWidthDp, selectedFileUrl, transpose, externalFileVersion) {
-        val filePath = if (selectedFileUrl.startsWith("external://")) {
-            selectedFileUrl.removePrefix("external://")
-        } else {
-            selectedFileUrl.removePrefix("file://")
+    // Re-render when screen width, selected file, transpose, or bundles change
+    LaunchedEffect(screenWidthDp, selectedFileUrl, transpose, externalFileVersion, activeBundles) {
+        val filePath = when {
+            selectedFileUrl.startsWith("external://") -> selectedFileUrl.removePrefix("external://")
+            selectedFileUrl.startsWith("mbk://")      -> selectedFileUrl.substringAfterLast('/')
+            else                                       -> selectedFileUrl.removePrefix("file://")
         }
         if (filePath.isNotEmpty()) {
             loadScore(filePath, screenWidthDp)
@@ -390,21 +518,31 @@ fun SheetMusicScreen(
         val thisAudioGen = audioGeneration
 
         val isExternal = selectedFileUrl.startsWith("external://")
-        val filePath = if (isExternal) {
-            selectedFileUrl.removePrefix("external://")
-        } else {
-            selectedFileUrl.removePrefix("file://")
+        val isMbk      = selectedFileUrl.startsWith("mbk://")
+        val filePath = when {
+            isExternal -> selectedFileUrl.removePrefix("external://")
+            isMbk      -> selectedFileUrl.substringAfterLast('/')
+            else       -> selectedFileUrl.removePrefix("file://")
         }
         if (filePath.isEmpty()) return@LaunchedEffect
 
         val currentOptionsJson = optionsJson
-        val extBytes = if (isExternal) externalFileData else null
+        val dataBytes: ByteArray? = when {
+            isMbk -> {
+                val rest  = selectedFileUrl.removePrefix("mbk://")
+                val slash = rest.indexOf('/')
+                if (slash < 0) null else activeBundles[rest.substring(0, slash)]
+                    ?.resolveToLocalFile(selectedFileUrl)?.takeIf { it.exists() }?.readBytes()
+            }
+            isExternal -> externalFileData
+            else -> null
+        }
         val audio = withContext(Dispatchers.IO) {
             try {
                 ScoreLib.loadSoundFont(context)
-                if (isExternal && extBytes != null) {
+                if (dataBytes != null) {
                     val ext = filePath.substringAfterLast('.', "")
-                    ScoreLib.renderAudioFromData(extBytes, ext, currentOptionsJson)
+                    ScoreLib.renderAudioFromData(dataBytes, ext, currentOptionsJson)
                 } else {
                     ScoreLib.renderAudioFromAsset(context, filePath, currentOptionsJson)
                 }
@@ -540,20 +678,19 @@ fun SheetMusicScreen(
         },
         bottomBar = {
             PlaybackControlBar(
-                isPlaying = isPlaying,
-                onPlayPause = {
-                    playbackManager?.togglePlayPause()
+                isPlaying     = isPlaying,
+                bundleActive  = activeBundle != null,
+                canGoPrev     = canGoPrev,
+                canGoNext     = canGoNext,
+                onPrev        = { val idx = currentPieceIndex; if (idx != null && idx > 0) selectPiece(unlockedPieces[idx - 1]) },
+                onPlayPause   = { playbackManager?.togglePlayPause() },
+                onStop        = { playbackManager?.stop() },
+                onNext        = { val idx = currentPieceIndex; if (idx != null && idx < unlockedPieces.size - 1) selectPiece(unlockedPieces[idx + 1]) },
+                onSettings    = {
+                    if (isAuthenticated) showSettings = true
+                    else onLoginRequested(PendingAuthAction.ShowSettings)
                 },
-                onStop = {
-                    playbackManager?.stop()
-                },
-                onSettings = {
-                    if (isAuthenticated) {
-                        showSettings = true
-                    } else {
-                        onLoginRequested(PendingAuthAction.ShowSettings)
-                    }
-                }
+                onBook        = { showPdfViewer = true }
             )
         }
     ) { paddingValues ->
@@ -613,6 +750,39 @@ fun SheetMusicScreen(
                 }
             }
         }
+    }
+
+    // ── PDF Viewer (full-screen) ─────────────────────────────────────
+    if (showPdfViewer && activeBundle != null) {
+        val bundle = activeBundle
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { showPdfViewer = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(modifier = Modifier.fillMaxSize()) {
+                PdfViewerScreen(
+                    bundle      = bundle,
+                    startPage   = currentPdfPage,
+                    onDismiss   = { showPdfViewer = false },
+                    onPieceSelected = { piece ->
+                        showPdfViewer = false
+                        selectPiece(piece)
+                    }
+                )
+            }
+        }
+    }
+
+    // ── Bundle error dialog ──────────────────────────────────────────
+    bundleErrorMessage?.let { msg ->
+        AlertDialog(
+            onDismissRequest = { bundleErrorMessage = null },
+            confirmButton = {
+                TextButton(onClick = { bundleErrorMessage = null }) { Text("OK") }
+            },
+            title = { Text("Bundle Error") },
+            text  = { Text(msg) }
+        )
     }
 
     // ── Settings Bottom Sheet ────────────────────────────────────────
@@ -771,6 +941,18 @@ private fun SettingsSheetContent(
     var repeatCount by remember { mutableIntStateOf(initialRepeatCount) }
     var transpose by remember { mutableIntStateOf(initialTranspose) }
     var showCursor by remember { mutableStateOf(initialShowCursor) }
+    var showLockedDialog by remember { mutableStateOf(false) }
+
+    if (showLockedDialog) {
+        AlertDialog(
+            onDismissRequest = { showLockedDialog = false },
+            confirmButton = {
+                TextButton(onClick = { showLockedDialog = false }) { Text("OK") }
+            },
+            title = { Text("Piece Locked") },
+            text = { Text("This piece is not yet available. Purchase the full bundle to unlock it.") }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -851,6 +1033,10 @@ private fun SettingsSheetContent(
                                 text = { Text(source.name, style = settingsLabelStyle()) },
                                 onClick = {
                                     selectedSourceId = source.id
+                                    // Auto-select the first non-locked item of the new source.
+                                    val first = source.items.firstOrNull { !it.url.startsWith("mbk://") || !it.name.endsWith("🔒") }
+                                        ?: source.items.firstOrNull()
+                                    if (first != null) selectedFileUrl = first.url
                                     sourceExpanded = false
                                 },
                                 modifier = Modifier.defaultMinSize(minHeight = 36.dp),
@@ -910,7 +1096,11 @@ private fun SettingsSheetContent(
                                 DropdownMenuItem(
                                     text = { Text(item.name, style = settingsLabelChineseStyle()) },
                                     onClick = {
-                                        selectedFileUrl = item.url
+                                        if (item.url.startsWith("mbk://") && item.name.endsWith("🔒")) {
+                                            showLockedDialog = true
+                                        } else {
+                                            selectedFileUrl = item.url
+                                        }
                                         fileExpanded = false
                                     },
                                     modifier = Modifier.defaultMinSize(minHeight = 36.dp),
@@ -1374,9 +1564,15 @@ private fun buildHtml(svg: String, playbackMapJson: String?, cursorBarVisible: B
 @Composable
 private fun PlaybackControlBar(
     isPlaying: Boolean,
+    bundleActive: Boolean = false,
+    canGoPrev: Boolean = false,
+    canGoNext: Boolean = false,
+    onPrev: () -> Unit = {},
     onPlayPause: () -> Unit,
     onStop: () -> Unit,
-    onSettings: () -> Unit
+    onNext: () -> Unit = {},
+    onSettings: () -> Unit,
+    onBook: () -> Unit = {}
 ) {
     Surface(
         tonalElevation = 3.dp,
@@ -1390,6 +1586,19 @@ private fun PlaybackControlBar(
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // ── Bundle: Previous ──
+            if (bundleActive) {
+                IconButton(onClick = onPrev, enabled = canGoPrev) {
+                    Icon(
+                        imageVector = Icons.Default.SkipPrevious,
+                        contentDescription = "Previous",
+                        modifier = Modifier.size(26.dp),
+                        tint = if (canGoPrev) MaterialTheme.colorScheme.onSurface
+                               else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                    )
+                }
+            }
+
             // Stop button
             IconButton(onClick = onStop) {
                 Icon(
@@ -1415,6 +1624,23 @@ private fun PlaybackControlBar(
 
             Spacer(modifier = Modifier.width(24.dp))
 
+            // ── Bundle: Next ──
+            if (bundleActive) {
+                IconButton(onClick = onNext, enabled = canGoNext) {
+                    Icon(
+                        imageVector = Icons.Default.SkipNext,
+                        contentDescription = "Next",
+                        modifier = Modifier.size(26.dp),
+                        tint = if (canGoNext) MaterialTheme.colorScheme.onSurface
+                               else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                    )
+                }
+                // Separator
+                Spacer(modifier = Modifier.width(4.dp))
+                VerticalDivider(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+            }
+
             // Settings button
             IconButton(onClick = onSettings) {
                 Icon(
@@ -1422,6 +1648,18 @@ private fun PlaybackControlBar(
                     contentDescription = "Settings",
                     modifier = Modifier.size(28.dp)
                 )
+            }
+
+            // ── Bundle: Book (PDF viewer) ──
+            if (bundleActive) {
+                IconButton(onClick = onBook) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                        contentDescription = "Book",
+                        modifier = Modifier.size(28.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
     }

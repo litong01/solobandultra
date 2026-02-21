@@ -143,9 +143,10 @@ class MainActivity : ComponentActivity() {
             val sdk = kindeSDK
             if (isAuthenticated.value || sdk == null) {
                 // Authenticated or SDK unavailable — load file directly.
+                // Pass all files (including .mbk) via pendingFileUri;
+                // SheetMusicScreen.loadFromUri handles the extension routing.
                 pendingFileUri.value = uri
             } else {
-                // Store the URI so it can be loaded after login succeeds.
                 pendingFileUri.value = uri
                 pendingAuthAction.value = PendingAuthAction.LoadExternalUri
                 sdk.login(GrantType.PKCE)
