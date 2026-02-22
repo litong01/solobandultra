@@ -977,7 +977,7 @@ private struct BottomSheetOverlay<Content: View>: View {
 
 #Preview {
     let asm = AudioSessionManager()
-    ContentView()
+    return ContentView()
         .environmentObject(asm)
         .environmentObject(PlaybackManager(audioSessionManager: asm))
         .environmentObject(MidiSettings())
