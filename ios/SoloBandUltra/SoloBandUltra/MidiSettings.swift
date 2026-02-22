@@ -29,8 +29,8 @@ class MidiSettings: ObservableObject {
     @Published var includePiano: Bool = false
     @Published var includeBass: Bool = false
     @Published var includeStrings: Bool = false
-    @Published var includeDrums: Bool = false
-    @Published var includeMetronome: Bool = true
+    @Published var includeDrums: Bool = true
+    @Published var includeMetronome: Bool = false
 
     // ── Energy level (hardcoded to strong; not user-facing) ──
     @Published var energy: Energy = .strong
