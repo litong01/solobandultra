@@ -56,6 +56,67 @@ class MidiSettings: ObservableObject {
     @Published var selectedSourceId: String = "bundled"
     @Published var selectedFileUrl: String = defaultLandingFileUrl
 
+    // ── Persistence ──
+
+    init() {
+        loadFromDisk()
+    }
+
+    private enum Key {
+        static let includeMelody    = "includeMelody"
+        static let includePiano     = "includePiano"
+        static let includeBass      = "includeBass"
+        static let includeStrings   = "includeStrings"
+        static let includeDrums     = "includeDrums"
+        static let includeMetronome = "includeMetronome"
+        static let playbackSpeed    = "playbackSpeed"
+        static let muteMusic        = "muteMusic"
+        static let repeatCount      = "repeatCount"
+        static let showCursor       = "showCursor"
+        static let transpose        = "transpose"
+        static let selectedSourceId = "selectedSourceId"
+        static let selectedFileUrl  = "selectedFileUrl"
+    }
+
+    func saveToDisk() {
+        let d = UserDefaults.standard
+        d.set(includeMelody,    forKey: Key.includeMelody)
+        d.set(includePiano,     forKey: Key.includePiano)
+        d.set(includeBass,      forKey: Key.includeBass)
+        d.set(includeStrings,   forKey: Key.includeStrings)
+        d.set(includeDrums,     forKey: Key.includeDrums)
+        d.set(includeMetronome, forKey: Key.includeMetronome)
+        d.set(playbackSpeed,    forKey: Key.playbackSpeed)
+        d.set(muteMusic,        forKey: Key.muteMusic)
+        d.set(repeatCount,      forKey: Key.repeatCount)
+        d.set(showCursor,       forKey: Key.showCursor)
+        d.set(transpose,        forKey: Key.transpose)
+        // External files don't survive restart — fall back to bundled default.
+        let srcToSave = selectedSourceId == "external" ? "bundled" : selectedSourceId
+        let urlToSave = selectedSourceId == "external" ? MidiSettings.defaultLandingFileUrl : selectedFileUrl
+        d.set(srcToSave, forKey: Key.selectedSourceId)
+        d.set(urlToSave, forKey: Key.selectedFileUrl)
+    }
+
+    private func loadFromDisk() {
+        let d = UserDefaults.standard
+        // If no value has ever been saved, keep the compiled-in defaults.
+        guard d.object(forKey: Key.includeMelody) != nil else { return }
+        includeMelody    = d.bool(forKey: Key.includeMelody)
+        includePiano     = d.bool(forKey: Key.includePiano)
+        includeBass      = d.bool(forKey: Key.includeBass)
+        includeStrings   = d.bool(forKey: Key.includeStrings)
+        includeDrums     = d.bool(forKey: Key.includeDrums)
+        includeMetronome = d.bool(forKey: Key.includeMetronome)
+        playbackSpeed    = d.double(forKey: Key.playbackSpeed)
+        muteMusic        = d.bool(forKey: Key.muteMusic)
+        repeatCount      = d.integer(forKey: Key.repeatCount)
+        showCursor       = d.bool(forKey: Key.showCursor)
+        transpose        = d.integer(forKey: Key.transpose)
+        if let src = d.string(forKey: Key.selectedSourceId) { selectedSourceId = src }
+        if let url = d.string(forKey: Key.selectedFileUrl)  { selectedFileUrl  = url }
+    }
+
     // ── External file (opened via document picker) ──
     /// Raw bytes of an externally opened file (from Files, iCloud, Google Drive, etc.)
     @Published var externalFileData: Data? = nil

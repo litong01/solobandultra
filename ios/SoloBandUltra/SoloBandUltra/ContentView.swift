@@ -207,6 +207,7 @@ struct ContentView: View {
                                 if let first = bundle.unlockedPieces.first ?? bundle.allPieces.first {
                                     midiSettings.selectedFileUrl = "mbk://\(bundle.bookId)/\(first.xml)"
                                 }
+                                midiSettings.saveToDisk()
                             }
                         } catch {
                             let msg = "Could not open \"\(filename)\": \(error.localizedDescription)"
@@ -693,6 +694,7 @@ struct SettingsSheet: View {
         midiSettings.repeatCount = repeatCount
         midiSettings.transpose = transpose
         midiSettings.showCursor = showCursor
+        midiSettings.saveToDisk()
         isPresented = false
     }
 }

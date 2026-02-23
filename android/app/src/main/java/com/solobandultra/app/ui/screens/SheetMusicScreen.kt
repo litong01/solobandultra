@@ -141,23 +141,33 @@ fun SheetMusicScreen(
     var showMenu by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
 
-    // MIDI settings state (rememberSaveable survives configuration changes like rotation)
-    var includeMelody by rememberSaveable { mutableStateOf(true) }
-    var includePiano by rememberSaveable { mutableStateOf(false) }
-    var includeBass by rememberSaveable { mutableStateOf(false) }
-    var includeStrings by rememberSaveable { mutableStateOf(false) }
-    var includeDrums by rememberSaveable { mutableStateOf(true) }
-    var includeMetronome by rememberSaveable { mutableStateOf(false) }
-    val energy = EnergyLevel.Strong  // Hardcoded; not user-facing
-    var playbackSpeed by rememberSaveable { mutableStateOf(1.0) }
-    var muteMusic by rememberSaveable { mutableStateOf(false) }
-    var repeatCount by rememberSaveable { mutableIntStateOf(1) }
-    var transpose by rememberSaveable { mutableIntStateOf(0) }
-    var showCursor by rememberSaveable { mutableStateOf(true) }
+    // Persist settings across full app restarts (SharedPreferences is private to this app,
+    // requires no extra permissions, and is the platform standard for preference storage).
+    val prefs = remember { context.getSharedPreferences("midi_settings", android.content.Context.MODE_PRIVATE) }
 
-    // Music source selection
-    var selectedSourceId by rememberSaveable { mutableStateOf("bundled") }
-    var selectedFileUrl by rememberSaveable { mutableStateOf("file://sheetmusic/$DEFAULT_LANDING_FILE") }
+    // MIDI settings state — initialised from persisted prefs so they survive process death.
+    // rememberSaveable still handles configuration changes (rotation) as before.
+    var includeMelody by rememberSaveable { mutableStateOf(prefs.getBoolean("includeMelody", true)) }
+    var includePiano by rememberSaveable { mutableStateOf(prefs.getBoolean("includePiano", false)) }
+    var includeBass by rememberSaveable { mutableStateOf(prefs.getBoolean("includeBass", false)) }
+    var includeStrings by rememberSaveable { mutableStateOf(prefs.getBoolean("includeStrings", false)) }
+    var includeDrums by rememberSaveable { mutableStateOf(prefs.getBoolean("includeDrums", true)) }
+    var includeMetronome by rememberSaveable { mutableStateOf(prefs.getBoolean("includeMetronome", false)) }
+    val energy = EnergyLevel.Strong  // Hardcoded; not user-facing
+    var playbackSpeed by rememberSaveable { mutableStateOf(prefs.getFloat("playbackSpeed", 1.0f).toDouble()) }
+    var muteMusic by rememberSaveable { mutableStateOf(prefs.getBoolean("muteMusic", false)) }
+    var repeatCount by rememberSaveable { mutableIntStateOf(prefs.getInt("repeatCount", 1)) }
+    var transpose by rememberSaveable { mutableIntStateOf(prefs.getInt("transpose", 0)) }
+    var showCursor by rememberSaveable { mutableStateOf(prefs.getBoolean("showCursor", true)) }
+
+    // Music source selection — external files don't survive restart, so fall back to bundled.
+    val savedSourceId = prefs.getString("selectedSourceId", "bundled") ?: "bundled"
+    val savedFileUrl  = prefs.getString("selectedFileUrl", "file://sheetmusic/$DEFAULT_LANDING_FILE")
+        ?: "file://sheetmusic/$DEFAULT_LANDING_FILE"
+    val restoredSourceId = if (savedSourceId == "external") "bundled" else savedSourceId
+    val restoredFileUrl  = if (savedSourceId == "external") "file://sheetmusic/$DEFAULT_LANDING_FILE" else savedFileUrl
+    var selectedSourceId by rememberSaveable { mutableStateOf(restoredSourceId) }
+    var selectedFileUrl by rememberSaveable { mutableStateOf(restoredFileUrl) }
 
     // External file (opened via document picker or pasted URL)
     var externalFileData by remember { mutableStateOf<ByteArray?>(null) }
@@ -279,6 +289,11 @@ fun SheetMusicScreen(
                     selectedSourceId = "mbk:${bundle.bookId}"
                     val first = bundle.unlockedPieces.firstOrNull() ?: bundle.allPieces.firstOrNull()
                     if (first != null) selectedFileUrl = "mbk://${bundle.bookId}/${first.xml}"
+                    // Persist the bundle selection so the same bundle opens on next launch
+                    prefs.edit()
+                        .putString("selectedSourceId", "mbk:${bundle.bookId}")
+                        .putString("selectedFileUrl", if (first != null) "mbk://${bundle.bookId}/${first.xml}" else "file://sheetmusic/$DEFAULT_LANDING_FILE")
+                        .apply()
                 }
                 "musicxml", "mxl", "xml" -> {
                     externalFileData = bytes
@@ -829,6 +844,23 @@ fun SheetMusicScreen(
                     transpose = trans
                     showCursor = cursor
                     showSettings = false
+                    // Persist so settings survive full app restart
+                    prefs.edit()
+                        .putBoolean("includeMelody", mel)
+                        .putBoolean("includePiano", pia)
+                        .putBoolean("includeBass", bas)
+                        .putBoolean("includeStrings", str)
+                        .putBoolean("includeDrums", drm)
+                        .putBoolean("includeMetronome", met)
+                        .putFloat("playbackSpeed", spd.toFloat())
+                        .putBoolean("muteMusic", mute)
+                        .putInt("repeatCount", rep)
+                        .putInt("transpose", trans)
+                        .putBoolean("showCursor", cursor)
+                        // External files don't survive restart — save bundled default instead
+                        .putString("selectedSourceId", if (src == "external") "bundled" else src)
+                        .putString("selectedFileUrl", if (src == "external") "file://sheetmusic/$DEFAULT_LANDING_FILE" else file)
+                        .apply()
                 }
             )
             } // end MaterialTheme(typography = settingsTypography)

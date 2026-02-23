@@ -201,3 +201,17 @@ Or manually from the GitHub Actions tab.
 | Min OS | iOS 16.0 | Android 8.0 (API 26) | — |
 | Audio | AVFoundation | AudioManager | — |
 | Build Tool | Xcode 15 | Gradle 8.5 / AGP 8.2 | Cargo (in Docker) |
+
+
+
+
+# Start Xcode and Android Studio
+
+Xcode:
+```bash
+open ios/SoloBandUltra/SoloBandUltra.xcodeproj
+```
+Android Studio
+```bash
+open -a "Android Studio" android/
+```
