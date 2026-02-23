@@ -141,6 +141,9 @@ fun SheetMusicScreen(
     var showMenu by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
 
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
     // Persist settings across full app restarts (SharedPreferences is private to this app,
     // requires no extra permissions, and is the platform standard for preference storage).
     val prefs = remember { context.getSharedPreferences("midi_settings", android.content.Context.MODE_PRIVATE) }
@@ -180,9 +183,6 @@ fun SheetMusicScreen(
     var activeBundles by remember { mutableStateOf<Map<String, BookBundle>>(emptyMap()) }
     var showPdfViewer by remember { mutableStateOf(false) }
     var bundleErrorMessage by remember { mutableStateOf<String?>(null) }
-
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
 
     // ── Bundle navigation helpers ──
     val activeBundle: BookBundle? = run {
