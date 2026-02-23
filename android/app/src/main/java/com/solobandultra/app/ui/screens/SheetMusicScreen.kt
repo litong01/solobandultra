@@ -156,6 +156,7 @@ fun SheetMusicScreen(
     var includeStrings by rememberSaveable { mutableStateOf(prefs.getBoolean("includeStrings", false)) }
     var includeDrums by rememberSaveable { mutableStateOf(prefs.getBoolean("includeDrums", true)) }
     var includeMetronome by rememberSaveable { mutableStateOf(prefs.getBoolean("includeMetronome", false)) }
+    var includeFeedback  by rememberSaveable { mutableStateOf(prefs.getBoolean("includeFeedback", false)) }
     val energy = EnergyLevel.Strong  // Hardcoded; not user-facing
     var playbackSpeed by rememberSaveable { mutableStateOf(prefs.getFloat("playbackSpeed", 1.0f).toDouble()) }
     var muteMusic by rememberSaveable { mutableStateOf(prefs.getBoolean("muteMusic", false)) }
@@ -824,12 +825,13 @@ fun SheetMusicScreen(
                 initialIncludeStrings = includeStrings,
                 initialIncludeDrums = includeDrums,
                 initialIncludeMetronome = includeMetronome,
+                initialIncludeFeedback = includeFeedback,
                 initialPlaybackSpeed = playbackSpeed,
                 initialMuteMusic = muteMusic,
                 initialRepeatCount = repeatCount,
                 initialTranspose = transpose,
                 initialShowCursor = showCursor,
-                onDone = { src, file, mel, pia, bas, str, drm, met, spd, mute, rep, trans, cursor ->
+                onDone = { src, file, mel, pia, bas, str, drm, met, fbk, spd, mute, rep, trans, cursor ->
                     selectedSourceId = src
                     selectedFileUrl = file
                     includeMelody = mel
@@ -838,6 +840,7 @@ fun SheetMusicScreen(
                     includeStrings = str
                     includeDrums = drm
                     includeMetronome = met
+                    includeFeedback = fbk
                     playbackSpeed = spd
                     muteMusic = mute
                     repeatCount = rep
@@ -852,6 +855,7 @@ fun SheetMusicScreen(
                         .putBoolean("includeStrings", str)
                         .putBoolean("includeDrums", drm)
                         .putBoolean("includeMetronome", met)
+                        .putBoolean("includeFeedback", fbk)
                         .putFloat("playbackSpeed", spd.toFloat())
                         .putBoolean("muteMusic", mute)
                         .putInt("repeatCount", rep)
@@ -952,12 +956,13 @@ private fun SettingsSheetContent(
     initialIncludeStrings: Boolean,
     initialIncludeDrums: Boolean,
     initialIncludeMetronome: Boolean,
+    initialIncludeFeedback: Boolean,
     initialPlaybackSpeed: Double,
     initialMuteMusic: Boolean,
     initialRepeatCount: Int,
     initialTranspose: Int,
     initialShowCursor: Boolean,
-    onDone: (String, String, Boolean, Boolean, Boolean, Boolean, Boolean, Boolean, Double, Boolean, Int, Int, Boolean) -> Unit
+    onDone: (String, String, Boolean, Boolean, Boolean, Boolean, Boolean, Boolean, Boolean, Double, Boolean, Int, Int, Boolean) -> Unit
 ) {
     // Local working copies (only applied when Apply is tapped)
     var selectedSourceId by remember { mutableStateOf(initialSelectedSourceId) }
@@ -968,6 +973,7 @@ private fun SettingsSheetContent(
     var includeStrings by remember { mutableStateOf(initialIncludeStrings) }
     var includeDrums by remember { mutableStateOf(initialIncludeDrums) }
     var includeMetronome by remember { mutableStateOf(initialIncludeMetronome) }
+    var includeFeedback by remember { mutableStateOf(initialIncludeFeedback) }
     var playbackSpeed by remember { mutableStateOf(initialPlaybackSpeed) }
     var muteMusic by remember { mutableStateOf(initialMuteMusic) }
     var repeatCount by remember { mutableIntStateOf(initialRepeatCount) }
@@ -1008,7 +1014,7 @@ private fun SettingsSheetContent(
                 onDone(
                     selectedSourceId, selectedFileUrl,
                     includeMelody, includePiano, includeBass, includeStrings,
-                    includeDrums, includeMetronome, playbackSpeed,
+                    includeDrums, includeMetronome, includeFeedback, playbackSpeed,
                     muteMusic, repeatCount, transpose, showCursor
                 )
             }) {
@@ -1167,7 +1173,7 @@ private fun SettingsSheetContent(
                 ) {
                     CompactCheckbox("Drums", includeDrums, { includeDrums = it }, Modifier.weight(1f))
                     CompactCheckbox("Metronome", includeMetronome, { includeMetronome = it }, Modifier.weight(1f))
-                    Spacer(modifier = Modifier.weight(1f))
+                    CompactCheckbox("Feedback", includeFeedback, { includeFeedback = it }, Modifier.weight(1f))
                     Spacer(modifier = Modifier.weight(1f))
                 }
             }

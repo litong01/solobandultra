@@ -449,6 +449,7 @@ struct SettingsSheet: View {
     @State private var includeStrings: Bool = false
     @State private var includeDrums: Bool = true
     @State private var includeMetronome: Bool = false
+    @State private var includeFeedback: Bool = false
     @State private var playbackSpeed: Double = 1.0
     @State private var muteMusic: Bool = false
     @State private var repeatCount: Int = 1
@@ -592,6 +593,7 @@ struct SettingsSheet: View {
                             CheckboxToggle("Strings", isOn: $includeStrings)
                             CheckboxToggle("Drums", isOn: $includeDrums)
                             CheckboxToggle("Metronome", isOn: $includeMetronome)
+                            CheckboxToggle("Feedback", isOn: $includeFeedback)
                         }
                         .padding(.vertical, 4)
                     }
@@ -672,6 +674,7 @@ struct SettingsSheet: View {
         includeStrings = midiSettings.includeStrings
         includeDrums = midiSettings.includeDrums
         includeMetronome = midiSettings.includeMetronome
+        includeFeedback = midiSettings.includeFeedback
         playbackSpeed = midiSettings.playbackSpeed
         muteMusic = midiSettings.muteMusic
         repeatCount = midiSettings.repeatCount
@@ -689,6 +692,7 @@ struct SettingsSheet: View {
         midiSettings.includeStrings = includeStrings
         midiSettings.includeDrums = includeDrums
         midiSettings.includeMetronome = includeMetronome
+        midiSettings.includeFeedback = includeFeedback
         midiSettings.playbackSpeed = playbackSpeed
         midiSettings.muteMusic = muteMusic
         midiSettings.repeatCount = repeatCount

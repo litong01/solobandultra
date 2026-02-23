@@ -31,6 +31,7 @@ class MidiSettings: ObservableObject {
     @Published var includeStrings: Bool = false
     @Published var includeDrums: Bool = true
     @Published var includeMetronome: Bool = false
+    @Published var includeFeedback: Bool = false
 
     // ── Energy level (hardcoded to strong; not user-facing) ──
     @Published var energy: Energy = .strong
@@ -69,6 +70,7 @@ class MidiSettings: ObservableObject {
         static let includeStrings   = "includeStrings"
         static let includeDrums     = "includeDrums"
         static let includeMetronome = "includeMetronome"
+        static let includeFeedback  = "includeFeedback"
         static let playbackSpeed    = "playbackSpeed"
         static let muteMusic        = "muteMusic"
         static let repeatCount      = "repeatCount"
@@ -86,6 +88,7 @@ class MidiSettings: ObservableObject {
         d.set(includeStrings,   forKey: Key.includeStrings)
         d.set(includeDrums,     forKey: Key.includeDrums)
         d.set(includeMetronome, forKey: Key.includeMetronome)
+        d.set(includeFeedback,  forKey: Key.includeFeedback)
         d.set(playbackSpeed,    forKey: Key.playbackSpeed)
         d.set(muteMusic,        forKey: Key.muteMusic)
         d.set(repeatCount,      forKey: Key.repeatCount)
@@ -108,6 +111,7 @@ class MidiSettings: ObservableObject {
         includeStrings   = d.bool(forKey: Key.includeStrings)
         includeDrums     = d.bool(forKey: Key.includeDrums)
         includeMetronome = d.bool(forKey: Key.includeMetronome)
+        includeFeedback  = d.bool(forKey: Key.includeFeedback)
         playbackSpeed    = d.double(forKey: Key.playbackSpeed)
         muteMusic        = d.bool(forKey: Key.muteMusic)
         repeatCount      = d.integer(forKey: Key.repeatCount)
@@ -178,6 +182,7 @@ class MidiSettings: ObservableObject {
             "\"include_strings\":\(includeStrings)",
             "\"include_drums\":\(includeDrums)",
             "\"include_metronome\":\(includeMetronome)",
+            "\"include_feedback\":\(includeFeedback)",
             "\"energy\":\"\(energy.rawValue)\"",
             "\"transpose\":\(transpose)"
         ]
