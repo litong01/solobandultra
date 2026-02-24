@@ -66,7 +66,7 @@ pub(super) fn render_notes(
             } else {
                 nx
             };
-            render_rest(svg, rest_x, staff_y, note.note_type.as_deref(), note.measure_rest);
+            render_rest(svg, rest_x, staff_y, note.note_type.as_deref(), note.measure_rest, note.dot);
             continue;
         }
 
@@ -250,7 +250,11 @@ fn render_grace_flags(svg: &mut SvgBuilder, stem_x: f64, stem_end_y: f64, count:
 
 // ── Rest rendering ──────────────────────────────────────────────────
 
-fn render_rest(svg: &mut SvgBuilder, x: f64, staff_y: f64, note_type: Option<&str>, measure_rest: bool) {
+/// Dot radius and horizontal offset (right of rest symbol) for dotted rests.
+const REST_DOT_R: f64 = 1.8;
+const REST_DOT_OFFSET_X: f64 = 11.0;
+
+fn render_rest(svg: &mut SvgBuilder, x: f64, staff_y: f64, note_type: Option<&str>, measure_rest: bool, dot: bool) {
     if measure_rest || note_type.is_none() {
         svg.rect(x - 7.0, staff_y + 10.0, 14.0, 5.0, REST_COLOR, "none", 0.0);
         return;
@@ -259,9 +263,15 @@ fn render_rest(svg: &mut SvgBuilder, x: f64, staff_y: f64, note_type: Option<&st
     match note_type.unwrap() {
         "whole" => {
             svg.rect(x - 7.0, staff_y + 10.0, 14.0, 5.0, REST_COLOR, "none", 0.0);
+            if dot {
+                svg.circle(x + REST_DOT_OFFSET_X, staff_y + 12.5, REST_DOT_R, REST_COLOR);
+            }
         }
         "half" => {
             svg.rect(x - 7.0, staff_y + 15.0, 14.0, 5.0, REST_COLOR, "none", 0.0);
+            if dot {
+                svg.circle(x + REST_DOT_OFFSET_X, staff_y + 17.5, REST_DOT_R, REST_COLOR);
+            }
         }
         "quarter" => {
             let path = vf_outline_to_svg(VF_QUARTER_REST, VF_GLYPH_SCALE);
@@ -271,6 +281,9 @@ fn render_rest(svg: &mut SvgBuilder, x: f64, staff_y: f64, note_type: Option<&st
                 r#"<path d="{}" fill="{}" transform="translate({:.1},{:.1})"/>"#,
                 path, REST_COLOR, gx, gy
             ));
+            if dot {
+                svg.circle(x + REST_DOT_OFFSET_X, staff_y + 20.0, REST_DOT_R, REST_COLOR);
+            }
         }
         "eighth" => {
             let path = vf_outline_to_svg(VF_EIGHTH_REST, VF_GLYPH_SCALE);
@@ -280,6 +293,9 @@ fn render_rest(svg: &mut SvgBuilder, x: f64, staff_y: f64, note_type: Option<&st
                 r#"<path d="{}" fill="{}" transform="translate({:.1},{:.1})"/>"#,
                 path, REST_COLOR, gx, gy
             ));
+            if dot {
+                svg.circle(x + REST_DOT_OFFSET_X, staff_y + 20.0, REST_DOT_R, REST_COLOR);
+            }
         }
         "16th" => {
             let path = vf_outline_to_svg(VF_16TH_REST, VF_GLYPH_SCALE);
@@ -289,9 +305,15 @@ fn render_rest(svg: &mut SvgBuilder, x: f64, staff_y: f64, note_type: Option<&st
                 r#"<path d="{}" fill="{}" transform="translate({:.1},{:.1})"/>"#,
                 path, REST_COLOR, gx, gy
             ));
+            if dot {
+                svg.circle(x + REST_DOT_OFFSET_X, staff_y + 20.0, REST_DOT_R, REST_COLOR);
+            }
         }
         _ => {
             svg.rect(x - 7.0, staff_y + 10.0, 14.0, 5.0, REST_COLOR, "none", 0.0);
+            if dot {
+                svg.circle(x + REST_DOT_OFFSET_X, staff_y + 12.5, REST_DOT_R, REST_COLOR);
+            }
         }
     }
 }
