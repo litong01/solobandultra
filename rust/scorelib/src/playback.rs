@@ -47,8 +47,10 @@ pub struct MeasurePosition {
 pub struct SystemPosition {
     /// Y coordinate of the system's top staff line
     pub y: f64,
-    /// Total height of the system (staves + lyrics + spacing)
+    /// Total height of the system (staves + spacing)
     pub height: f64,
+    /// SVG y for the first row of feedback dots below the staff (for overlay).
+    pub dots_base_y: f64,
 }
 
 /// Serializable version of TimemapEntry for JSON output.
@@ -144,7 +146,11 @@ pub fn generate_playback_map(score: &Score, page_width: Option<f64>) -> Playback
 
     let systems = system_positions
         .into_iter()
-        .map(|(y, height)| SystemPosition { y, height })
+        .map(|(y, height, dots_base_y)| SystemPosition {
+            y,
+            height,
+            dots_base_y,
+        })
         .collect();
 
     let timemap_json = tmap.iter().map(TimemapEntryJson::from).collect();

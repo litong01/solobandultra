@@ -16,6 +16,8 @@ struct ContentView: View {
     @State private var clipboardHasUrl = false
     @State private var showPdfViewer = false
     @State private var showReport = false
+    @State private var reportSvgContent: String?
+    @State private var reportPlaybackMapJson: String?
 
     // MARK: - Bundle navigation helpers
 
@@ -118,8 +120,11 @@ struct ContentView: View {
             .padding(.vertical, 6)
 
             // Sheet music display area
-            SheetMusicView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            SheetMusicView(onScoreLoaded: { svg, pmap in
+                reportSvgContent = svg
+                reportPlaybackMapJson = pmap
+            })
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Divider()
 
@@ -156,7 +161,11 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showReport) {
             if let report = feedbackManager.report {
-                FeedbackReportView(report: report)
+                FeedbackReportView(
+                    report: report,
+                    svgContent: reportSvgContent,
+                    playbackMapJson: reportPlaybackMapJson
+                )
             }
         }
         .onAppear {

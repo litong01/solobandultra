@@ -8,6 +8,10 @@ struct NoteEvent: Codable, Identifiable {
     let endMs: Double
     let midi: Int
     let name: String
+    /// Original measure index for overlay positioning.
+    let measureIdx: Int
+    /// Index of this note among melody notes in that measure.
+    let noteIdx: Int
 
     var id: Double { startMs }
 
@@ -16,6 +20,27 @@ struct NoteEvent: Codable, Identifiable {
         case endMs   = "end_ms"
         case midi
         case name
+        case measureIdx = "measure_idx"
+        case noteIdx = "note_idx"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        startMs = try c.decode(Double.self, forKey: .startMs)
+        endMs = try c.decode(Double.self, forKey: .endMs)
+        midi = try c.decode(Int.self, forKey: .midi)
+        name = try c.decode(String.self, forKey: .name)
+        measureIdx = try c.decodeIfPresent(Int.self, forKey: .measureIdx) ?? 0
+        noteIdx = try c.decodeIfPresent(Int.self, forKey: .noteIdx) ?? 0
+    }
+
+    init(startMs: Double, endMs: Double, midi: Int, name: String, measureIdx: Int = 0, noteIdx: Int = 0) {
+        self.startMs = startMs
+        self.endMs = endMs
+        self.midi = midi
+        self.name = name
+        self.measureIdx = measureIdx
+        self.noteIdx = noteIdx
     }
 
     /// Duration in milliseconds.

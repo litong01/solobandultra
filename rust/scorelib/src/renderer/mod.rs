@@ -704,11 +704,15 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
 // Playback map helpers — extract measure/system positions for cursor sync
 // ═══════════════════════════════════════════════════════════════════════
 
+/// Vertical offset below the system content for the first row of feedback dots (SVG units).
+pub const FEEDBACK_DOTS_OFFSET: f64 = 16.0;
+
 /// Compute the visual position of each measure and system in the SVG.
 ///
 /// Returns two vectors:
 /// - Measures: `(measure_idx, x, width, system_idx, beat_x_map)` for each measure
-/// - Systems: `(y, height)` for each system (line of music)
+/// - Systems: `(y, height, dots_base_y)` for each system (line of music).
+///   `dots_base_y` is the SVG y for the first row of feedback dots below the staff.
 ///
 /// The `beat_x_map` is a `Vec<(f64, f64)>` of `(beat_time_in_quarters, svg_x)`
 /// pairs for each unique rhythmic onset in the measure, enabling note-level
@@ -716,7 +720,7 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
 pub fn compute_measure_positions(
     score: &Score,
     page_width: Option<f64>,
-) -> (Vec<(usize, f64, f64, usize, Vec<(f64, f64)>)>, Vec<(f64, f64)>) {
+) -> (Vec<(usize, f64, f64, usize, Vec<(f64, f64)>)>, Vec<(f64, f64, f64)>) {
     let page_width = match page_width {
         Some(w) if w > 0.0 => w,
         _ => DEFAULT_PAGE_WIDTH,
@@ -749,7 +753,8 @@ pub fn compute_measure_positions(
             }
         }
 
-        system_positions.push((system.y, y_offset));
+        let dots_base_y = system.y + y_offset + FEEDBACK_DOTS_OFFSET;
+        system_positions.push((system.y, y_offset, dots_base_y));
 
         for ml in &system.measures {
             measure_positions.push((

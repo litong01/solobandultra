@@ -6,6 +6,8 @@ struct SheetMusicView: View {
     @EnvironmentObject var playbackManager: PlaybackManager
     @EnvironmentObject var midiSettings: MidiSettings
     @EnvironmentObject var feedbackManager: FeedbackManager
+    /// Called when a score is loaded with (svgContent, playbackMapJson) for use in the report overlay.
+    var onScoreLoaded: (String, String) -> Void = { _, _ in }
     @State private var svgContent: String?
     @State private var playbackMapJson: String?
     @State private var isLoading = true
@@ -234,6 +236,7 @@ struct SheetMusicView: View {
                 if let svg = svg {
                     svgContent = svg
                     playbackMapJson = pmap
+                    onScoreLoaded((svg, pmap ?? ""))
 
                     // Load the note timeline into FeedbackManager.
                     if let json = timelineJson,

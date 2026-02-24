@@ -876,6 +876,8 @@ fun SheetMusicScreen(
     if (showReport && feedbackReport != null) {
         FeedbackReportScreen(
             report = feedbackReport!!,
+            svgContent = svgContent,
+            playbackMapJson = playbackMapJson,
             onDismiss = { showReport = false }
         )
     }

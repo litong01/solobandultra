@@ -1,23 +1,50 @@
 import SwiftUI
+import WebKit
+
+private let feedbackDotRowHeight = 14.0
 
 /// Post-performance feedback report presented as a sheet.
+/// When svgContent and playbackMapJson are provided, shows the score SVG with colored dots overlaid (no note table).
 struct FeedbackReportView: View {
     let report: FeedbackReport
+    var svgContent: String? = nil
+    var playbackMapJson: String? = nil
     @Environment(\.dismiss) private var dismiss
+
+    private var showSvgOverlay: Bool { svgContent != nil && playbackMapJson != nil }
+    private var overlayDotsJson: String? {
+        guard let pmap = playbackMapJson else { return nil }
+        return Self.buildOverlayDotsJson(report: report, playbackMapJson: pmap)
+    }
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 20) {
-                    summarySection
-                    Divider()
-                    noteListSection
-                    if !report.missedNotes.isEmpty {
+            if showSvgOverlay, let overlayJson = overlayDotsJson, let svg = svgContent {
+                ScrollView {
+                    VStack(spacing: 20) {
+                        summarySection
                         Divider()
-                        missedNotesSection
+                        Text("Note accuracy on score")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("Green = on time, Yellow = wrong timing, Red = wrong pitch, Gray = missed")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        ReportOverlayWebView(html: Self.buildReportOverlayHtml(svg: svg, overlayDotsJson: overlayJson))
+                            .frame(height: 280)
                     }
+                    .padding()
                 }
-                .padding()
+            } else {
+                ScrollView {
+                    VStack(spacing: 20) {
+                        summarySection
+                        Divider()
+                        noteListSection
+                    }
+                    .padding()
+                }
             }
             .navigationTitle("Performance Report")
             .navigationBarTitleDisplayMode(.inline)
@@ -27,6 +54,111 @@ struct FeedbackReportView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Overlay helpers
+
+    static func buildOverlayDotsJson(report: FeedbackReport, playbackMapJson: String) -> String? {
+        guard let data = playbackMapJson.data(using: .utf8),
+              let pmap = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let measures = pmap["measures"] as? [[String: Any]],
+              let systems = pmap["systems"] as? [[String: Any]] else { return nil }
+
+        let grouped = Dictionary(grouping: report.results.filter { $0.expected.measureIdx >= 0 && $0.expected.noteIdx >= 0 }) { (result: NoteResult) in
+            (result.expected.measureIdx, result.expected.noteIdx)
+        }
+
+        var dots: [[String: Any]] = []
+        for (key, results) in grouped {
+            let (measureIdx, noteIdx) = key
+            guard let measure = measures.first(where: { ($0["measure_idx"] as? Int) == measureIdx }),
+                  let systemIdx = measure["system_idx"] as? Int,
+                  systemIdx < systems.count,
+                  let notePositions = measure["note_positions"] as? [[Double]],
+                  noteIdx < notePositions.count,
+                  notePositions[noteIdx].count >= 2 else { continue }
+            let x = notePositions[noteIdx][1]
+            let sys = systems[systemIdx] as? [String: Any]
+            let baseY: Double
+            if let dy = sys?["dots_base_y"] as? Double {
+                baseY = dy
+            } else if let sy = sys?["y"] as? Double, let sh = sys?["height"] as? Double {
+                baseY = sy + sh + 16
+            } else {
+                baseY = 0
+            }
+            let colors = results.map { r in r.status == .silent ? "#9E9E9E" : r.status.cursorColor }
+            dots.append(["x": x, "y": baseY, "colors": colors])
+        }
+        guard let out = try? JSONSerialization.data(withJSONObject: dots),
+              let str = String(data: out, encoding: .utf8) else { return nil }
+        return str
+    }
+
+    static func buildReportOverlayHtml(svg: String, overlayDotsJson: String) -> String {
+        let safeSvg: String = {
+            guard let regex = try? NSRegularExpression(pattern: "<script[^>]*>[\\s\\S]*?</script>", options: .caseInsensitive) else { return svg }
+            let range = NSRange(svg.startIndex..., in: svg)
+            return regex.stringByReplacingMatches(in: svg, range: range, withTemplate: "")
+        }()
+        let dotsJs = overlayDotsJson.replacingOccurrences(of: "</", with: "<\\/")
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes">
+        <style>
+            @font-face { font-family: 'Lora'; src: url('Fonts/Lora-Regular.ttf') format('truetype'); font-weight: 100 900; font-style: normal; }
+            @font-face { font-family: 'Lora'; src: url('Fonts/Lora-Italic.ttf') format('truetype'); font-weight: 100 900; font-style: italic; }
+            @font-face { font-family: 'LXGW WenKai'; src: url('Fonts/LXGWWenKai-Regular.ttf') format('truetype'); font-weight: normal; font-style: normal; }
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { background: white; display: flex; justify-content: center; padding: 8px; }
+            #score-container { position: relative; display: inline-block; width: 100%; }
+            #score-container svg { width: 100%; height: auto; max-width: 100%; display: block; }
+            #overlay { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
+            #overlay svg { width: 100%; height: 100%; display: block; }
+        </style>
+        </head>
+        <body>
+        <div id="score-container">
+            \(safeSvg)
+            <div id="overlay"></div>
+        </div>
+        <script>
+        (function() {
+            var dots = \(dotsJs);
+            var scoreSvg = document.querySelector('#score-container > svg');
+            if (!scoreSvg || !dots || dots.length === 0) return;
+            var vb = scoreSvg.getAttribute('viewBox');
+            if (!vb) return;
+            var rowHeight = Number(\(feedbackDotRowHeight));
+            var radius = 4;
+            var ns = 'http://www.w3.org/2000/svg';
+            var g = document.createElementNS(ns, 'g');
+            for (var i = 0; i < dots.length; i++) {
+                var d = dots[i];
+                var x = Number(d.x);
+                var baseY = Number(d.y);
+                var colors = d.colors || [];
+                for (var j = 0; j < colors.length; j++) {
+                    var circle = document.createElementNS(ns, 'circle');
+                    circle.setAttribute('cx', String(x));
+                    circle.setAttribute('cy', String(baseY + j * rowHeight));
+                    circle.setAttribute('r', radius);
+                    circle.setAttribute('fill', colors[j]);
+                    g.appendChild(circle);
+                }
+            }
+            var overlaySvg = document.createElementNS(ns, 'svg');
+            overlaySvg.setAttribute('viewBox', vb);
+            overlaySvg.setAttribute('preserveAspectRatio', scoreSvg.getAttribute('preserveAspectRatio') || 'xMidYMid meet');
+            overlaySvg.appendChild(g);
+            document.getElementById('overlay').appendChild(overlaySvg);
+        })();
+        </script>
+        </body>
+        </html>
+        """
     }
 
     // MARK: - Summary
@@ -130,26 +262,6 @@ struct FeedbackReportView: View {
         .padding(.vertical, 2)
     }
 
-    // MARK: - Missed notes
-
-    private var missedNotesSection: some View {
-        VStack(spacing: 8) {
-            Text("Missed Notes")
-                .font(.headline)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            FlowLayout(spacing: 6) {
-                ForEach(report.missedNotes) { result in
-                    Text(result.expected.name)
-                        .font(.caption)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.red.opacity(0.15))
-                        .clipShape(Capsule())
-                }
-            }
-        }
-    }
-
     // MARK: - Helpers
 
     private func accuracyColor(_ pct: Double) -> Color {
@@ -168,44 +280,21 @@ struct FeedbackReportView: View {
     }
 }
 
-// MARK: - Simple flow layout for missed-note chips
+// MARK: - WebView for report overlay (SVG + dots)
 
-private struct FlowLayout: Layout {
-    var spacing: CGFloat = 8
+private struct ReportOverlayWebView: UIViewRepresentable {
+    let html: String
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let containerWidth = proposal.width ?? .infinity
-        var x: CGFloat = 0
-        var y: CGFloat = 0
-        var rowHeight: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x + size.width > containerWidth && x > 0 {
-                x = 0
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-        }
-        return CGSize(width: containerWidth, height: y + rowHeight)
+    func makeUIView(context: Context) -> WKWebView {
+        let webView = WKWebView()
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.scrollView.backgroundColor = .clear
+        return webView
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX
-        var y = bounds.minY
-        var rowHeight: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x + size.width > bounds.maxX && x > bounds.minX {
-                x = bounds.minX
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-            subview.place(at: CGPoint(x: x, y: y), proposal: .unspecified)
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-        }
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        webView.loadHTMLString(html, baseURL: Bundle.main.bundleURL)
     }
 }
 

@@ -25,6 +25,10 @@ pub struct NoteEvent {
     pub midi: i32,
     /// Human-readable pitch name, e.g. "C4", "F#3", "Bb5".
     pub name: String,
+    /// Original measure index (into Part.measures) for overlay positioning.
+    pub measure_idx: usize,
+    /// Index of this note among melody notes in that measure (0-based).
+    pub note_idx: usize,
 }
 
 /// Generate a note timeline from a parsed and (optionally transposed) score.
@@ -57,7 +61,10 @@ pub fn generate_note_timeline(score: &Score) -> Vec<NoteEvent> {
         let ms_per_division = entry.duration_ms / (entry.effective_quarters * divisions as f64);
 
         // Walk notes in voice 1, advancing offset only on non-chord notes.
+        // note_idx is the index of this note among melody notes in this measure only (0, 1, 2, ...),
+        // so repeats stack vertically at the same (measure_idx, note_idx).
         let mut offset_divisions: f64 = 0.0;
+        let mut note_idx_in_measure: usize = 0;
 
         for note in &measure.notes {
             // Skip rests, grace notes, and non-voice-1 notes.
@@ -82,7 +89,15 @@ pub fn generate_note_timeline(score: &Score) -> Vec<NoteEvent> {
                 let end_ms = start_ms + dur_ms;
                 let midi = pitch_to_midi(pitch);
                 let name = pitch_to_name(pitch);
-                events.push(NoteEvent { start_ms, end_ms, midi, name });
+                events.push(NoteEvent {
+                    start_ms,
+                    end_ms,
+                    midi,
+                    name,
+                    measure_idx: entry.original_index,
+                    note_idx: note_idx_in_measure,
+                });
+                note_idx_in_measure += 1;
             }
 
             // Advance offset only for non-chord notes.

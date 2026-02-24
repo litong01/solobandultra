@@ -10,7 +10,11 @@ data class NoteEvent(
     val startMs: Double,
     val endMs: Double,
     val midi: Int,
-    val name: String
+    val name: String,
+    /** Original measure index for overlay positioning (0 if absent from JSON). */
+    val measureIdx: Int = 0,
+    /** Index of this note among melody notes in that measure (0 if absent). */
+    val noteIdx: Int = 0
 ) {
     val durationMs: Double get() = endMs - startMs
 
@@ -25,7 +29,9 @@ data class NoteEvent(
                         startMs = obj.getDouble("start_ms"),
                         endMs   = obj.getDouble("end_ms"),
                         midi    = obj.getInt("midi"),
-                        name    = obj.getString("name")
+                        name    = obj.getString("name"),
+                        measureIdx = obj.optInt("measure_idx", 0),
+                        noteIdx = obj.optInt("note_idx", 0)
                     )
                 }
             } catch (_: Exception) {
