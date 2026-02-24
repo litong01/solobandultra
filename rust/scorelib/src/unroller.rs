@@ -83,19 +83,11 @@ pub fn unroll(score: &Score, part_idx: usize) -> Vec<UnrolledMeasure> {
     // For each forward-repeat position, find the highest volta ending
     // number in its section.  This tells us how many passes to take.
     //
-    // Key insight: if the highest-numbered ending *also* has a backward-repeat
-    // barline, the convention is "play this ending, jump back, then do one
-    // final pass that skips all ending brackets and continues forward."
-    // In that case max_pass = highest_ending_number + 1.
-    // If the last ending has NO backward repeat, max_pass = highest_ending_number
-    // (that ending is the final pass; it falls through naturally).
+    // max_pass = highest_ending_number (or the repeat's `times` attribute,
+    // whichever is larger).  A backward repeat on the last ending does NOT
+    // add an extra pass — the section simply ends after that ending is played.
     let mut section_max_passes: std::collections::HashMap<usize, i32> = std::collections::HashMap::new();
     {
-        // Track whether the highest-numbered ending for each section also
-        // carries a backward-repeat barline.
-        let mut section_last_ending_has_backward: std::collections::HashMap<usize, bool> =
-            std::collections::HashMap::new();
-
         let mut current_forward: usize = 0;
         for (i, m) in measures.iter().enumerate() {
             for bl in &m.barlines {
@@ -109,29 +101,11 @@ pub fn unroll(score: &Score, part_idx: usize) -> Vec<UnrolledMeasure> {
             }
             if let Some(nums) = volta_map.get(&i) {
                 let entry = section_max_passes.entry(current_forward).or_insert(2);
-                let has_backward = m.barlines.iter().any(|bl| {
-                    bl.location == "right"
-                        && bl.repeat.as_ref().map_or(false, |r| r.direction == "backward")
-                });
                 for &n in nums {
                     if n > *entry {
                         *entry = n;
-                        section_last_ending_has_backward.insert(current_forward, has_backward);
-                    } else if n == *entry && has_backward {
-                        section_last_ending_has_backward.insert(current_forward, true);
                     }
                 }
-            }
-        }
-
-        // Apply the +1 for sections whose last ending has a backward repeat.
-        for (fw, max) in section_max_passes.iter_mut() {
-            if section_last_ending_has_backward
-                .get(fw)
-                .copied()
-                .unwrap_or(false)
-            {
-                *max += 1;
             }
         }
     }
@@ -401,12 +375,11 @@ mod tests {
         // 童年 has:
         //   - Intro (2 measures, repeated once = 4)
         //   - Body gap (4 measures)
-        //   - Main section: 6 endings ALL with backward repeat → 7 total plays
-        //     7 body plays × 16 measures + 6 ending measures = 118
+        //   - Main section: 6 endings (each with backward repeat) → 6 total plays
+        //     6 body plays × 16 measures + 6 ending measures = 102
         //   - Bridge (1 measure)
         //   - Chorus (3 body + 1 ending) × 2 volta endings = 8
         //   - Coda (6 measures)
-        // Total: 4 + 4 + 118 + 1 + 8 + 6 = 141
         assert!(
             unrolled.len() > raw_count,
             "Unrolled length {} should be > raw measure count {} (multiple endings)",
@@ -426,5 +399,128 @@ mod tests {
             unrolled.len(), raw_count
         );
         println!("blue-bag-folly: {} raw measures → {} unrolled measures", raw_count, unrolled.len());
+    }
+
+    /// Verify that a repeat section with N volta endings where the last ending
+    /// also has a backward repeat barline does NOT produce an extra (N+1) pass.
+    ///
+    /// Layout (5 raw measures):
+    ///   m0 — body (forward repeat, left barline)
+    ///   m1 — volta 1, backward repeat (right barline)
+    ///   m2 — volta 2, backward repeat
+    ///   m3 — volta 3, backward repeat   ← last ending, also has :|
+    ///   m4 — measure after the section
+    ///
+    /// Expected play order: m0 m1 m0 m2 m0 m3 m4  (7 unrolled, NOT 8)
+    #[test]
+    fn no_extra_pass_when_last_volta_has_backward_repeat() {
+        use crate::model::{Barline, Ending, Measure, Part, Repeat, Score};
+
+        let make_measure = |number: i32, barlines: Vec<Barline>| -> Measure {
+            Measure {
+                number,
+                implicit: false,
+                width: None,
+                attributes: None,
+                notes: Vec::new(),
+                harmonies: Vec::new(),
+                barlines,
+                directions: Vec::new(),
+                new_system: false,
+                new_page: false,
+            }
+        };
+
+        let volta_start = |num: &str| Barline {
+            location: "left".to_string(),
+            bar_style: None,
+            repeat: None,
+            ending: Some(Ending {
+                number: num.to_string(),
+                ending_type: "start".to_string(),
+                text: None,
+            }),
+        };
+
+        // m0: body measure with forward repeat
+        let m0 = make_measure(1, vec![Barline {
+            location: "left".to_string(),
+            bar_style: None,
+            repeat: Some(Repeat { direction: "forward".to_string(), times: None }),
+            ending: None,
+        }]);
+
+        // m1: volta 1 with backward repeat
+        let m1 = make_measure(2, vec![
+            volta_start("1"),
+            Barline {
+                location: "right".to_string(),
+                bar_style: None,
+                repeat: Some(Repeat { direction: "backward".to_string(), times: None }),
+                ending: Some(Ending {
+                    number: "1".to_string(),
+                    ending_type: "stop".to_string(),
+                    text: None,
+                }),
+            },
+        ]);
+
+        // m2: volta 2 with backward repeat
+        let m2 = make_measure(3, vec![
+            volta_start("2"),
+            Barline {
+                location: "right".to_string(),
+                bar_style: None,
+                repeat: Some(Repeat { direction: "backward".to_string(), times: None }),
+                ending: Some(Ending {
+                    number: "2".to_string(),
+                    ending_type: "stop".to_string(),
+                    text: None,
+                }),
+            },
+        ]);
+
+        // m3: volta 3 with backward repeat (the last ending)
+        let m3 = make_measure(4, vec![
+            volta_start("3"),
+            Barline {
+                location: "right".to_string(),
+                bar_style: None,
+                repeat: Some(Repeat { direction: "backward".to_string(), times: None }),
+                ending: Some(Ending {
+                    number: "3".to_string(),
+                    ending_type: "stop".to_string(),
+                    text: None,
+                }),
+            },
+        ]);
+
+        // m4: plain measure after the repeat section
+        let m4 = make_measure(5, vec![]);
+
+        let score = Score {
+            parts: vec![Part {
+                id: "P1".to_string(),
+                name: "Test".to_string(),
+                abbreviation: None,
+                instrument_name: None,
+                midi_program: None,
+                midi_channel: None,
+                measures: vec![m0, m1, m2, m3, m4],
+            }],
+            ..Score::new()
+        };
+
+        let unrolled = unroll(&score, 0);
+        let indices: Vec<usize> = unrolled.iter().map(|u| u.original_index).collect();
+
+        // Play order must be: m0 m1 m0 m2 m0 m3 m4 — exactly 7 unrolled measures.
+        // The old (buggy) heuristic would have added a spurious 4th pass (8 measures).
+        assert_eq!(
+            indices,
+            vec![0, 1, 0, 2, 0, 3, 4],
+            "Last volta with backward repeat should NOT trigger an extra pass; got {:?}",
+            indices
+        );
     }
 }
