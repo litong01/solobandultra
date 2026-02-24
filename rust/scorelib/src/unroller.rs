@@ -123,17 +123,6 @@ pub fn unroll(score: &Score, part_idx: usize) -> Vec<UnrolledMeasure> {
                 }
             }
         }
-
-        // Apply the +1 for sections whose last ending has a backward repeat.
-        for (fw, max) in section_max_passes.iter_mut() {
-            if section_last_ending_has_backward
-                .get(fw)
-                .copied()
-                .unwrap_or(false)
-            {
-                *max += 1;
-            }
-        }
     }
 
     // ── Walk: expand into play order ────────────────────────────────
@@ -401,12 +390,12 @@ mod tests {
         // 童年 has:
         //   - Intro (2 measures, repeated once = 4)
         //   - Body gap (4 measures)
-        //   - Main section: 6 endings ALL with backward repeat → 7 total plays
-        //     7 body plays × 16 measures + 6 ending measures = 118
+        //   - Main section: 6 endings ALL with backward repeat → 6 total plays
+        //     6 body plays × 16 measures + 6 ending measures = 102
         //   - Bridge (1 measure)
         //   - Chorus (3 body + 1 ending) × 2 volta endings = 8
         //   - Coda (6 measures)
-        // Total: 4 + 4 + 118 + 1 + 8 + 6 = 141
+        // Total: 4 + 4 + 102 + 1 + 8 + 6 = 125
         assert!(
             unrolled.len() > raw_count,
             "Unrolled length {} should be > raw measure count {} (multiple endings)",
