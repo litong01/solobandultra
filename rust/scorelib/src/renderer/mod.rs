@@ -625,10 +625,8 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                         );
                     }
 
-                    // Barlines (per-staff)
-                    if staff_num == 1 {
-                        render_barlines(&mut svg, measure, mx, mw, staff_y);
-                    }
+                    // Barlines (per-staff): repeat signs and bar lines on each staff
+                    render_barlines(&mut svg, measure, mx, mw, staff_y);
 
                     // Lyrics: render for this staff so melody-on-treble (staff 1) or
                     // lyric-on-bass (staff 2) both get lyrics at the same baseline.
