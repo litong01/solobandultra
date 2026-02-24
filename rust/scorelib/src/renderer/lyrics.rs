@@ -39,7 +39,7 @@ pub(super) fn font_for_text(text: &str) -> &'static str {
 
 // ── Lyrics constants ────────────────────────────────────────────────
 
-pub(super) const LYRICS_COLOR: &str = "#333333";
+pub(super) const LYRICS_COLOR: &str = "#000000";
 pub(super) const LYRICS_FONT_SIZE: f64 = 13.0;
 pub(super) const LYRICS_FONT_SIZE_CJK: f64 = 15.0;
 pub(super) const LYRICS_PAD_BELOW: f64 = 16.0;
@@ -249,7 +249,7 @@ pub(super) fn render_lyrics(
                 nx, ly,
                 &display_text,
                 font_size,
-                "normal",
+                "bold",
                 LYRICS_COLOR,
                 "middle",
                 Some(family),
