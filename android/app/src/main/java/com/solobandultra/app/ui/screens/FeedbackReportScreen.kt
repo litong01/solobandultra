@@ -33,7 +33,7 @@ import org.json.JSONObject
 private val ColorCorrect     = Color(0xFF4CAF50)
 private val ColorWrongTiming = Color(0xFFFFC107)
 private val ColorWrongPitch  = Color(0xFFF44336)
-private val ColorMissed      = Color(0xFF9E9E9E)
+private val ColorMissed      = Color(0xFF2196F3)  // blue (distinct from lyrics gray)
 
 // ── Main Screen ───────────────────────────────────────────────────────────────
 
@@ -101,7 +101,7 @@ fun FeedbackReportScreen(
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            text = "Green = on time, Yellow = wrong timing, Red = wrong pitch, Gray = missed",
+                            text = "Green = on time, Yellow = wrong timing, Red = wrong pitch, Blue = missed",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -207,7 +207,7 @@ private fun buildOverlayDotsJson(report: FeedbackReport, playbackMapJson: String
             val sys = systems.getJSONObject(systemIdx)
             val baseY = sys.optDouble("dots_base_y", sys.optDouble("y", 0.0) + sys.optDouble("height", 40.0) + 16.0)
             val colors = results.map { r ->
-                if (r.status == FeedbackState.Silent) "#9E9E9E" else r.status.cursorColor
+                if (r.status == FeedbackState.Silent) "#2196F3" else r.status.cursorColor
             }
             val dotEntry = JSONObject().apply {
                 put("x", x)

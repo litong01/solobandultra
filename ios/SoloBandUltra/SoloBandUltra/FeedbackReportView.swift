@@ -27,7 +27,7 @@ struct FeedbackReportView: View {
                             Text("Note accuracy on score")
                                 .font(.headline)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                            Text("Green = on time, Yellow = wrong timing, Red = wrong pitch, Gray = missed")
+                            Text("Green = on time, Yellow = wrong timing, Red = wrong pitch, Blue = missed")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -106,7 +106,7 @@ struct FeedbackReportView: View {
                 baseY = 0
             }
             let colors = results.map { (r: NoteResult) -> String in
-                r.status == FeedbackState.silent ? "#9E9E9E" : r.status.cursorColor
+                r.status == FeedbackState.silent ? "#2196F3" : r.status.cursorColor
             }
             dots.append(["x": x, "y": baseY, "colors": colors])
         }
@@ -252,7 +252,7 @@ struct FeedbackReportView: View {
         case .correct:     return .green
         case .wrongTiming: return .yellow
         case .wrongPitch:  return .red
-        case .silent:      return Color(.systemGray4)
+        case .silent:      return Color(red: 33/255, green: 150/255, blue: 243/255)  // #2196F3 blue
         }
     }
 }
