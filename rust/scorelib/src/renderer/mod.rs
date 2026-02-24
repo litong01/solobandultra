@@ -630,16 +630,15 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                         render_barlines(&mut svg, measure, mx, mw, staff_y);
                     }
 
-                    // Lyrics (render on bottom staff only)
-                    if staff_num == part_info.num_staves {
-                        let note_xs = note_x_positions_from_beat_map(
-                            &measure.notes, ps.divisions, &ml.beat_x_map,
-                        );
-                        render_lyrics(
-                            &mut svg, measure, &note_xs,
-                            lyrics_base_y, staff_filter,
-                        );
-                    }
+                    // Lyrics: render for this staff so melody-on-treble (staff 1) or
+                    // lyric-on-bass (staff 2) both get lyrics at the same baseline.
+                    let note_xs = note_x_positions_from_beat_map(
+                        &measure.notes, ps.divisions, &ml.beat_x_map,
+                    );
+                    render_lyrics(
+                        &mut svg, measure, &note_xs,
+                        lyrics_base_y, staff_filter,
+                    );
                 }
 
                 // Apply deferred octave-shift "stop" AFTER notes are rendered.

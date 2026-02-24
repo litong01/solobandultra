@@ -5,13 +5,17 @@
 //! Handles:
 //! - Forward / backward repeat barlines
 //! - Volta brackets (1st / 2nd / Nth endings)
+//! - Verse-based repeat: |: … :| with no volta and no explicit `times`;
+//!   repeat count is taken from the number of lyric verses (e.g. 4 or 5).
+//!   All other repeat types take precedence; verse repeat applies only when
+//!   there is no other repeat in place for that measure range.
 //! - D.S. (dal segno) — jump to segno
 //! - D.C. (da capo) — jump to beginning
 //! - Fine — stop on D.S./D.C. pass (detected from `<sound fine>` or "Fine" text)
 //! - To Coda / Coda — jump to coda section
 //! - Senza ripetizione: repeats are NOT taken again after a D.S./D.C. jump
 
-use crate::model::Score;
+use crate::model::{Part, Score};
 
 /// One entry in the unrolled (play-order) sequence.
 #[derive(Debug, Clone)]
@@ -122,6 +126,50 @@ pub fn unroll(score: &Score, part_idx: usize) -> Vec<UnrolledMeasure> {
                     }
                 }
             }
+        }
+    }
+
+    // ── Pre-scan: verse-based repeat (|: … :| with no volta, no times) ─
+    // For classic hymns with multiple lyric verses, the repeat count may be
+    // implied by the number of verses. Apply only when the section has no
+    // volta and no explicit repeat times (other repeats take precedence).
+    {
+        let verse_count = max_verse_count(part);
+        for (i, m) in measures.iter().enumerate() {
+            let has_forward = m.barlines.iter().any(|bl| {
+                bl.location == "left"
+                    && bl.repeat.as_ref().map_or(false, |r| r.direction == "forward")
+            });
+            if !has_forward {
+                continue;
+            }
+            // Find the closing backward repeat for this section (first on or after i).
+            let backward_measure = (i..measures.len()).find(|&j| {
+                measures[j].barlines.iter().any(|bl| {
+                    bl.location == "right"
+                        && bl.repeat.as_ref().map_or(false, |r| r.direction == "backward")
+                })
+            });
+            let Some(j) = backward_measure else { continue };
+            // Section [i, j]: only use verse count when no other repeat applies.
+            let section_has_volta = (i..=j).any(|idx| volta_map.contains_key(&idx));
+            if section_has_volta {
+                continue;
+            }
+            let backward_times = measures[j].barlines.iter().find_map(|bl| {
+                if bl.location == "right" {
+                    bl.repeat.as_ref().and_then(|r| r.times)
+                } else {
+                    None
+                }
+            });
+            if backward_times.is_some() {
+                continue;
+            }
+            // No volta, no explicit times → use verse-based repeat count.
+            section_max_passes
+                .entry(i)
+                .or_insert((2).max(verse_count));
         }
     }
 
@@ -324,6 +372,20 @@ fn measure_has_fine(m: &crate::model::Measure) -> bool {
     })
 }
 
+/// Maximum lyric verse number in a part (e.g. 4 if there are verses 1–4).
+/// Returns at least 1 so that verse-based repeat count is at least 2 when used.
+fn max_verse_count(part: &Part) -> i32 {
+    let mut max_verse = 0;
+    for m in &part.measures {
+        for n in &m.notes {
+            for ly in &n.lyrics {
+                max_verse = max_verse.max(ly.number);
+            }
+        }
+    }
+    max_verse.max(1)
+}
+
 /// Parse ending number string like "1", "2", "1, 2", or "1-3" into a vec of ints.
 /// Supports comma-separated values and dash-separated ranges (e.g. "1-3" → [1,2,3]).
 fn parse_ending_numbers(s: &str) -> Vec<i32> {
@@ -366,7 +428,217 @@ fn parse_ending_numbers(s: &str) -> Vec<i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::{Attributes, Barline, Key, Lyric, Measure, Note, Part, Pitch, Repeat, Score, TimeSignature};
     use crate::parse_file;
+
+    /// Build a minimal part with N measures, optional |: at start_idx and :| at end_idx (no times),
+    /// and lyrics with verse numbers 1..=num_verses on the first note of the first measure.
+    fn make_verse_repeat_part(
+        num_measures: usize,
+        start_idx: usize,
+        end_idx: usize,
+        num_verses: i32,
+        backward_times: Option<i32>,
+    ) -> Part {
+        let mut measures = Vec::with_capacity(num_measures);
+        for i in 0..num_measures {
+            let mut barlines = vec![];
+            if i == start_idx {
+                barlines.push(Barline {
+                    location: "left".into(),
+                    bar_style: None,
+                    repeat: Some(Repeat { direction: "forward".into(), times: None }),
+                    ending: None,
+                });
+            }
+            if i == end_idx {
+                barlines.push(Barline {
+                    location: "right".into(),
+                    bar_style: None,
+                    repeat: Some(Repeat {
+                        direction: "backward".into(),
+                        times: backward_times,
+                    }),
+                    ending: None,
+                });
+            }
+            let lyrics = if i == 0 && num_verses > 0 {
+                (1..=num_verses)
+                    .map(|n| Lyric {
+                        number: n,
+                        text: format!("verse{}", n),
+                        syllabic: Some("single".into()),
+                        font_family: None,
+                    })
+                    .collect()
+            } else {
+                vec![]
+            };
+            measures.push(Measure {
+                number: (i + 1) as i32,
+                implicit: false,
+                width: None,
+                attributes: if i == 0 {
+                    Some(Attributes {
+                        divisions: Some(2),
+                        key: Some(Key { fifths: 0, mode: Some("major".into()) }),
+                        time: Some(TimeSignature { beats: 4, beat_type: 4 }),
+                        clefs: vec![],
+                        transpose: None,
+                        staves: None,
+                    })
+                } else {
+                    None
+                },
+                notes: vec![Note {
+                    pitch: Some(Pitch {
+                        step: "C".into(),
+                        alter: None,
+                        octave: 4,
+                    }),
+                    duration: 2,
+                    voice: Some(1),
+                    note_type: Some("quarter".into()),
+                    stem: None,
+                    beams: vec![],
+                    rest: false,
+                    measure_rest: false,
+                    chord: false,
+                    dot: false,
+                    accidental: None,
+                    grace: false,
+                    grace_slash: false,
+                    staff: Some(1),
+                    tie_start: false,
+                    tie_stop: false,
+                    default_x: None,
+                    default_y: None,
+                    lyrics,
+                    slurs: vec![],
+                }],
+                harmonies: vec![],
+                barlines,
+                directions: vec![],
+                new_system: false,
+                new_page: false,
+            });
+        }
+        Part {
+            id: "P1".into(),
+            name: "Voice".into(),
+            abbreviation: None,
+            instrument_name: None,
+            midi_program: None,
+            midi_channel: None,
+            measures,
+        }
+    }
+
+    #[test]
+    fn unroll_verse_repeat_uses_lyric_verse_count() {
+        // |: 2 measures :| with 4 verses, no volta, no times → play 4 times → 8 measures
+        let part = make_verse_repeat_part(2, 0, 1, 4, None);
+        let score = Score {
+            title: None,
+            title_style: None,
+            subtitle: None,
+            subtitle_style: None,
+            composer: None,
+            composer_style: None,
+            arranger: None,
+            version: None,
+            software: None,
+            defaults: None,
+            parts: vec![part],
+        };
+        let unrolled = unroll(&score, 0);
+        let raw = score.parts[0].measures.len();
+        assert_eq!(
+            unrolled.len(),
+            8,
+            "Verse repeat: 2 measures × 4 verses = 8 unrolled; got {} (raw {})",
+            unrolled.len(),
+            raw
+        );
+    }
+
+    #[test]
+    fn unroll_verse_repeat_explicit_times_takes_precedence() {
+        // Same |: 2 measures :| but times=3 → play 3 times, not verse count
+        let part = make_verse_repeat_part(2, 0, 1, 4, Some(3));
+        let score = Score {
+            title: None,
+            title_style: None,
+            subtitle: None,
+            subtitle_style: None,
+            composer: None,
+            composer_style: None,
+            arranger: None,
+            version: None,
+            software: None,
+            defaults: None,
+            parts: vec![part],
+        };
+        let unrolled = unroll(&score, 0);
+        assert_eq!(
+            unrolled.len(),
+            6,
+            "Explicit times=3: 2 measures × 3 = 6 unrolled; got {}",
+            unrolled.len()
+        );
+    }
+
+    #[test]
+    fn unroll_verse_repeat_no_lyrics_defaults_to_two_passes() {
+        // |: 2 measures :| with no lyrics (max verse 1) → max(2,1)=2 passes → 4 measures
+        let part = make_verse_repeat_part(2, 0, 1, 0, None);
+        let score = Score {
+            title: None,
+            title_style: None,
+            subtitle: None,
+            subtitle_style: None,
+            composer: None,
+            composer_style: None,
+            arranger: None,
+            version: None,
+            software: None,
+            defaults: None,
+            parts: vec![part],
+        };
+        let unrolled = unroll(&score, 0);
+        assert_eq!(
+            unrolled.len(),
+            4,
+            "No lyrics: 2 measures × 2 default passes = 4 unrolled; got {}",
+            unrolled.len()
+        );
+    }
+
+    #[test]
+    fn unroll_verse_repeat_five_verses() {
+        // Classic hymn: 3 measures between |: and :|, 5 verses → 15 unrolled
+        let part = make_verse_repeat_part(3, 0, 2, 5, None);
+        let score = Score {
+            title: None,
+            title_style: None,
+            subtitle: None,
+            subtitle_style: None,
+            composer: None,
+            composer_style: None,
+            arranger: None,
+            version: None,
+            software: None,
+            defaults: None,
+            parts: vec![part],
+        };
+        let unrolled = unroll(&score, 0);
+        assert_eq!(
+            unrolled.len(),
+            15,
+            "5 verses × 3 measures = 15 unrolled; got {}",
+            unrolled.len()
+        );
+    }
 
     #[test]
     fn unroll_asa_branca_has_repeats() {
