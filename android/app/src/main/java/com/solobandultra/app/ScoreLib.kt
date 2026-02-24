@@ -116,6 +116,14 @@ object ScoreLib {
         return playbackMap(data, ext.ifEmpty { null }, pageWidth, transpose)
     }
 
+    /**
+     * Add the feedback overlay layer (colored dots) to a score SVG for the performance report.
+     * @param svg The score SVG string.
+     * @param overlayDotsJson JSON array of { "x", "y", "colors": string[] } in SVG coordinates.
+     * @return New SVG string with overlay inserted, or null on error.
+     */
+    external fun addFeedbackOverlay(svg: String, overlayDotsJson: String): String?
+
     // ── MIDI Generation ─────────────────────────────────────────────────
 
     /**

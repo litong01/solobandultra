@@ -11,7 +11,7 @@ use jni::objects::{JByteArray, JClass, JString};
 use jni::sys::{jfloat, jint, jstring};
 use jni::JNIEnv;
 
-use crate::{render_bytes_to_svg, render_file_to_svg, playback_map_from_bytes, generate_midi_from_bytes, render_audio_from_bytes, parse_midi_options_from_json_str, MidiOptions};
+use crate::{render_bytes_to_svg, render_file_to_svg, playback_map_from_bytes, generate_midi_from_bytes, render_audio_from_bytes, parse_midi_options_from_json_str, add_feedback_overlay_to_svg, MidiOptions};
 use crate::note_timeline::note_timeline_from_bytes;
 
 /// Render a MusicXML file at the given path to SVG.
@@ -258,6 +258,37 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderAudio(
             }
         }
         _ => std::ptr::null_mut() as jni::sys::jbyteArray,
+    }
+}
+
+/// Add the feedback overlay layer to a score SVG (for performance report).
+///
+/// Called from Kotlin as:
+///   external fun addFeedbackOverlay(svg: String, overlayDotsJson: String): String?
+#[no_mangle]
+pub extern "system" fn Java_com_solobandultra_app_ScoreLib_addFeedbackOverlay(
+    mut env: JNIEnv,
+    _class: JClass,
+    svg: JString,
+    overlay_dots_json: JString,
+) -> jstring {
+    let svg_str: String = match env.get_string(&svg) {
+        Ok(s) => s.into(),
+        Err(_) => return std::ptr::null_mut(),
+    };
+    let dots_str: String = match env.get_string(&overlay_dots_json) {
+        Ok(s) => s.into(),
+        Err(_) => return std::ptr::null_mut(),
+    };
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        add_feedback_overlay_to_svg(&svg_str, &dots_str)
+    }));
+    match result {
+        Ok(Ok(out)) => match env.new_string(&out) {
+            Ok(js) => js.into_raw(),
+            Err(_) => std::ptr::null_mut(),
+        },
+        _ => std::ptr::null_mut(),
     }
 }
 

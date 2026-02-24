@@ -180,7 +180,7 @@ struct SoloBandUltraApp: App {
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playAndRecord, mode: .default,
-                                    options: [.defaultToSpeaker, .allowBluetooth])
+                                    options: [.defaultToSpeaker, .allowBluetoothHFP])
             try session.setActive(true)
             print("[AudioSession] Configured: playAndRecord (defaultToSpeaker)")
         } catch {

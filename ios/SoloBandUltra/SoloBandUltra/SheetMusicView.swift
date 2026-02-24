@@ -236,7 +236,7 @@ struct SheetMusicView: View {
                 if let svg = svg {
                     svgContent = svg
                     playbackMapJson = pmap
-                    onScoreLoaded((svg, pmap ?? ""))
+                    onScoreLoaded(svg, pmap ?? "")
 
                     // Load the note timeline into FeedbackManager.
                     if let json = timelineJson,

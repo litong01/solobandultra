@@ -97,6 +97,24 @@ enum ScoreLib {
         return json
     }
 
+    // MARK: - Feedback Overlay
+
+    /// Add the feedback overlay layer (colored dots) to a score SVG for the performance report.
+    /// - Parameter svg: The score SVG string.
+    /// - Parameter overlayDotsJson: JSON array of { "x", "y", "colors": string[] } in SVG coordinates.
+    /// - Returns: New SVG string with overlay inserted, or nil on error.
+    static func addFeedbackOverlay(svg: String, overlayDotsJson: String) -> String? {
+        let cResult = svg.withCString { svgPtr in
+            overlayDotsJson.withCString { dotsPtr in
+                scorelib_add_feedback_overlay(svgPtr, dotsPtr)
+            }
+        }
+        guard let cResult = cResult else { return nil }
+        let out = String(cString: cResult)
+        scorelib_free_string(cResult)
+        return out
+    }
+
     // MARK: - MIDI Generation
 
     /// Generate MIDI bytes from MusicXML data.

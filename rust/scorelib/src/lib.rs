@@ -23,6 +23,7 @@ pub mod accompaniment;
 pub mod playback;
 pub mod audio;
 pub mod note_timeline;
+pub mod feedback_overlay;
 
 #[cfg(target_os = "android")]
 pub mod android;
@@ -37,6 +38,7 @@ pub use midi::{generate_midi, MidiOptions, Energy};
 pub use unroller::unroll;
 pub use timemap::generate_timemap;
 pub use playback::{generate_playback_map, PlaybackMap};
+pub use feedback_overlay::add_feedback_overlay_to_svg;
 
 // ═══════════════════════════════════════════════════════════════════════
 // Score transposition
@@ -294,6 +296,15 @@ pub fn render_audio_from_bytes(
     audio::render_audio(&midi_bytes, soundfont_data)
 }
 
+/// Add the feedback overlay layer (colored dots) to an existing score SVG.
+///
+/// `overlay_dots_json` is a JSON array of `{ "x", "y", "colors": string[] }`
+/// in SVG coordinates. Returns the SVG with a `<g id="feedback-overlay">` inserted
+/// before the closing `</svg>`. Used for the performance report.
+pub fn add_feedback_overlay(svg: &str, overlay_dots_json: &str) -> Result<String, String> {
+    add_feedback_overlay_to_svg(svg, overlay_dots_json)
+}
+
 /// Generate a playback map from a parsed score (JSON string).
 ///
 /// The playback map contains measure positions, system positions and the
@@ -516,6 +527,44 @@ pub unsafe extern "C" fn scorelib_playback_map(
 
     match result {
         Ok(Ok(json)) => CString::new(json).unwrap_or_default().into_raw(),
+        _ => std::ptr::null_mut(),
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Feedback overlay FFI
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Add the feedback overlay layer to a score SVG string.
+///
+/// `svg` and `overlay_dots_json` must be null-terminated UTF-8 strings.
+/// `overlay_dots_json` is a JSON array of { "x", "y", "colors": string[] }.
+/// Returns a new SVG string with the overlay inserted, or NULL on error.
+/// The caller must free the result with scorelib_free_string.
+///
+/// # Safety
+/// `svg` and `overlay_dots_json` must point to valid null-terminated UTF-8 strings.
+#[no_mangle]
+pub unsafe extern "C" fn scorelib_add_feedback_overlay(
+    svg: *const c_char,
+    overlay_dots_json: *const c_char,
+) -> *mut c_char {
+    if svg.is_null() || overlay_dots_json.is_null() {
+        return std::ptr::null_mut();
+    }
+    let svg_str = match unsafe { CStr::from_ptr(svg) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return std::ptr::null_mut(),
+    };
+    let dots_str = match unsafe { CStr::from_ptr(overlay_dots_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return std::ptr::null_mut(),
+    };
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        add_feedback_overlay_to_svg(svg_str, dots_str)
+    }));
+    match result {
+        Ok(Ok(out)) => CString::new(out).unwrap_or_default().into_raw(),
         _ => std::ptr::null_mut(),
     }
 }

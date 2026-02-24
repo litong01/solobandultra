@@ -1,8 +1,6 @@
 import SwiftUI
 import WebKit
 
-private let feedbackDotRowHeight = 14.0
-
 /// Post-performance feedback report presented as a sheet.
 /// When svgContent and playbackMapJson are provided, shows the score SVG with colored dots overlaid (no note table).
 struct FeedbackReportView: View {
@@ -19,31 +17,43 @@ struct FeedbackReportView: View {
 
     var body: some View {
         NavigationStack {
-            if showSvgOverlay, let overlayJson = overlayDotsJson, let svg = svgContent {
-                ScrollView {
-                    VStack(spacing: 20) {
-                        summarySection
-                        Divider()
-                        Text("Note accuracy on score")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Text("Green = on time, Yellow = wrong timing, Red = wrong pitch, Gray = missed")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        ReportOverlayWebView(html: Self.buildReportOverlayHtml(svg: svg, overlayDotsJson: overlayJson))
-                            .frame(height: 280)
+            Group {
+                if showSvgOverlay, let overlayJson = overlayDotsJson, let svg = svgContent,
+                   let svgWithOverlay = ScoreLib.addFeedbackOverlay(svg: svg, overlayDotsJson: overlayJson) {
+                    ScrollView {
+                        VStack(spacing: 20) {
+                            summarySection
+                            Divider()
+                            Text("Note accuracy on score")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Text("Green = on time, Yellow = wrong timing, Red = wrong pitch, Gray = missed")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            ReportOverlayWebView(html: Self.buildReportSvgHtml(svgWithOverlay: svgWithOverlay))
+                                .frame(height: 280)
+                        }
+                        .padding()
                     }
-                    .padding()
-                }
-            } else {
-                ScrollView {
-                    VStack(spacing: 20) {
-                        summarySection
-                        Divider()
-                        noteListSection
+                } else if showSvgOverlay, overlayDotsJson != nil, svgContent != nil {
+                    ScrollView {
+                        VStack(spacing: 20) {
+                            summarySection
+                            Divider()
+                            noteListSection
+                        }
+                        .padding()
                     }
-                    .padding()
+                } else {
+                    ScrollView {
+                        VStack(spacing: 20) {
+                            summarySection
+                            Divider()
+                            noteListSection
+                        }
+                        .padding()
+                    }
                 }
             }
             .navigationTitle("Performance Report")
@@ -58,36 +68,46 @@ struct FeedbackReportView: View {
 
     // MARK: - Overlay helpers
 
+    private struct MeasureNoteKey: Hashable {
+        let measureIdx: Int
+        let noteIdx: Int
+    }
+
     static func buildOverlayDotsJson(report: FeedbackReport, playbackMapJson: String) -> String? {
         guard let data = playbackMapJson.data(using: .utf8),
               let pmap = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let measures = pmap["measures"] as? [[String: Any]],
               let systems = pmap["systems"] as? [[String: Any]] else { return nil }
 
-        let grouped = Dictionary(grouping: report.results.filter { $0.expected.measureIdx >= 0 && $0.expected.noteIdx >= 0 }) { (result: NoteResult) in
-            (result.expected.measureIdx, result.expected.noteIdx)
+        let filtered = report.results.filter { $0.expected.measureIdx >= 0 && $0.expected.noteIdx >= 0 }
+        let grouped = Dictionary(grouping: filtered) { (result: NoteResult) -> MeasureNoteKey in
+            MeasureNoteKey(measureIdx: result.expected.measureIdx, noteIdx: result.expected.noteIdx)
         }
 
         var dots: [[String: Any]] = []
         for (key, results) in grouped {
-            let (measureIdx, noteIdx) = key
+            let measureIdx = key.measureIdx
+            let noteIdx = key.noteIdx
             guard let measure = measures.first(where: { ($0["measure_idx"] as? Int) == measureIdx }),
                   let systemIdx = measure["system_idx"] as? Int,
                   systemIdx < systems.count,
-                  let notePositions = measure["note_positions"] as? [[Double]],
-                  noteIdx < notePositions.count,
-                  notePositions[noteIdx].count >= 2 else { continue }
-            let x = notePositions[noteIdx][1]
-            let sys = systems[systemIdx] as? [String: Any]
+                  let notePositionsAny = measure["note_positions"] as? [Any],
+                  noteIdx < notePositionsAny.count,
+                  let notePosArray = notePositionsAny[noteIdx] as? [Any],
+                  notePosArray.count >= 2,
+                  let x = notePosArray[1] as? Double else { continue }
+            let sys = systems[systemIdx]
             let baseY: Double
-            if let dy = sys?["dots_base_y"] as? Double {
+            if let dy = sys["dots_base_y"] as? Double {
                 baseY = dy
-            } else if let sy = sys?["y"] as? Double, let sh = sys?["height"] as? Double {
+            } else if let sy = sys["y"] as? Double, let sh = sys["height"] as? Double {
                 baseY = sy + sh + 16
             } else {
                 baseY = 0
             }
-            let colors = results.map { r in r.status == .silent ? "#9E9E9E" : r.status.cursorColor }
+            let colors = results.map { (r: NoteResult) -> String in
+                r.status == FeedbackState.silent ? "#9E9E9E" : r.status.cursorColor
+            }
             dots.append(["x": x, "y": baseY, "colors": colors])
         }
         guard let out = try? JSONSerialization.data(withJSONObject: dots),
@@ -95,14 +115,9 @@ struct FeedbackReportView: View {
         return str
     }
 
-    static func buildReportOverlayHtml(svg: String, overlayDotsJson: String) -> String {
-        let safeSvg: String = {
-            guard let regex = try? NSRegularExpression(pattern: "<script[^>]*>[\\s\\S]*?</script>", options: .caseInsensitive) else { return svg }
-            let range = NSRange(svg.startIndex..., in: svg)
-            return regex.stringByReplacingMatches(in: svg, range: range, withTemplate: "")
-        }()
-        let dotsJs = overlayDotsJson.replacingOccurrences(of: "</", with: "<\\/")
-        return """
+    /// Minimal HTML to display the score SVG (overlay already embedded by Rust).
+    static func buildReportSvgHtml(svgWithOverlay: String) -> String {
+        """
         <!DOCTYPE html>
         <html>
         <head>
@@ -113,49 +128,11 @@ struct FeedbackReportView: View {
             @font-face { font-family: 'LXGW WenKai'; src: url('Fonts/LXGWWenKai-Regular.ttf') format('truetype'); font-weight: normal; font-style: normal; }
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { background: white; display: flex; justify-content: center; padding: 8px; }
-            #score-container { position: relative; display: inline-block; width: 100%; }
-            #score-container svg { width: 100%; height: auto; max-width: 100%; display: block; }
-            #overlay { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
-            #overlay svg { width: 100%; height: 100%; display: block; }
+            svg { width: 100%; height: auto; max-width: 100%; display: block; }
         </style>
         </head>
         <body>
-        <div id="score-container">
-            \(safeSvg)
-            <div id="overlay"></div>
-        </div>
-        <script>
-        (function() {
-            var dots = \(dotsJs);
-            var scoreSvg = document.querySelector('#score-container > svg');
-            if (!scoreSvg || !dots || dots.length === 0) return;
-            var vb = scoreSvg.getAttribute('viewBox');
-            if (!vb) return;
-            var rowHeight = Number(\(feedbackDotRowHeight));
-            var radius = 4;
-            var ns = 'http://www.w3.org/2000/svg';
-            var g = document.createElementNS(ns, 'g');
-            for (var i = 0; i < dots.length; i++) {
-                var d = dots[i];
-                var x = Number(d.x);
-                var baseY = Number(d.y);
-                var colors = d.colors || [];
-                for (var j = 0; j < colors.length; j++) {
-                    var circle = document.createElementNS(ns, 'circle');
-                    circle.setAttribute('cx', String(x));
-                    circle.setAttribute('cy', String(baseY + j * rowHeight));
-                    circle.setAttribute('r', radius);
-                    circle.setAttribute('fill', colors[j]);
-                    g.appendChild(circle);
-                }
-            }
-            var overlaySvg = document.createElementNS(ns, 'svg');
-            overlaySvg.setAttribute('viewBox', vb);
-            overlaySvg.setAttribute('preserveAspectRatio', scoreSvg.getAttribute('preserveAspectRatio') || 'xMidYMid meet');
-            overlaySvg.appendChild(g);
-            document.getElementById('overlay').appendChild(overlaySvg);
-        })();
-        </script>
+        \(svgWithOverlay)
         </body>
         </html>
         """

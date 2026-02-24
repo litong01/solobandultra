@@ -23,6 +23,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.solobandultra.app.FeedbackReport
 import com.solobandultra.app.FeedbackState
 import com.solobandultra.app.NoteResult
+import com.solobandultra.app.ScoreLib
 import kotlin.math.abs
 import org.json.JSONArray
 import org.json.JSONObject
@@ -35,9 +36,6 @@ private val ColorWrongPitch  = Color(0xFFF44336)
 private val ColorMissed      = Color(0xFF9E9E9E)
 
 // ── Main Screen ───────────────────────────────────────────────────────────────
-
-/** Vertical spacing between stacked feedback dots (SVG units). */
-private const val FEEDBACK_DOT_ROW_HEIGHT = 14.0
 
 /**
  * Post-performance feedback report presented as a [ModalBottomSheet].
@@ -86,47 +84,70 @@ fun FeedbackReportScreen(
             }
 
             if (showSvgOverlay && overlayDotsJson != null) {
-                // Summary + SVG with feedback dots overlay (no note table)
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    SummarySection(report)
-                    HorizontalDivider()
-                    Text(
-                        text = "Note accuracy on score",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = "Green = on time, Yellow = wrong timing, Red = wrong pitch, Gray = missed",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Box(
+                val svgWithOverlay = ScoreLib.addFeedbackOverlay(svgContent!!, overlayDotsJson)
+                if (svgWithOverlay != null) {
+                    // Summary + SVG with overlay (Rust-generated; no script)
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 200.dp)
+                            .padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        AndroidView(
-                            factory = { ctx ->
-                                WebView(ctx).apply {
-                                    settings.javaScriptEnabled = true
-                                }
-                            },
-                            update = { webView ->
-                                val html = buildReportOverlayHtml(svgContent!!, overlayDotsJson)
-                                webView.loadDataWithBaseURL(
-                                    "file:///android_asset/",
-                                    html,
-                                    "text/html",
-                                    "UTF-8",
-                                    null
-                                )
-                            }
+                        SummarySection(report)
+                        HorizontalDivider()
+                        Text(
+                            text = "Note accuracy on score",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
                         )
+                        Text(
+                            text = "Green = on time, Yellow = wrong timing, Red = wrong pitch, Gray = missed",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 200.dp)
+                        ) {
+                            AndroidView(
+                                factory = { ctx ->
+                                    WebView(ctx).apply {
+                                        settings.javaScriptEnabled = false
+                                    }
+                                },
+                                update = { webView ->
+                                    val html = buildReportSvgHtml(svgWithOverlay)
+                                    webView.loadDataWithBaseURL(
+                                        "file:///android_asset/",
+                                        html,
+                                        "text/html",
+                                        "UTF-8",
+                                        null
+                                    )
+                                }
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 32.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        item { SummarySection(report) }
+                        item { HorizontalDivider() }
+                        item {
+                            Text(
+                                text = "Notes",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        item { NoteListHeader() }
+                        items(report.results) { result ->
+                            NoteRow(result)
+                        }
                     }
                 }
             } else {
@@ -202,11 +223,10 @@ private fun buildOverlayDotsJson(report: FeedbackReport, playbackMapJson: String
 }
 
 /**
- * HTML for report: score SVG + overlay layer of feedback dots (no cursor/playback).
+ * Minimal HTML to display the score SVG (with overlay already embedded by Rust).
+ * No script — overlay is generated in Rust when the user opens the report.
  */
-private fun buildReportOverlayHtml(svg: String, overlayDotsJson: String): String {
-    val safeSvg = svg.replace(Regex("<script[^>]*>[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
-    val dotsJs = overlayDotsJson.replace("</", "<\\/")
+private fun buildReportSvgHtml(svgWithOverlay: String): String {
     return """
         <!DOCTYPE html>
         <html>
@@ -218,49 +238,11 @@ private fun buildReportOverlayHtml(svg: String, overlayDotsJson: String): String
             @font-face { font-family: 'LXGW WenKai'; src: url('fonts/LXGWWenKai-Regular.ttf') format('truetype'); font-weight: normal; font-style: normal; }
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { background: white; display: flex; justify-content: center; padding: 8px; }
-            #score-container { position: relative; display: inline-block; width: 100%; }
-            #score-container svg { width: 100%; height: auto; max-width: 100%; display: block; }
-            #overlay { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
-            #overlay svg { width: 100%; height: 100%; display: block; }
+            svg { width: 100%; height: auto; max-width: 100%; display: block; }
         </style>
         </head>
         <body>
-        <div id="score-container">
-            $safeSvg
-            <div id="overlay"></div>
-        </div>
-        <script>
-        (function() {
-            var dots = $dotsJs;
-            var scoreSvg = document.querySelector('#score-container > svg');
-            if (!scoreSvg || !dots || dots.length === 0) return;
-            var vb = scoreSvg.getAttribute('viewBox');
-            if (!vb) return;
-            var rowHeight = Number($FEEDBACK_DOT_ROW_HEIGHT);
-            var radius = 4;
-            var ns = 'http://www.w3.org/2000/svg';
-            var g = document.createElementNS(ns, 'g');
-            for (var i = 0; i < dots.length; i++) {
-                var d = dots[i];
-                var x = Number(d.x);
-                var baseY = Number(d.y);
-                var colors = d.colors || [];
-                for (var j = 0; j < colors.length; j++) {
-                    var circle = document.createElementNS(ns, 'circle');
-                    circle.setAttribute('cx', String(x));
-                    circle.setAttribute('cy', String(baseY + j * rowHeight));
-                    circle.setAttribute('r', radius);
-                    circle.setAttribute('fill', colors[j]);
-                    g.appendChild(circle);
-                }
-            }
-            var overlaySvg = document.createElementNS(ns, 'svg');
-            overlaySvg.setAttribute('viewBox', vb);
-            overlaySvg.setAttribute('preserveAspectRatio', scoreSvg.getAttribute('preserveAspectRatio') || 'xMidYMid meet');
-            overlaySvg.appendChild(g);
-            document.getElementById('overlay').appendChild(overlaySvg);
-        })();
-        </script>
+        $svgWithOverlay
         </body>
         </html>
     """.trimIndent()

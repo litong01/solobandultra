@@ -85,6 +85,16 @@ uint8_t* scorelib_render_audio_from_bytes(const uint8_t* data, size_t len,
 char* scorelib_note_timeline(const uint8_t* data, size_t len, const char* extension, int32_t transpose);
 
 /**
+ * Add the feedback overlay layer (colored dots) to a score SVG.
+ * Used for the performance report — dots below each note (green/yellow/red/gray).
+ * `svg` and `overlay_dots_json` must be null-terminated UTF-8.
+ * `overlay_dots_json` is a JSON array: [ {"x": number, "y": number, "colors": ["#hex", ...]}, ... ]
+ * Returns a new SVG string with the overlay inserted, or NULL on error.
+ * The caller must free the result with scorelib_free_string().
+ */
+char* scorelib_add_feedback_overlay(const char* svg, const char* overlay_dots_json);
+
+/**
  * Free a string previously returned by scorelib functions.
  * Safe to call with NULL.
  */
