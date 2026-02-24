@@ -370,3 +370,43 @@ jobs:
             ./artifacts/SoloBandUltra-Android-release.aab
           draft: false
           prerelease: false
+
+  # ─────────────────────────────────────────────
+  # Upload release artifacts to Google Drive
+  # ─────────────────────────────────────────────
+  upload-to-gdrive:
+    name: Upload to Google Drive
+    needs: [release]
+    if: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_KEY != '' && secrets.GDRIVE_FOLDER_ID != '' }}
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+          merge-multiple: true
+
+      - name: Upload iOS Simulator build to Google Drive
+        uses: adityak74/google-drive-upload-git-action@v1
+        with:
+          credentials: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_KEY }}
+          filename: ./artifacts/SoloBandUltra-iOS-Simulator.zip
+          folderId: ${{ secrets.GDRIVE_FOLDER_ID }}
+          overwrite: "true"
+
+      - name: Upload Android APK to Google Drive
+        uses: adityak74/google-drive-upload-git-action@v1
+        with:
+          credentials: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_KEY }}
+          filename: ./artifacts/SoloBandUltra-Android-release.apk
+          folderId: ${{ secrets.GDRIVE_FOLDER_ID }}
+          overwrite: "true"
+
+      - name: Upload Android AAB to Google Drive
+        uses: adityak74/google-drive-upload-git-action@v1
+        with:
+          credentials: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_KEY }}
+          filename: ./artifacts/SoloBandUltra-Android-release.aab
+          folderId: ${{ secrets.GDRIVE_FOLDER_ID }}
+          overwrite: "true"
