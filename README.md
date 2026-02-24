@@ -187,8 +187,29 @@ Or manually from the GitHub Actions tab.
 | Platform | Artifact | Description |
 |----------|----------|-------------|
 | iOS | `SoloBandUltra-iOS-Simulator.zip` | Simulator `.app` bundle (unsigned) |
-| Android | `SoloBandUltra-Android-debug.apk` | Debug APK for device testing |
-| Android | `SoloBandUltra-Android-release.aab` | Release AAB for Google Play |
+| Android | `SoloBandUltra-Android-release.apk` | Signed release APK — install directly on device |
+| Android | `SoloBandUltra-Android-release.aab` | Signed release AAB — for Google Play upload |
+
+### Google Drive Upload
+
+After a successful release, all three artifacts are automatically copied to a Google Drive folder.
+
+**Required repository secrets:**
+
+| Secret | Description |
+|--------|-------------|
+| `GDRIVE_SERVICE_ACCOUNT_KEY` | Base64-encoded Google service account credentials JSON with Drive API access |
+| `GDRIVE_FOLDER_ID` | ID of the target Google Drive folder (from the folder's URL) |
+
+**One-time setup:**
+
+1. Create a [Google service account](https://console.cloud.google.com/iam-admin/serviceaccounts) and enable the **Google Drive API** for its project.
+2. Download the service account's JSON key and base64-encode it:
+   ```bash
+   base64 -i service-account-key.json | tr -d '\n'
+   ```
+3. Share the target Google Drive folder with the service account's email address (give it **Editor** access).
+4. Add the base64 string as the `GDRIVE_SERVICE_ACCOUNT_KEY` secret and the folder ID as the `GDRIVE_FOLDER_ID` secret in **Settings → Secrets and variables → Actions**.
 
 ## Tech Stack
 
