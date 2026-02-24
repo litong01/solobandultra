@@ -410,6 +410,7 @@ impl Default for Score {
 impl Pitch {
     /// Convert pitch to MIDI note number.
     /// Middle C (C4) = 60.
+    /// Result is clamped to 0..=127 for valid MIDI note range (avoids overflow for extreme octaves).
     pub fn to_midi(&self) -> i32 {
         let step_semitone = match self.step.as_str() {
             "C" => 0,
@@ -422,6 +423,7 @@ impl Pitch {
             _ => 0,
         };
         let alter = self.alter.unwrap_or(0.0) as i32;
-        (self.octave + 1) * 12 + step_semitone + alter
+        let midi = (self.octave + 1) * 12 + step_semitone + alter;
+        midi.clamp(0, 127)
     }
 }

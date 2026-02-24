@@ -52,13 +52,14 @@ pub fn analyze_chords(
     unrolled: &[UnrolledMeasure],
     timemap: &[TimemapEntry],
 ) -> Vec<Chord> {
-    assert_eq!(
-        unrolled.len(),
-        timemap.len(),
-        "analyze_chords: unrolled ({}) and timemap ({}) must have the same length",
-        unrolled.len(),
-        timemap.len()
-    );
+    if unrolled.len() != timemap.len() {
+        eprintln!(
+            "[scorelib] WARNING: analyze_chords: unrolled ({} measures) and timemap ({} entries) length mismatch — returning empty chord list",
+            unrolled.len(),
+            timemap.len()
+        );
+        return Vec::new();
+    }
 
     // Check whether the score has *any* harmonies at all
     let has_harmonies = part.measures.iter().any(|m| !m.harmonies.is_empty());

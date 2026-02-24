@@ -85,13 +85,14 @@ pub fn generate_midi(
         None => return Vec::new(),
     };
 
-    assert_eq!(
-        unrolled.len(),
-        timemap.len(),
-        "unrolled ({}) and timemap ({}) must have the same length",
-        unrolled.len(),
-        timemap.len()
-    );
+    if unrolled.len() != timemap.len() {
+        eprintln!(
+            "[scorelib] WARNING: generate_midi: unrolled ({} measures) and timemap ({} entries) length mismatch — returning empty MIDI",
+            unrolled.len(),
+            timemap.len()
+        );
+        return Vec::new();
+    }
 
     let mut tracks: Vec<Vec<u8>> = Vec::new();
 
@@ -412,12 +413,15 @@ fn build_smf(tracks: &[Vec<u8>]) -> Vec<u8> {
 
 /// Build the tempo track (track 0) — contains tempo change meta-events.
 fn build_tempo_track(timemap: &[TimemapEntry]) -> Vec<u8> {
+    const MIN_TEMPO_BPM: f64 = 20.0;
+    const MAX_TEMPO_BPM: f64 = 600.0;
     let mut events: Vec<MidiEvent> = Vec::new();
     let mut last_tempo: f64 = 0.0;
 
     for entry in timemap {
-        if (entry.tempo_bpm - last_tempo).abs() > 0.01 {
-            let uspq = (60_000_000.0 / entry.tempo_bpm) as u32; // microseconds per quarter
+        let tempo_bpm = entry.tempo_bpm.clamp(MIN_TEMPO_BPM, MAX_TEMPO_BPM);
+        if (tempo_bpm - last_tempo).abs() > 0.01 {
+            let uspq = (60_000_000.0 / tempo_bpm) as u32; // microseconds per quarter
             let tick = ms_to_ticks(entry.timestamp_ms, timemap);
             // Meta event: FF 51 03 tt tt tt
             events.push(MidiEvent {
@@ -431,7 +435,7 @@ fn build_tempo_track(timemap: &[TimemapEntry]) -> Vec<u8> {
                     (uspq & 0xFF) as u8,
                 ],
             });
-            last_tempo = entry.tempo_bpm;
+            last_tempo = tempo_bpm;
         }
     }
 
@@ -469,6 +473,7 @@ fn encode_track(events: &[MidiEvent], name: &str) -> Vec<u8> {
 }
 
 /// Write a variable-length quantity (VLQ) to a byte vector.
+/// Standard MIDI VLQ uses at most 5 bytes for u32.
 fn write_vlq(out: &mut Vec<u8>, mut value: u32) {
     if value == 0 {
         out.push(0);
@@ -476,7 +481,7 @@ fn write_vlq(out: &mut Vec<u8>, mut value: u32) {
     }
     let mut buf = [0u8; 5];
     let mut i = 0;
-    while value > 0 {
+    while value > 0 && i < 5 {
         buf[i] = (value & 0x7F) as u8;
         value >>= 7;
         if i > 0 {
@@ -484,7 +489,6 @@ fn write_vlq(out: &mut Vec<u8>, mut value: u32) {
         }
         i += 1;
     }
-    // Write in reverse order
     for j in (0..i).rev() {
         out.push(buf[j]);
     }

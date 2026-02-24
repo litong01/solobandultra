@@ -336,6 +336,12 @@ pub fn playback_map_from_bytes(
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 
+/// Convert a Rust string to a C string for FFI, stripping null bytes so CString::new never fails.
+fn string_to_c_string(s: String) -> CString {
+    let sanitized = s.replace('\0', "");
+    CString::new(sanitized).unwrap_or_default()
+}
+
 /// Parse a MusicXML file and return SVG as a C string.
 /// The caller must free the returned string with `scorelib_free_string`.
 ///
@@ -365,7 +371,7 @@ pub unsafe extern "C" fn scorelib_render_file(
     }));
 
     match result {
-        Ok(Ok(svg)) => CString::new(svg).unwrap_or_default().into_raw(),
+        Ok(Ok(svg)) => string_to_c_string(svg).into_raw(),
         _ => std::ptr::null_mut(),
     }
 }
@@ -402,7 +408,7 @@ pub unsafe extern "C" fn scorelib_render_bytes(
     }));
 
     match result {
-        Ok(Ok(svg)) => CString::new(svg).unwrap_or_default().into_raw(),
+        Ok(Ok(svg)) => string_to_c_string(svg).into_raw(),
         _ => std::ptr::null_mut(),
     }
 }
@@ -526,7 +532,7 @@ pub unsafe extern "C" fn scorelib_playback_map(
     }));
 
     match result {
-        Ok(Ok(json)) => CString::new(json).unwrap_or_default().into_raw(),
+        Ok(Ok(json)) => string_to_c_string(json).into_raw(),
         _ => std::ptr::null_mut(),
     }
 }
@@ -564,7 +570,7 @@ pub unsafe extern "C" fn scorelib_add_feedback_overlay(
         add_feedback_overlay_to_svg(svg_str, dots_str)
     }));
     match result {
-        Ok(Ok(out)) => CString::new(out).unwrap_or_default().into_raw(),
+        Ok(Ok(out)) => string_to_c_string(out).into_raw(),
         _ => std::ptr::null_mut(),
     }
 }

@@ -439,7 +439,7 @@ fn parse_attributes(node: &Node) -> Attributes {
 
     for child in node.children().filter(|n| n.is_element()) {
         match child.tag_name().name() {
-            "divisions" => attrs.divisions = parse_i32(&child),
+            "divisions" => attrs.divisions = parse_i32(&child).map(|d| d.max(1).min(65536)),
             "key" => attrs.key = Some(parse_key(&child)),
             "time" => attrs.time = Some(parse_time(&child)),
             "staves" => attrs.staves = parse_i32(&child),
@@ -474,8 +474,8 @@ fn parse_time(node: &Node) -> TimeSignature {
     };
     for child in node.children().filter(|n| n.is_element()) {
         match child.tag_name().name() {
-            "beats" => ts.beats = parse_i32(&child).unwrap_or(4),
-            "beat-type" => ts.beat_type = parse_i32(&child).unwrap_or(4),
+            "beats" => ts.beats = parse_i32(&child).unwrap_or(4).max(1),
+            "beat-type" => ts.beat_type = parse_i32(&child).unwrap_or(4).max(1),
             _ => {}
         }
     }

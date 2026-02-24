@@ -106,7 +106,7 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                 if let Some(ref attrs) = measure.attributes {
                     for clef in &attrs.clefs {
                         let idx = clef.number as usize;
-                        if idx < clefs.len() {
+                        if idx >= 1 && idx < clefs.len() {
                             clefs[idx] = Some(clef.clone());
                         }
                     }
@@ -117,7 +117,7 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                         time = attrs.time.clone();
                     }
                     if let Some(d) = attrs.divisions {
-                        divisions = d;
+                        divisions = d.max(1);
                     }
                     if let Some(ref t) = attrs.transpose {
                         transpose_octave = t.octave_change.unwrap_or(0);
@@ -163,7 +163,7 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                         let ps = &mut part_states[pidx];
                         for clef in &attrs.clefs {
                             let idx = clef.number as usize;
-                            if idx < ps.clefs.len() {
+                            if idx >= 1 && idx < ps.clefs.len() {
                                 ps.clefs[idx] = Some(clef.clone());
                             }
                         }
@@ -174,7 +174,7 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                             ps.time = Some(t.clone());
                         }
                         if let Some(d) = attrs.divisions {
-                            ps.divisions = d;
+                            ps.divisions = d.max(1);
                         }
                         if let Some(ref t) = attrs.transpose {
                             ps.transpose_octave = t.octave_change.unwrap_or(0);
@@ -437,7 +437,7 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                 if let Some(ref attrs) = measure.attributes {
                     for clef in &attrs.clefs {
                         let idx = clef.number as usize;
-                        if idx < ps.clefs.len() {
+                        if idx >= 1 && idx < ps.clefs.len() {
                             ps.clefs[idx] = Some(clef.clone());
                         }
                     }
@@ -448,7 +448,7 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                         ps.time = Some(t.clone());
                     }
                     if let Some(d) = attrs.divisions {
-                        ps.divisions = d;
+                        ps.divisions = d.max(1);
                     }
                     if let Some(ref t) = attrs.transpose {
                         ps.transpose_octave = t.octave_change.unwrap_or(0);
