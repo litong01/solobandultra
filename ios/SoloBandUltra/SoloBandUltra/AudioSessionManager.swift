@@ -23,19 +23,17 @@ class AudioSessionManager: ObservableObject {
 
     // MARK: - Public API
 
-    /// Ensures the audio session is active with the playback category.
-    /// Call this before starting any audio playback.
-    /// Throws if the session cannot be activated.
+    /// Re-activate the audio session.
+    ///
+    /// The session category (.playAndRecord + .defaultToSpeaker) is set once at
+    /// app launch in SoloBandUltraApp.configureAudioSession().  This method only
+    /// re-activates the session (e.g. after an interruption or route change) without
+    /// touching the category — changing categories after AVAudioEngine has started
+    /// invalidates the inputNode format and crashes the engine.
     func ensureSessionActive() throws {
-        let session = AVAudioSession.sharedInstance()
-
-        // Set category to playback - this overrides the silent switch
-        try session.setCategory(.playback, mode: .default, options: [])
-        try session.setActive(true)
-
+        try AVAudioSession.sharedInstance().setActive(true)
         isSessionActive = true
         updateRouteInfo()
-        print("[AudioSessionManager] Session activated successfully")
     }
 
     /// Deactivates the audio session.

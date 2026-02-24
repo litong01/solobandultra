@@ -74,6 +74,17 @@ uint8_t* scorelib_render_audio_from_bytes(const uint8_t* data, size_t len,
                                           size_t* out_len);
 
 /**
+ * Generate a note timeline JSON array from MusicXML data.
+ * Returns melody notes (voice 1, part 0) with absolute timestamps:
+ *   [{ "start_ms": 0.0, "end_ms": 250.0, "midi": 60, "name": "C4" }, ...]
+ * `extension` is an optional format hint, may be NULL.
+ * `transpose` shifts all pitches by this many semitones (0 = no change).
+ * Returns a null-terminated JSON string, or NULL on error.
+ * The caller must free the returned string with scorelib_free_string().
+ */
+char* scorelib_note_timeline(const uint8_t* data, size_t len, const char* extension, int32_t transpose);
+
+/**
  * Free a string previously returned by scorelib functions.
  * Safe to call with NULL.
  */

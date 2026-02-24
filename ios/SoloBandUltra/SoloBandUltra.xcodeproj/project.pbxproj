@@ -25,6 +25,9 @@
 		PP00000000000000000001B1 /* BundleModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP00000000000000000001A1 /* BundleModel.swift */; };
 		PP00000000000000000003B1 /* MbkExtractor.m in Sources */ = {isa = PBXBuildFile; fileRef = PP00000000000000000003A1 /* MbkExtractor.m */; };
 		PP00000000000000000004B1 /* PdfViewerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP00000000000000000004A1 /* PdfViewerView.swift */; };
+		QQ00000000000000000001B1 /* FeedbackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = QQ00000000000000000001A1 /* FeedbackManager.swift */; };
+		QQ00000000000000000002B1 /* FeedbackReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = QQ00000000000000000002A1 /* FeedbackReport.swift */; };
+		QQ00000000000000000003B1 /* FeedbackReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = QQ00000000000000000003A1 /* FeedbackReportView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -49,6 +52,9 @@
 		PP00000000000000000002A1 /* MbkExtractor.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MbkExtractor.h; sourceTree = "<group>"; };
 		PP00000000000000000003A1 /* MbkExtractor.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MbkExtractor.m; sourceTree = "<group>"; };
 		PP00000000000000000004A1 /* PdfViewerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PdfViewerView.swift; sourceTree = "<group>"; };
+		QQ00000000000000000001A1 /* FeedbackManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedbackManager.swift; sourceTree = "<group>"; };
+		QQ00000000000000000002A1 /* FeedbackReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedbackReport.swift; sourceTree = "<group>"; };
+		QQ00000000000000000003A1 /* FeedbackReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedbackReportView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -94,9 +100,12 @@
 				GG00000000000000000001A1 /* GeneralUser_GS.sf2 */,
 				PP00000000000000000001A1 /* BundleModel.swift */,
 				PP00000000000000000002A1 /* MbkExtractor.h */,
-				PP00000000000000000003A1 /* MbkExtractor.m */,
-				PP00000000000000000004A1 /* PdfViewerView.swift */,
-			);
+			PP00000000000000000003A1 /* MbkExtractor.m */,
+			PP00000000000000000004A1 /* PdfViewerView.swift */,
+			QQ00000000000000000001A1 /* FeedbackManager.swift */,
+			QQ00000000000000000002A1 /* FeedbackReport.swift */,
+			QQ00000000000000000003A1 /* FeedbackReportView.swift */,
+		);
 			path = SoloBandUltra;
 			sourceTree = "<group>";
 		};
@@ -196,9 +205,12 @@
 				EE00000000000000000001B1 /* MidiSettings.swift in Sources */,
 				FF00000000000000000001B1 /* AuthManager.swift in Sources */,
 				PP00000000000000000001B1 /* BundleModel.swift in Sources */,
-				PP00000000000000000003B1 /* MbkExtractor.m in Sources */,
-				PP00000000000000000004B1 /* PdfViewerView.swift in Sources */,
-			);
+			PP00000000000000000003B1 /* MbkExtractor.m in Sources */,
+			PP00000000000000000004B1 /* PdfViewerView.swift in Sources */,
+			QQ00000000000000000001B1 /* FeedbackManager.swift in Sources */,
+			QQ00000000000000000002B1 /* FeedbackReport.swift in Sources */,
+			QQ00000000000000000003B1 /* FeedbackReportView.swift in Sources */,
+		);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */

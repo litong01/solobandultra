@@ -132,9 +132,30 @@ class AudioSessionManager(
     fun getAudioAttributes(): AudioAttributes = audioAttributes
 
     /**
+     * Enable or disable "play and record" mode so that microphone capture works
+     * while media playback is active (e.g. for real-time feedback).
+     *
+     * On Android, default MODE_NORMAL can prevent AudioRecord from receiving
+     * input while MediaPlayer is playing. MODE_IN_COMMUNICATION allows
+     * full-duplex (play + record) and matches iOS's .playAndRecord behavior.
+     * Speakerphone is forced on so playback stays on the main speaker.
+     */
+    fun setPlayAndRecordMode(enabled: Boolean) {
+        if (enabled) {
+            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+            audioManager.isSpeakerphoneOn = true
+            Log.d(TAG, "Play-and-record mode ON (MODE_IN_COMMUNICATION, speakerphone on)")
+        } else {
+            audioManager.mode = AudioManager.MODE_NORMAL
+            Log.d(TAG, "Play-and-record mode OFF (MODE_NORMAL)")
+        }
+    }
+
+    /**
      * Release all resources.
      */
     fun release() {
         abandonAudioFocus()
+        audioManager.mode = AudioManager.MODE_NORMAL
     }
 }

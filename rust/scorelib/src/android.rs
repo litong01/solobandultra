@@ -12,6 +12,7 @@ use jni::sys::{jfloat, jint, jstring};
 use jni::JNIEnv;
 
 use crate::{render_bytes_to_svg, render_file_to_svg, playback_map_from_bytes, generate_midi_from_bytes, render_audio_from_bytes, parse_midi_options_from_json_str, MidiOptions};
+use crate::note_timeline::note_timeline_from_bytes;
 
 /// Render a MusicXML file at the given path to SVG.
 ///
@@ -168,6 +169,42 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_generateMidi(
             }
         }
         _ => std::ptr::null_mut() as jni::sys::jbyteArray,
+    }
+}
+
+/// Generate a note timeline JSON from MusicXML bytes.
+///
+/// Called from Kotlin as:
+///   external fun noteTimeline(data: ByteArray, extension: String?, transpose: Int): String?
+#[no_mangle]
+pub extern "system" fn Java_com_solobandultra_app_ScoreLib_noteTimeline(
+    mut env: JNIEnv,
+    _class: JClass,
+    data: JByteArray,
+    extension: JString,
+    transpose: jint,
+) -> jstring {
+    let bytes = match env.convert_byte_array(&data) {
+        Ok(b) => b,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    let ext: Option<String> = if extension.is_null() {
+        None
+    } else {
+        env.get_string(&extension).ok().map(|s| s.into())
+    };
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        note_timeline_from_bytes(&bytes, ext.as_deref(), transpose)
+    }));
+
+    match result {
+        Ok(Ok(json)) => match env.new_string(&json) {
+            Ok(js) => js.into_raw(),
+            Err(_) => std::ptr::null_mut(),
+        },
+        _ => std::ptr::null_mut(),
     }
 }
 

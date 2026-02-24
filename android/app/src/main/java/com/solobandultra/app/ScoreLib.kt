@@ -73,6 +73,22 @@ object ScoreLib {
         return renderBytes(data, ext.ifEmpty { null }, pageWidth, transpose)
     }
 
+    // ── Note Timeline ───────────────────────────────────────────────────
+
+    /**
+     * Generate a note timeline JSON array from MusicXML bytes.
+     * Returns melody notes (voice 1, part 0) with absolute timestamps:
+     *   [{ "start_ms": 0.0, "end_ms": 250.0, "midi": 60, "name": "C4" }, ...]
+     * @param transpose Semitones to transpose (0 = no change). Must match render transpose.
+     */
+    external fun noteTimeline(data: ByteArray, extension: String?, transpose: Int): String?
+
+    /**
+     * Generate a note timeline from pre-loaded MusicXML bytes.
+     */
+    fun noteTimelineFromData(data: ByteArray, ext: String, transpose: Int = 0): String? =
+        noteTimeline(data, ext.ifEmpty { null }, transpose)
+
     // ── Playback Map ────────────────────────────────────────────────────
 
     /**

@@ -52,13 +52,22 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
+import android.Manifest
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Close
 import com.solobandultra.app.BookBundle
 import com.solobandultra.app.BookPiece
+import com.solobandultra.app.FeedbackReport
+import com.solobandultra.app.FeedbackState
 import com.solobandultra.app.MbkExtractor
+import com.solobandultra.app.NoteEvent
 import com.solobandultra.app.ScoreLib
+import com.solobandultra.app.audio.FeedbackManager
 import com.solobandultra.app.audio.PlaybackManager
 import com.solobandultra.app.ui.theme.SoloBandUltraTheme
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
@@ -140,6 +149,22 @@ fun SheetMusicScreen(
         ?: remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+
+    // ── Feedback Manager ─────────────────────────────────────────────
+    val feedbackManager = remember { FeedbackManager() }
+    val feedbackState by feedbackManager.state.collectAsState()
+    val feedbackReport by feedbackManager.report.collectAsState()
+    var showReport by remember { mutableStateOf(false) }
+
+    // Runtime permission launcher for RECORD_AUDIO.
+    val audioPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            playbackManager?.setPlayAndRecordMode(true)
+            feedbackManager.startListening()
+        }
+    }
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -463,16 +488,20 @@ fun SheetMusicScreen(
                         val ext = filePath.substringAfterLast('.', "")
                         val svg = ScoreLib.renderData(dataBytes, ext, pageWidth, currentTranspose)
                         val pmap = ScoreLib.playbackMapFromData(dataBytes, ext, pageWidth, currentTranspose)
+                        val timeline = ScoreLib.noteTimelineFromData(dataBytes, ext, currentTranspose)
                         val audio = ScoreLib.renderAudioFromData(dataBytes, ext, currentOptionsJson)
-                        Triple(svg, pmap, audio)
+                        listOf(svg, pmap, timeline, audio)
                     } else {
                         val svg = ScoreLib.renderAsset(context, filePath, pageWidth, currentTranspose)
                         val pmap = ScoreLib.playbackMapFromAsset(context, filePath, pageWidth, currentTranspose)
+                        val ext = filePath.substringAfterLast('.', "")
+                        val assetBytes = context.assets.open(filePath).use { it.readBytes() }
+                        val timeline = ScoreLib.noteTimelineFromData(assetBytes, ext, currentTranspose)
                         val audio = ScoreLib.renderAudioFromAsset(context, filePath, currentOptionsJson)
-                        Triple(svg, pmap, audio)
+                        listOf(svg, pmap, timeline, audio)
                     }
                 } catch (e: Exception) {
-                    Triple(null, null, null)
+                    listOf(null, null, null, null)
                 }
             }
 
@@ -480,10 +509,18 @@ fun SheetMusicScreen(
             if (thisGeneration != loadGeneration) return@launch
 
             isLoading = false
-            val (svg, pmap, audio) = result
+            val svg      = result[0] as? String
+            val pmap     = result[1] as? String
+            val timeline = result[2] as? String
+            val audio    = result[3] as? ByteArray
             if (svg != null) {
                 svgContent = svg
                 playbackMapJson = pmap
+
+                // Load note timeline into FeedbackManager.
+                if (timeline != null) {
+                    feedbackManager.loadTimeline(NoteEvent.parseList(timeline))
+                }
 
                 // Prepare the playback manager with the rendered WAV audio.
                 // File write on IO, MediaPlayer setup on Main (needs Looper).
@@ -522,6 +559,49 @@ fun SheetMusicScreen(
         playbackManager?.isMuted = muteMusic
         playbackManager?.repeatCount = repeatCount
         playbackManager?.showCursorEnabled = showCursor
+    }
+
+    // ── Feedback: start/stop listening with runtime permission ───────
+    // Enable play-and-record mode on Android so mic capture works while playback is active.
+    LaunchedEffect(isPlaying, includeFeedback) {
+        if (!includeFeedback) {
+            feedbackManager.stopListening()
+            playbackManager?.setPlayAndRecordMode(false)
+            return@LaunchedEffect
+        }
+        if (isPlaying) {
+            playbackManager?.setPlayAndRecordMode(true)
+            val hasPermission = context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (hasPermission) {
+                feedbackManager.startListening()
+            } else {
+                audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            }
+        } else {
+            feedbackManager.stopListening()
+            playbackManager?.setPlayAndRecordMode(false)
+        }
+    }
+
+    // ── Feedback: drive update() at ~10 Hz while playing ─────────────
+    LaunchedEffect(isPlaying, includeFeedback) {
+        if (!isPlaying || !includeFeedback) return@LaunchedEffect
+        while (isActive) {
+            playbackManager?.currentTimeMs?.value?.let { ms ->
+                feedbackManager.update(ms)
+            }
+            delay(100)
+        }
+    }
+
+    // ── Feedback: update cursor color when state changes ─────────────
+    LaunchedEffect(feedbackState, includeFeedback) {
+        if (includeFeedback) {
+            playbackManager?.setCursorColor(feedbackState.cursorColor)
+        } else {
+            playbackManager?.setCursorColor(FeedbackState.Silent.cursorColor)
+        }
     }
 
     // Regenerate audio when settings change (no need to re-render SVG)
@@ -706,7 +786,10 @@ fun SheetMusicScreen(
                     if (isAuthenticated) showSettings = true
                     else onLoginRequested(PendingAuthAction.ShowSettings)
                 },
-                onBook        = { showPdfViewer = true }
+                onBook           = { showPdfViewer = true },
+                feedbackEnabled  = includeFeedback,
+                reportAvailable  = feedbackReport != null,
+                onReport         = { showReport = true }
             )
         }
     ) { paddingValues ->
@@ -787,6 +870,14 @@ fun SheetMusicScreen(
                 )
             }
         }
+    }
+
+    // ── Feedback report sheet ────────────────────────────────────────
+    if (showReport && feedbackReport != null) {
+        FeedbackReportScreen(
+            report = feedbackReport!!,
+            onDismiss = { showReport = false }
+        )
     }
 
     // ── Bundle error dialog ──────────────────────────────────────────
@@ -1610,7 +1701,10 @@ private fun PlaybackControlBar(
     onStop: () -> Unit,
     onNext: () -> Unit = {},
     onSettings: () -> Unit,
-    onBook: () -> Unit = {}
+    onBook: () -> Unit = {},
+    feedbackEnabled: Boolean = false,
+    reportAvailable: Boolean = false,
+    onReport: () -> Unit = {}
 ) {
     Surface(
         tonalElevation = 3.dp,
@@ -1699,6 +1793,18 @@ private fun PlaybackControlBar(
                     )
                 }
             }
+
+            // ── Feedback Report ──
+            if (feedbackEnabled && reportAvailable) {
+                IconButton(onClick = onReport) {
+                    Icon(
+                        imageVector = Icons.Default.BarChart,
+                        contentDescription = "Performance Report",
+                        modifier = Modifier.size(28.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
         }
     }
 }
@@ -1721,6 +1827,17 @@ var _isInitialized = false;
 var _svgEl = null;
 var _containerEl = null;
 var _totalDurationMs = 0;
+
+// --- Feedback cursor color ---
+var _cursorColor = 'rgb(234,107,36)';
+
+// Set the cursor bar color for real-time feedback.
+function setCursorColor(color) {
+    _cursorColor = color;
+    if (_cursorEl) {
+        _cursorEl.style.backgroundColor = color;
+    }
+}
 
 function initPlayback(playbackMap) {
     _measures = playbackMap.measures || [];

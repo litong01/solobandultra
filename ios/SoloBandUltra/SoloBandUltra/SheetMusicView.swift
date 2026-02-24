@@ -5,6 +5,7 @@ import WebKit
 struct SheetMusicView: View {
     @EnvironmentObject var playbackManager: PlaybackManager
     @EnvironmentObject var midiSettings: MidiSettings
+    @EnvironmentObject var feedbackManager: FeedbackManager
     @State private var svgContent: String?
     @State private var playbackMapJson: String?
     @State private var isLoading = true
@@ -163,6 +164,14 @@ struct SheetMusicView: View {
             .onChange(of: midiSettings.showCursor) { newShowCursor in
                 playbackManager.showCursorEnabled = newShowCursor
             }
+            // ── Feedback cursor color ────────────────────────────────────────
+            .onChange(of: feedbackManager.state) { newState in
+                let hex = newState.cursorColor
+                playbackManager.webView?.evaluateJavaScript(
+                    "if (typeof setCursorColor === 'function') { setCursorColor('\(hex)'); }",
+                    completionHandler: nil
+                )
+            }
         }
     }
 
@@ -211,6 +220,9 @@ struct SheetMusicView: View {
             // Generate playback map
             let pmap = ScoreLib.playbackMap(data, extension: ext, pageWidth: pageWidth, transpose: transposeVal)
 
+            // Generate note timeline for real-time feedback (voice 1, part 0)
+            let timelineJson = ScoreLib.noteTimeline(data, extension: ext, transpose: transposeVal)
+
             // Render audio (MIDI→WAV) for playback with current settings
             let audio = ScoreLib.renderAudio(data, extension: ext, optionsJson: optionsJson)
 
@@ -222,6 +234,13 @@ struct SheetMusicView: View {
                 if let svg = svg {
                     svgContent = svg
                     playbackMapJson = pmap
+
+                    // Load the note timeline into FeedbackManager.
+                    if let json = timelineJson,
+                       let data = json.data(using: .utf8),
+                       let events = try? JSONDecoder().decode([NoteEvent].self, from: data) {
+                        feedbackManager.loadTimeline(events)
+                    }
 
                     // Prepare the playback manager with the rendered audio
                     if let wavData = audio {
@@ -435,6 +454,18 @@ struct SVGWebView: UIViewRepresentable {
     var _svgEl = null;
     var _containerEl = null;
     var _totalDurationMs = 0;
+
+    // ─── Feedback cursor color ─────────────────────────────────────────
+    var _cursorColor = 'rgb(234,107,36)';  // default orange
+
+    /// Set the cursor bar color for real-time feedback.
+    /// Pass a CSS color string: '#4CAF50', '#FFC107', '#F44336', or 'rgb(234,107,36)'.
+    function setCursorColor(color) {
+        _cursorColor = color;
+        if (_cursorEl) {
+            _cursorEl.style.backgroundColor = color;
+        }
+    }
 
     // ─── Self-driven animation state ──────────────────────────────────
     var _animating = false;       // true while requestAnimationFrame loop is active
@@ -726,4 +757,5 @@ struct SVGWebView: UIViewRepresentable {
     SheetMusicView()
         .environmentObject(PlaybackManager(audioSessionManager: AudioSessionManager()))
         .environmentObject(MidiSettings())
+        .environmentObject(FeedbackManager())
 }

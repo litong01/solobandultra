@@ -22,6 +22,7 @@ pub mod midi;
 pub mod accompaniment;
 pub mod playback;
 pub mod audio;
+pub mod note_timeline;
 
 #[cfg(target_os = "android")]
 pub mod android;

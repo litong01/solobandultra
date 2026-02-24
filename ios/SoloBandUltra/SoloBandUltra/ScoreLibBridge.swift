@@ -42,6 +42,32 @@ enum ScoreLib {
         return svg
     }
 
+    // MARK: - Note Timeline
+
+    /// Generate a note timeline JSON array from MusicXML data.
+    ///
+    /// Returns melody notes (voice 1, part 0) with absolute timestamps.
+    /// Decode with `JSONDecoder` into `[NoteEvent]`.
+    /// - Parameter transpose: Must match the transpose used for rendering.
+    static func noteTimeline(_ data: Data, extension ext: String? = nil, transpose: Int32 = 0) -> String? {
+        let result: UnsafeMutablePointer<CChar>? = data.withUnsafeBytes { buffer in
+            guard let baseAddress = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+                return nil
+            }
+            if let ext = ext {
+                return ext.withCString { extPtr in
+                    scorelib_note_timeline(baseAddress, buffer.count, extPtr, transpose)
+                }
+            } else {
+                return scorelib_note_timeline(baseAddress, buffer.count, nil, transpose)
+            }
+        }
+        guard let cResult = result else { return nil }
+        let json = String(cString: cResult)
+        scorelib_free_string(cResult)
+        return json
+    }
+
     // MARK: - Playback Map
 
     /// Generate a playback map JSON string from MusicXML data.

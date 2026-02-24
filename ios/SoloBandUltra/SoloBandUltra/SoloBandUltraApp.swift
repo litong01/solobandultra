@@ -8,6 +8,7 @@ struct SoloBandUltraApp: App {
     @StateObject private var playbackManager: PlaybackManager
     @StateObject private var midiSettings = MidiSettings()
     @StateObject private var authManager: AuthManager
+    @StateObject private var feedbackManager = FeedbackManager()
 
     init() {
         // Configure the Kinde authentication SDK FIRST — AuthManager.init() checks isAuthenticated.
@@ -30,6 +31,7 @@ struct SoloBandUltraApp: App {
                 .environmentObject(playbackManager)
                 .environmentObject(midiSettings)
                 .environmentObject(authManager)
+                .environmentObject(feedbackManager)
                 .onOpenURL { url in
                     handleIncomingFile(url)
                 }
@@ -162,14 +164,25 @@ struct SoloBandUltraApp: App {
                           cacheDir: cacheDir)
     }
 
-    /// Configure AVAudioSession for playback category.
-    /// This ensures audio plays even when the device silent/mute switch is on.
+    /// Configure AVAudioSession once at app launch.
+    ///
+    /// Using `.playAndRecord` with `.defaultToSpeaker` ensures:
+    /// - Audio plays through the speaker by default (not the earpiece)
+    /// - The microphone input path is always initialized so `AVAudioEngine.inputNode`
+    ///   always has a valid hardware format — this is required for the feedback mic tap.
+    /// - No mid-session category switching: switching categories after the engine has
+    ///   started causes the input node to lose its format and crashes with
+    ///   "IsFormatSampleRateAndChannelCountValid(format)".
+    ///
+    /// The orange microphone indicator only appears when audio is actually being
+    /// captured (tap installed), NOT merely because the category allows input.
     private static func configureAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [])
+            try session.setCategory(.playAndRecord, mode: .default,
+                                    options: [.defaultToSpeaker, .allowBluetooth])
             try session.setActive(true)
-            print("[AudioSession] Configured for playback (silent mode override enabled)")
+            print("[AudioSession] Configured: playAndRecord (defaultToSpeaker)")
         } catch {
             print("[AudioSession] Failed to configure: \(error.localizedDescription)")
         }

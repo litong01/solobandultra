@@ -6,6 +6,7 @@ struct ContentView: View {
     @EnvironmentObject var playbackManager: PlaybackManager
     @EnvironmentObject var midiSettings: MidiSettings
     @EnvironmentObject var authManager: AuthManager
+    @EnvironmentObject var feedbackManager: FeedbackManager
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var showSettings = false
@@ -14,6 +15,7 @@ struct ContentView: View {
     @State private var downloadError: String?
     @State private var clipboardHasUrl = false
     @State private var showPdfViewer = false
+    @State private var showReport = false
 
     // MARK: - Bundle navigation helpers
 
@@ -132,7 +134,10 @@ struct ContentView: View {
                 onStop:      { playbackManager.stop() },
                 onNext:     goToNext,
                 onSettings:  { requireAuth(for: .showSettings) },
-                onBook:      { showPdfViewer = true }
+                onBook:      { showPdfViewer = true },
+                feedbackEnabled: midiSettings.includeFeedback,
+                reportAvailable: feedbackManager.report != nil,
+                onReport:    { showReport = true }
             )
             .padding(.horizontal)
             .padding(.vertical, 12)
@@ -147,6 +152,33 @@ struct ContentView: View {
                 ) { piece in
                     selectPiece(piece)
                 }
+            }
+        }
+        .sheet(isPresented: $showReport) {
+            if let report = feedbackManager.report {
+                FeedbackReportView(report: report)
+            }
+        }
+        .onAppear {
+            // Wire FeedbackManager time updates to PlaybackManager's poll tick.
+            playbackManager.onTimeUpdate = { [weak feedbackManager] ms in
+                feedbackManager?.update(musicMs: ms)
+            }
+            // Wire mic tap through PlaybackManager's single AVAudioEngine so both
+            // mic capture and audio output share one engine (avoids session conflicts).
+            feedbackManager.tapInstaller = { [weak playbackManager] handler in
+                playbackManager?.installMicrophoneTap(handler: handler)
+            }
+            feedbackManager.tapRemover = { [weak playbackManager] in
+                playbackManager?.removeMicrophoneTap()
+            }
+        }
+        .onChange(of: playbackManager.isPlaying) { isNowPlaying in
+            guard midiSettings.includeFeedback else { return }
+            if isNowPlaying {
+                feedbackManager.startListening()
+            } else {
+                feedbackManager.stopListening()
             }
         }
         .overlay {
@@ -361,6 +393,11 @@ struct PlaybackControlBar: View {
     var onNext: (() -> Void)?
     let onSettings: () -> Void
     var onBook: (() -> Void)?
+    /// Whether the Feedback toggle is on (gates report button visibility).
+    var feedbackEnabled: Bool = false
+    /// Whether a completed performance report is available to show.
+    var reportAvailable: Bool = false
+    var onReport: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -423,6 +460,16 @@ struct PlaybackControlBar: View {
             if bundleActive {
                 Button(action: { onBook?() }) {
                     Image(systemName: "book.fill")
+                        .font(.title2)
+                        .foregroundStyle(.tint)
+                }
+                .frame(minWidth: 44)
+            }
+
+            // Report (post-performance feedback summary)
+            if feedbackEnabled && reportAvailable {
+                Button(action: { onReport?() }) {
+                    Image(systemName: "chart.bar.fill")
                         .font(.title2)
                         .foregroundStyle(.tint)
                 }

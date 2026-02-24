@@ -74,6 +74,12 @@ class PlaybackManager: ObservableObject {
         }
     }
 
+    // MARK: - Callbacks
+
+    /// Called on every poll tick (~4 Hz) with the current music position in ms.
+    /// Set by ContentView to drive FeedbackManager.update(musicMs:).
+    var onTimeUpdate: ((Double) -> Void)?
+
     // MARK: - Dependencies
 
     private let audioSessionManager: AudioSessionManager
@@ -147,13 +153,18 @@ class PlaybackManager: ObservableObject {
         engine.connect(timePitch, to: engine.mainMixerNode, format: nil)
     }
 
-    /// Ensure the audio session is configured and the engine is running.
+    /// Ensure the audio session is active and the engine is running.
+    ///
+    /// The session category (.playAndRecord) is set once at app launch.
+    /// Pre-realizing the inputNode before engine.start() ensures the hardware
+    /// microphone path is configured so installMicrophoneTap always works.
     private func ensureEngineRunning() throws {
         try audioSessionManager.ensureSessionActive()
-
+        // Pre-realize the input node so it has a valid hardware format when
+        // installMicrophoneTap() is called after playback starts.
+        _ = engine.inputNode
         if !engine.isRunning {
             try engine.start()
-            print("[PlaybackManager] Engine started")
         }
     }
 
@@ -408,6 +419,37 @@ class PlaybackManager: ObservableObject {
         currentTimeMs = min(musicStart + elapsed * speed * 1000.0, durationMs)
     }
 
+    // MARK: - Microphone tap (shared engine, used by FeedbackManager)
+
+    /// Install an input tap on this engine's input node so the microphone and
+    /// the audio output share the same AVAudioEngine instance.
+    /// Safe to call while the engine is already running.
+    func installMicrophoneTap(handler: @escaping (AVAudioPCMBuffer) -> Void) {
+        let inputNode = engine.inputNode
+        inputNode.removeTap(onBus: 0)   // remove any stale tap
+
+        // Build the format from the session's hardware sample rate.
+        // Querying inputNode.outputFormat(forBus:) is unreliable here — it can
+        // return a zero-sampleRate stub if the input wasn't pre-realized before
+        // engine.start(), causing the installTap assertion to fire.
+        let sampleRate = AVAudioSession.sharedInstance().sampleRate
+        guard sampleRate > 0,
+              let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate,
+                                        channels: 1) else {
+            print("[PlaybackManager] Cannot install mic tap — invalid sample rate \(AVAudioSession.sharedInstance().sampleRate)")
+            return
+        }
+
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: format) { buf, _ in
+            handler(buf)
+        }
+    }
+
+    /// Remove the microphone input tap.
+    func removeMicrophoneTap() {
+        engine.inputNode.removeTap(onBus: 0)
+    }
+
     // MARK: - WebView communication (one-shot commands only)
 
     private func sendJS(_ js: String) {
@@ -439,6 +481,8 @@ class PlaybackManager: ObservableObject {
         if currentTimeMs > durationMs {
             currentTimeMs = durationMs
         }
+
+        onTimeUpdate?(currentTimeMs)
     }
 
     // MARK: - Repeat / finish

@@ -252,6 +252,14 @@ class PlaybackManager(
     }
 
     /**
+     * Enable or disable audio mode for simultaneous play and record (feedback capture).
+     * Call with true before starting microphone capture, and false when stopping.
+     */
+    fun setPlayAndRecordMode(enabled: Boolean) {
+        audioSessionManager.setPlayAndRecordMode(enabled)
+    }
+
+    /**
      * Seek to a specific *music* time in milliseconds.
      * MUST be called on the main thread.
      */
@@ -339,6 +347,17 @@ class PlaybackManager(
         wv.post {
             wv.evaluateJavascript(
                 "if (typeof setCursorBarVisible === 'function') { setCursorBarVisible($visible); }",
+                null
+            )
+        }
+    }
+
+    /** Update the cursor bar color for real-time feedback. */
+    fun setCursorColor(color: String) {
+        val wv = webView ?: return
+        wv.post {
+            wv.evaluateJavascript(
+                "if (typeof setCursorColor === 'function') { setCursorColor('${color.replace("'", "\\'")}'); }",
                 null
             )
         }
