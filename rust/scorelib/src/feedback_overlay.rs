@@ -91,8 +91,8 @@ mod tests {
         let dots = r##"[{"x": 50, "y": 80, "colors": ["#4CAF50", "#FFC107"]}]"##;
         let out = add_feedback_overlay_to_svg(svg, dots).unwrap();
         assert!(out.contains(r#"<g id="feedback-overlay">"#));
-        assert!(out.contains(r#"<circle cx="50" cy="80" r="4" fill="#4CAF50"/>"#));
-        assert!(out.contains(r#"<circle cx="50" cy="94" r="4" fill="#FFC107"/>"#));
+        assert!(out.contains(r##"<circle cx="50" cy="80" r="4" fill="#4CAF50"/>"##));
+        assert!(out.contains(r##"<circle cx="50" cy="94" r="4" fill="#FFC107"/>"##));
         assert!(out.ends_with("</svg>"));
     }
 }
