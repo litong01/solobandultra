@@ -205,6 +205,14 @@ Or manually from the GitHub Actions tab.
 
 
 
+## FAQ
+
+### Will I be charged for asking questions or using this app?
+
+No. SoloBand Ultra is a free, open-source application. There are no fees, subscriptions, or charges of any kind for using the app or for asking questions in this repository. Everything — the app itself, the Rust rendering engine, and all sample sheet music — is provided at no cost.
+
+---
+
 # Start Xcode and Android Studio
 
 Xcode:
