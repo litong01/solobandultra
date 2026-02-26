@@ -432,15 +432,18 @@ class PlaybackManager: ObservableObject {
         // Querying inputNode.outputFormat(forBus:) is unreliable here — it can
         // return a zero-sampleRate stub if the input wasn't pre-realized before
         // engine.start(), causing the installTap assertion to fire.
-        let sampleRate = AVAudioSession.sharedInstance().sampleRate
-        guard sampleRate > 0,
-              let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate,
-                                        channels: 1) else {
+        let hardwareFormat = inputNode.inputFormat(forBus: 0)
+        guard hardwareFormat.sampleRate > 0 else {
             print("[PlaybackManager] Cannot install mic tap — invalid sample rate \(AVAudioSession.sharedInstance().sampleRate)")
             return
         }
+        guard let monoFormat = AVAudioFormat(standardFormatWithSampleRate: hardwareFormat.sampleRate, channels: 1) else {
+            print("[PlaybackManager] Cannot install mic tap — invalid mono format")
+            return
+        }
+        try? inputNode.setVoiceProcessingEnabled(true)
 
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: format) { buf, _ in
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: monoFormat) { buf, _ in
             handler(buf)
         }
     }

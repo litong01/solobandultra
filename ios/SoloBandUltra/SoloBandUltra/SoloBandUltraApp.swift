@@ -179,8 +179,8 @@ struct SoloBandUltraApp: App {
     private static func configureAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .default,
-                                    options: [.defaultToSpeaker, .allowBluetooth])
+            try session.setCategory(.playAndRecord, mode: .videoRecording,
+                                    options: [.mixWithOthers, .defaultToSpeaker, .allowBluetooth])
             try session.setActive(true)
             print("[AudioSession] Configured: playAndRecord (defaultToSpeaker)")
         } catch {
