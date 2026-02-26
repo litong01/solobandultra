@@ -182,35 +182,48 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            rust/scorelib/target
-          key: android-cargo-${{ hashFiles('rust/scorelib/Cargo.toml', 'rust/scorelib/Cargo.lock') }}
+            rust/target
+          key: android-cargo-${{ hashFiles('rust/Cargo.toml', 'rust/scorelib/Cargo.toml', 'rust/choirlib/Cargo.toml') }}
           restore-keys: android-cargo-
 
-      - name: Build Rust shared library (Android)
+      - name: Build Rust scorelib (Android)
         working-directory: rust/scorelib
         run: |
-          # The Android NDK is pre-installed on GitHub Actions runners
           NDK_HOME="${ANDROID_NDK_HOME:-$ANDROID_NDK_LATEST_HOME}"
           NDK_BIN="${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin"
 
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="${NDK_BIN}/aarch64-linux-android21-clang"
           export CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER="${NDK_BIN}/x86_64-linux-android21-clang"
-
-          # 16 KB page alignment required for Google Play (Android 15+)
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-z -C link-arg=max-page-size=16384"
           export CARGO_TARGET_X86_64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-z -C link-arg=max-page-size=16384"
 
           cargo build --release --target aarch64-linux-android
           cargo build --release --target x86_64-linux-android
 
+      - name: Build Rust choirlib (Android)
+        working-directory: rust/choirlib
+        run: |
+          NDK_HOME="${ANDROID_NDK_HOME:-$ANDROID_NDK_LATEST_HOME}"
+          NDK_BIN="${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="${NDK_BIN}/aarch64-linux-android21-clang"
+          export CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER="${NDK_BIN}/x86_64-linux-android21-clang"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-z -C link-arg=max-page-size=16384"
+          export CARGO_TARGET_X86_64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-z -C link-arg=max-page-size=16384"
+
+          cargo build --release --target aarch64-linux-android --features android
+          cargo build --release --target x86_64-linux-android --features android
+
       - name: Copy .so files to jniLibs
         run: |
-          mkdir -p android/app/src/main/jniLibs/arm64-v8a
-          mkdir -p android/app/src/main/jniLibs/x86_64
-          cp rust/scorelib/target/aarch64-linux-android/release/libscorelib.so \
-            android/app/src/main/jniLibs/arm64-v8a/
-          cp rust/scorelib/target/x86_64-linux-android/release/libscorelib.so \
-            android/app/src/main/jniLibs/x86_64/
+          RUST_TARGET=rust/target
+          JNI=android/app/src/main/jniLibs
+          mkdir -p "$JNI/arm64-v8a" "$JNI/x86_64"
+
+          cp "$RUST_TARGET/aarch64-linux-android/release/libscorelib.so" "$JNI/arm64-v8a/"
+          cp "$RUST_TARGET/x86_64-linux-android/release/libscorelib.so" "$JNI/x86_64/"
+          cp "$RUST_TARGET/aarch64-linux-android/release/libchoirlib.so" "$JNI/arm64-v8a/"
+          cp "$RUST_TARGET/x86_64-linux-android/release/libchoirlib.so" "$JNI/x86_64/"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
