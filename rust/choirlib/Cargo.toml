@@ -1,0 +1,33 @@
+[package]
+name = "choirlib"
+version = "0.1.0"
+edition = "2021"
+description = "Choir WebSocket server/client and mDNS discovery for SoloBand Ultra"
+
+[lib]
+name = "choirlib"
+crate-type = ["lib", "staticlib", "cdylib"]
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time", "macros"] }
+tokio-tungstenite = "0.21"
+futures-util = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+mdns-sd = "0.18"
+flume = "0.11"
+local-ip-address = "0.6"
+thiserror = "1"
+log = "0.4"
+
+# JNI for Android
+jni = { version = "0.21", optional = true }
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
+android_logger = "0.14"
+
+[features]
+default = []
+# Enable for Android build
+android = ["jni"]

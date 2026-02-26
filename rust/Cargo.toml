@@ -1,0 +1,3 @@
+[workspace]
+members = ["scorelib", "choirlib"]
+resolver = "2"

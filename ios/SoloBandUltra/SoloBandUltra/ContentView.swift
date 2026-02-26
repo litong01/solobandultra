@@ -7,6 +7,7 @@ struct ContentView: View {
     @EnvironmentObject var midiSettings: MidiSettings
     @EnvironmentObject var authManager: AuthManager
     @EnvironmentObject var feedbackManager: FeedbackManager
+    @EnvironmentObject var choirManager: ChoirManager
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var showSettings = false
@@ -16,6 +17,7 @@ struct ContentView: View {
     @State private var clipboardHasUrl = false
     @State private var showPdfViewer = false
     @State private var showReport = false
+    @State private var showChoir = false
     @State private var reportSvgContent: String?
     @State private var reportPlaybackMapJson: String?
 
@@ -95,6 +97,9 @@ struct ContentView: View {
                         Label("Paste Link", systemImage: "doc.on.clipboard")
                     }
                     .disabled(!clipboardHasUrl)
+                    Button(action: { showChoir = true }) {
+                        Label("Choir", systemImage: "person.3")
+                    }
                     Button(action: { requireAuth(for: .showSettings) }) {
                         Label("Settings", systemImage: "gear")
                     }
@@ -128,16 +133,16 @@ struct ContentView: View {
 
             Divider()
 
-            // Playback controls
+            // Playback controls (when in choir, bar sends commands to all; otherwise local only)
             PlaybackControlBar(
                 isPlaying: $playbackManager.isPlaying,
                 bundleActive: activeBundle != nil,
                 canGoPrev: canGoPrev,
                 canGoNext: canGoNext,
-                onPrev:     goToPrev,
-                onPlayPause: { playbackManager.togglePlayPause() },
-                onStop:      { playbackManager.stop() },
-                onNext:     goToNext,
+                onPrev:     choirManager.isJoined ? { choirManager.sendCommand("prev") } : goToPrev,
+                onPlayPause: choirManager.isJoined ? { choirManager.sendCommand(playbackManager.isPlaying ? "pause" : "play") } : { playbackManager.togglePlayPause() },
+                onStop:      choirManager.isJoined ? { choirManager.sendCommand("stop") } : { playbackManager.stop() },
+                onNext:     choirManager.isJoined ? { choirManager.sendCommand("next") } : goToNext,
                 onSettings:  { requireAuth(for: .showSettings) },
                 onBook:      { showPdfViewer = true },
                 feedbackEnabled: midiSettings.includeFeedback,
@@ -169,6 +174,24 @@ struct ContentView: View {
             }
         }
         .onAppear {
+            // Choir: when a scheduled command is received, run the action at execute_at
+            choirManager.onScheduledCommand = { [weak playbackManager, self] cmd, executeAtMs in
+                guard let pm = playbackManager else { return }
+                let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+                let delaySec = max(0, Double(executeAtMs - nowMs) / 1000.0)
+                print("[Choir] onScheduledCommand cmd=\(cmd) executeAtMs=\(executeAtMs) delaySec=\(delaySec)")
+                DispatchQueue.main.asyncAfter(deadline: .now() + delaySec) {
+                    print("[Choir] executing cmd=\(cmd)")
+                    switch cmd {
+                    case "play": pm.play()
+                    case "pause": pm.pause()
+                    case "stop": pm.stop()
+                    case "prev": self.goToPrev()
+                    case "next": self.goToNext()
+                    default: break
+                    }
+                }
+            }
             // Wire FeedbackManager time updates to PlaybackManager's poll tick.
             playbackManager.onTimeUpdate = { [weak feedbackManager] ms in
                 feedbackManager?.update(musicMs: ms)
@@ -290,7 +313,15 @@ struct ContentView: View {
                 }
             }
         }
+        .overlay {
+            if showChoir {
+                BottomSheetOverlay(isPresented: $showChoir) {
+                    ChoirSheet(isPresented: $showChoir, choirManager: choirManager)
+                }
+            }
+        }
         .animation(.spring(response: 0.35, dampingFraction: 0.86), value: showSettings)
+        .animation(.spring(response: 0.35, dampingFraction: 0.86), value: showChoir)
         .onAppear { checkClipboardForUrl() }
         .onChange(of: scenePhase) { phase in
             if phase == .active { checkClipboardForUrl() }
@@ -811,6 +842,75 @@ private extension Font.TextStyle {
         case .caption:     return 11
         case .caption2:    return 10
         @unknown default:  return 15
+        }
+    }
+}
+
+// MARK: - Choir Bottom Sheet
+
+struct ChoirSheet: View {
+    @Binding var isPresented: Bool
+    @ObservedObject var choirManager: ChoirManager
+
+    @State private var joinPassword = ""
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 24) {
+                    // ── Join a choir (iOS cannot host; start choir on an Android device) ───────────
+                    SettingsSection("Join a choir") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            if !choirManager.discoveredChoirName.isEmpty {
+                                Text(choirManager.discoveredChoirName)
+                                    .font(.settingsLabel)
+                            } else if let err = choirManager.discoveryError, !err.isEmpty {
+                                Text("Discovery error: \(err)")
+                                    .font(.settingsLabel)
+                                    .foregroundStyle(.red)
+                            } else {
+                                Text("No choir discovered")
+                                    .font(.settingsLabel)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Button("Discover choirs") {
+                                choirManager.discover()
+                            }
+                            .buttonStyle(.bordered)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Join password")
+                                    .font(.settingsLabel)
+                                SecureField("Join password", text: $joinPassword)
+                                    .textFieldStyle(.roundedBorder)
+                            }
+                            Button(action: {
+                                if choirManager.isJoined {
+                                    choirManager.leave()
+                                } else {
+                                    choirManager.join(choirName: choirManager.discoveredChoirName, password: joinPassword)
+                                }
+                            }) {
+                                Text(choirManager.isJoined ? "Leave" : "Join")
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(choirManager.discoveredChoirName.isEmpty)
+                        }
+                    }
+                }
+                .padding()
+            }
+            .navigationTitle("Choir")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { isPresented = false }
+                }
+            }
+            .onAppear {
+                choirManager.discover()
+            }
         }
     }
 }

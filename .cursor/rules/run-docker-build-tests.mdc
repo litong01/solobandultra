@@ -1,0 +1,24 @@
+markdown
+---
+description: Specific commands for building and testing this project via Docker
+globs: "**/*"
+alwaysApply: true
+---
+
+# Build & Test Pipeline
+
+## 1. Build Phase
+- **Command:** `./build-rust.sh`
+- **When to run:** Run this whenever I ask to "build," "compile," or after making structural changes to Dockerfiles or dependencies.
+- **Goal:** Ensure the Docker image is successfully recreated.
+
+## 2. Test Phase
+- **Command:** `./build-rust.sh test`
+- **When to run:** Run this whenever I ask to "test," "verify," or "check" the logic.
+- **Dependency:** You must ensure a successful **Build Phase** has occurred at least once before running this.
+
+## Agent Instructions
+**Never** attempt to run tests using local language runners (e.g., `npm`, `pytest`, `cargo`).
+- **Do not combine:** Do not run both commands unless I specifically ask to "build and test."
+- **Failure Handling:** If the Build Phase fails, do not attempt the Test Phase. Report the build logs first.
+- **Terminal:** Execute these directly in the integrated terminal.

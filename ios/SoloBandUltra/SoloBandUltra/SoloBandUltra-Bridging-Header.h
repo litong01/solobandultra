@@ -4,4 +4,5 @@
 //
 
 #include "scorelib.h"
+#include "choirlib.h"
 #include "MbkExtractor.h"

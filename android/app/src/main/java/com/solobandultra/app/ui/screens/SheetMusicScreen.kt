@@ -52,7 +52,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import android.Manifest
+import android.util.Log
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Close
 import com.solobandultra.app.BookBundle
@@ -61,6 +63,7 @@ import com.solobandultra.app.FeedbackReport
 import com.solobandultra.app.FeedbackState
 import com.solobandultra.app.MbkExtractor
 import com.solobandultra.app.NoteEvent
+import com.solobandultra.app.ChoirLib
 import com.solobandultra.app.ScoreLib
 import com.solobandultra.app.audio.FeedbackManager
 import com.solobandultra.app.audio.PlaybackManager
@@ -149,6 +152,9 @@ fun SheetMusicScreen(
         ?: remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showChoir by remember { mutableStateOf(false) }
+    val choirState = remember { mutableStateOf(ChoirUiState()) }
+    val choirCanSend = choirState.value.isJoined
 
     // ── Feedback Manager ─────────────────────────────────────────────
     val feedbackManager = remember { FeedbackManager() }
@@ -662,6 +668,26 @@ fun SheetMusicScreen(
 
     // Bottom sheet state
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val choirSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+
+    // Send choir command; if host and channel closed, reconnect then retry once.
+    fun sendChoirCommand(cmd: String) {
+        var ok = ChoirLib.choirSendCommand(cmd, ChoirLib.choirExecuteAtMs(500))
+        if (ok) return
+        val state = choirState.value
+        if (!state.isHosting || state.hostPort == 0) return
+        scope.launch(Dispatchers.IO) {
+            Log.d("Choir", "send failed, reconnecting host client port=${state.hostPort}")
+            ChoirLib.choirClientLeave()
+            val reconnected = ChoirLib.choirLeaderConnect(state.hostPort)
+            withContext(Dispatchers.Main) {
+                if (reconnected) choirState.value = choirState.value.copy(isJoined = true)
+            }
+            delay(400)
+            val retryOk = ChoirLib.choirSendCommand(cmd, ChoirLib.choirExecuteAtMs(500))
+            Log.d("Choir", "after reconnect send $cmd ok=$retryOk")
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -737,6 +763,13 @@ fun SheetMusicScreen(
                             }
                         )
                         DropdownMenuItem(
+                            text = { Text("Choir") },
+                            onClick = {
+                                showMenu = false
+                                showChoir = true
+                            }
+                        )
+                        DropdownMenuItem(
                             text = { Text("Settings") },
                             onClick = {
                                 showMenu = false
@@ -778,10 +811,10 @@ fun SheetMusicScreen(
                 bundleActive  = activeBundle != null,
                 canGoPrev     = canGoPrev,
                 canGoNext     = canGoNext,
-                onPrev        = { val idx = currentPieceIndex; if (idx != null && idx > 0) selectPiece(unlockedPieces[idx - 1]) },
-                onPlayPause   = { playbackManager?.togglePlayPause() },
-                onStop        = { playbackManager?.stop() },
-                onNext        = { val idx = currentPieceIndex; if (idx != null && idx < unlockedPieces.size - 1) selectPiece(unlockedPieces[idx + 1]) },
+                onPrev        = if (choirCanSend) { { Log.d("Choir", "sendCommand prev"); sendChoirCommand("prev") } } else { { val idx = currentPieceIndex; if (idx != null && idx > 0) selectPiece(unlockedPieces[idx - 1]) } },
+                onPlayPause   = if (choirCanSend) { { val cmd = if (isPlaying) "pause" else "play"; Log.d("Choir", "sendCommand $cmd"); sendChoirCommand(cmd) } } else { { playbackManager?.togglePlayPause() } },
+                onStop        = if (choirCanSend) { { Log.d("Choir", "sendCommand stop"); sendChoirCommand("stop") } } else { { playbackManager?.stop() } },
+                onNext        = if (choirCanSend) { { Log.d("Choir", "sendCommand next"); sendChoirCommand("next") } } else { { val idx = currentPieceIndex; if (idx != null && idx < unlockedPieces.size - 1) selectPiece(unlockedPieces[idx + 1]) } },
                 onSettings    = {
                     if (isAuthenticated) showSettings = true
                     else onLoginRequested(PendingAuthAction.ShowSettings)
@@ -963,6 +996,59 @@ fun SheetMusicScreen(
             } // end MaterialTheme(typography = settingsTypography)
         }
     }
+
+    // ── Choir Bottom Sheet ────────────────────────────────────────────
+    if (showChoir) {
+        ModalBottomSheet(
+            onDismissRequest = { showChoir = false },
+            sheetState = choirSheetState
+        ) {
+            ChoirSheetContent(
+                choirState = choirState,
+                scope = scope,
+                onDone = { showChoir = false }
+            )
+        }
+    }
+
+    // ── Choir: poll for scheduled commands and execute at execute_at_ms; detect disconnect ──
+    LaunchedEffect(choirState.value.isHosting || choirState.value.isJoined) {
+        if (!choirState.value.isHosting && !choirState.value.isJoined) return@LaunchedEffect
+        Log.d("Choir", "poll loop started (hosting=${choirState.value.isHosting} joined=${choirState.value.isJoined})")
+        val pm = playbackManager
+        while (true) {
+            delay(100)
+            // If we think we're joined but the client thread has exited, sync UI to show Join again.
+            if (choirState.value.isJoined && !withContext(Dispatchers.IO) { ChoirLib.choirClientConnected() }) {
+                Log.d("Choir", "poll: client disconnected (thread ended), setting isJoined=false")
+                choirState.value = choirState.value.copy(isJoined = false)
+                return@LaunchedEffect
+            }
+            val json = withContext(Dispatchers.IO) { ChoirLib.choirPollCommand() } ?: continue
+            val cmd = runCatching {
+                org.json.JSONObject(json).optString("command", "")
+            }.getOrNull() ?: continue
+            val executeAtMs = runCatching {
+                org.json.JSONObject(json).optLong("execute_at_ms", 0L)
+            }.getOrNull() ?: continue
+            if (cmd.isEmpty()) continue
+            Log.d("Choir", "pollCommand received cmd=$cmd executeAtMs=$executeAtMs")
+            val nowMs = System.currentTimeMillis()
+            val delayMs = (executeAtMs - nowMs).coerceAtLeast(0L)
+            withContext(Dispatchers.Main) {
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    Log.d("Choir", "executing cmd=$cmd")
+                    when (cmd) {
+                        "play" -> pm?.play()
+                        "pause" -> pm?.pause()
+                        "stop" -> pm?.stop()
+                        "prev" -> { val idx = currentPieceIndex; if (idx != null && idx > 0) selectPiece(unlockedPieces[idx - 1]) }
+                        "next" -> { val idx = currentPieceIndex; if (idx != null && idx < unlockedPieces.size - 1) selectPiece(unlockedPieces[idx + 1]) }
+                    }
+                }, delayMs)
+            }
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1022,6 +1108,230 @@ private fun pasteFromClipboard(
             Toast.makeText(context, "Download failed.", Toast.LENGTH_SHORT).show()
         }
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Choir state and sheet content
+// ═══════════════════════════════════════════════════════════════════════
+
+data class ChoirUiState(
+    var isHosting: Boolean = false,
+    var isJoined: Boolean = false,
+    var hostPort: Int = 0,
+    var discoveredChoirName: String = ""
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChoirSheetContent(
+    choirState: MutableState<ChoirUiState>,
+    scope: kotlinx.coroutines.CoroutineScope,
+    onDone: () -> Unit
+) {
+    var choirName by remember { mutableStateOf("") }
+    var hostJoinPassword by remember { mutableStateOf("") }
+    var joinPassword by remember { mutableStateOf("") }
+    var joinByUrlWsUrl by remember { mutableStateOf("ws://10.0.2.2:") }
+    var joinByUrlChoirName by remember { mutableStateOf("") }
+    val state = choirState.value
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Choir",
+                style = MaterialTheme.typography.headlineSmall
+            )
+            TextButton(onClick = onDone) {
+                Text("Done", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+
+        // ── Section 1: Start a choir ─────────────────────────────────────
+        SettingsCard("Start a choir") {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = choirName,
+                    onValueChange = { choirName = it },
+                    label = { Text("Choir name") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = hostJoinPassword,
+                    onValueChange = { hostJoinPassword = it },
+                    label = { Text("Join Password") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation()
+                )
+                Button(
+                    onClick = {
+                        if (state.isHosting) {
+                            Log.d("Choir", "stopServer")
+                            ChoirLib.choirServerStop()
+                            ChoirLib.choirClientLeave()
+                            choirState.value = choirState.value.copy(isHosting = false, isJoined = false, hostPort = 0)
+                        } else {
+                            Log.d("Choir", "startServer choirName=$choirName")
+                            scope.launch(Dispatchers.IO) {
+                                val port = ChoirLib.choirServerStart(choirName, hostJoinPassword)
+                                Log.d("Choir", "choirServerStart port=$port")
+                                withContext(Dispatchers.Main) {
+                                    if (port != 0) {
+                                        choirState.value = choirState.value.copy(isHosting = true, hostPort = port)
+                                    }
+                                }
+                                if (port != 0) {
+                                    kotlinx.coroutines.delay(250)
+                                    val connected = ChoirLib.choirLeaderConnect(port)
+                                    Log.d("Choir", "choirLeaderConnect connected=$connected")
+                                    withContext(Dispatchers.Main) {
+                                        if (connected) {
+                                            choirState.value = choirState.value.copy(isJoined = true)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (state.isHosting) "Stop" else "Start")
+                }
+            }
+        }
+
+        // ── Section 2: Join a choir ─────────────────────────────────────
+        SettingsCard("Join a choir") {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = state.discoveredChoirName.ifEmpty { "No choir discovered" },
+                    style = if (state.discoveredChoirName.isEmpty())
+                        MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    else
+                        MaterialTheme.typography.bodySmall
+                )
+                Button(onClick = {
+                    Log.d("Choir", "discover start")
+                    scope.launch(Dispatchers.IO) {
+                        val json = ChoirLib.choirDiscover(5)
+                        Log.d("Choir", "choirDiscover json=${json?.take(100)}")
+                        withContext(Dispatchers.Main) {
+                            choirState.value = choirState.value.copy(
+                                discoveredChoirName = parseFirstChoirName(json).orEmpty()
+                            )
+                        }
+                    }
+                }) { Text("Discover choirs") }
+                OutlinedTextField(
+                    value = joinPassword,
+                    onValueChange = { joinPassword = it },
+                    label = { Text("Join password") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation()
+                )
+                Button(
+                    onClick = {
+                        if (state.isJoined) {
+                            Log.d("Choir", "clientLeave")
+                            ChoirLib.choirClientLeave()
+                            choirState.value = choirState.value.copy(isJoined = false)
+                        } else {
+                            Log.d("Choir", "clientJoin choirName=${state.discoveredChoirName}")
+                            scope.launch(Dispatchers.IO) {
+                                val ok = ChoirLib.choirClientJoin(state.discoveredChoirName, joinPassword)
+                                Log.d("Choir", "choirClientJoin ok=$ok")
+                                withContext(Dispatchers.Main) {
+                                    if (ok) choirState.value = choirState.value.copy(isJoined = true)
+                                }
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (state.isJoined) "Leave" else "Join")
+                }
+                if (state.discoveredChoirName.isEmpty()) {
+                    Text("Discover choirs first", style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant))
+                }
+            }
+        }
+
+        // ── Section 3: Join by URL (e.g. Android emulator → iOS Simulator on same Mac) ──
+        SettingsCard("Join by URL") {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "When discovery fails (e.g. Android emulator and iOS Simulator on same Mac), use the host URL. From Android emulator the host is ws://10.0.2.2:PORT.",
+                    style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+                )
+                OutlinedTextField(
+                    value = joinByUrlWsUrl,
+                    onValueChange = { joinByUrlWsUrl = it },
+                    label = { Text("Server URL") },
+                    placeholder = { Text("ws://10.0.2.2:61494") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = joinByUrlChoirName,
+                    onValueChange = { joinByUrlChoirName = it },
+                    label = { Text("Choir name (must match host)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = joinPassword,
+                    onValueChange = { joinPassword = it },
+                    label = { Text("Join password") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation()
+                )
+                Button(
+                    onClick = {
+                        if (state.isJoined) {
+                            Log.d("Choir", "clientLeave (from Join by URL)")
+                            ChoirLib.choirClientLeave()
+                            choirState.value = choirState.value.copy(isJoined = false)
+                        } else {
+                            val url = joinByUrlWsUrl.trim()
+                            val name = joinByUrlChoirName.trim()
+                            Log.d("Choir", "clientJoinWithUrl url=$url choirName=$name")
+                            scope.launch(Dispatchers.IO) {
+                                val ok = ChoirLib.choirClientJoinWithUrl(url, name, joinPassword)
+                                Log.d("Choir", "choirClientJoinWithUrl ok=$ok")
+                                withContext(Dispatchers.Main) {
+                                    if (ok) choirState.value = choirState.value.copy(isJoined = true)
+                                }
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (state.isJoined) "Leave" else "Join with URL")
+                }
+            }
+        }
+    }
+}
+
+private fun parseFirstChoirName(json: String?): String? {
+    if (json.isNullOrBlank()) return null
+    return kotlin.runCatching {
+        org.json.JSONArray(json).optJSONObject(0)?.optString("choir_name", null)
+    }.getOrNull()
 }
 
 // ═══════════════════════════════════════════════════════════════════════
