@@ -51,47 +51,72 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            rust/scorelib/target
-          key: ios-cargo-${{ hashFiles('rust/scorelib/Cargo.toml', 'rust/scorelib/Cargo.lock') }}
+            rust/target
+          key: ios-cargo-${{ hashFiles('rust/Cargo.toml', 'rust/scorelib/Cargo.toml', 'rust/choirlib/Cargo.toml') }}
           restore-keys: ios-cargo-
 
-      - name: Build Rust static library (iOS Device + Simulator)
+      - name: Build Rust scorelib (iOS Device + Simulator)
         working-directory: rust/scorelib
         run: |
-          # Temporarily adjust crate-type for static lib only (no cdylib linker needed)
           cp Cargo.toml Cargo.toml.orig
           sed -i '' 's/crate-type = .*/crate-type = ["lib", "staticlib"]/' Cargo.toml
+          trap "mv Cargo.toml.orig Cargo.toml 2>/dev/null || true" EXIT
 
           cargo build --release --target aarch64-apple-ios
           cargo build --release --target aarch64-apple-ios-sim
           cargo build --release --target x86_64-apple-ios
 
-          mv Cargo.toml.orig Cargo.toml
-
-      - name: Create XCFramework
+      - name: Build Rust choirlib (iOS Device + Simulator)
+        working-directory: rust/choirlib
         run: |
-          RUST_SRC=rust/scorelib
+          cp Cargo.toml Cargo.toml.orig
+          sed -i '' 's/crate-type = .*/crate-type = ["lib", "staticlib"]/' Cargo.toml
+          trap "mv Cargo.toml.orig Cargo.toml 2>/dev/null || true" EXIT
+
+          cargo build --release --target aarch64-apple-ios
+          cargo build --release --target aarch64-apple-ios-sim
+          cargo build --release --target x86_64-apple-ios
+
+      - name: Create XCFrameworks
+        run: |
+          # Workspace target dir (both crates build here)
+          RUST_TARGET=rust/target
           LIB_DIR=ios/SoloBandUltra/lib
-          INCLUDE_DIR=ios/SoloBandUltra/include
           mkdir -p "$LIB_DIR"
 
-          # Create fat simulator library (ARM64 + x86_64)
-          SIM_FAT="$RUST_SRC/target/libscorelib-sim.a"
+          # --- libscorelib.xcframework ---
+          INCLUDE_SCORE=ios/SoloBandUltra/include
+          SIM_FAT_SCORE="${RUST_TARGET}/libscorelib-sim.a"
           lipo -create \
-            "$RUST_SRC/target/aarch64-apple-ios-sim/release/libscorelib.a" \
-            "$RUST_SRC/target/x86_64-apple-ios/release/libscorelib.a" \
-            -output "$SIM_FAT"
+            "${RUST_TARGET}/aarch64-apple-ios-sim/release/libscorelib.a" \
+            "${RUST_TARGET}/x86_64-apple-ios/release/libscorelib.a" \
+            -output "$SIM_FAT_SCORE"
 
-          # Create XCFramework with device + simulator slices
           rm -rf "$LIB_DIR/libscorelib.xcframework"
           xcodebuild -create-xcframework \
-            -library "$RUST_SRC/target/aarch64-apple-ios/release/libscorelib.a" \
-            -headers "$INCLUDE_DIR" \
-            -library "$SIM_FAT" \
-            -headers "$INCLUDE_DIR" \
+            -library "${RUST_TARGET}/aarch64-apple-ios/release/libscorelib.a" \
+            -headers "$INCLUDE_SCORE" \
+            -library "$SIM_FAT_SCORE" \
+            -headers "$INCLUDE_SCORE" \
             -output "$LIB_DIR/libscorelib.xcframework"
+          rm -f "$SIM_FAT_SCORE"
 
-          rm -f "$SIM_FAT"
+          # --- libchoirlib.xcframework ---
+          INCLUDE_CHOIR=ios/SoloBandUltra/include_choirlib
+          SIM_FAT_CHOIR="${RUST_TARGET}/libchoirlib-sim.a"
+          lipo -create \
+            "${RUST_TARGET}/aarch64-apple-ios-sim/release/libchoirlib.a" \
+            "${RUST_TARGET}/x86_64-apple-ios/release/libchoirlib.a" \
+            -output "$SIM_FAT_CHOIR"
+
+          rm -rf "$LIB_DIR/libchoirlib.xcframework"
+          xcodebuild -create-xcframework \
+            -library "${RUST_TARGET}/aarch64-apple-ios/release/libchoirlib.a" \
+            -headers "$INCLUDE_CHOIR" \
+            -library "$SIM_FAT_CHOIR" \
+            -headers "$INCLUDE_CHOIR" \
+            -output "$LIB_DIR/libchoirlib.xcframework"
+          rm -f "$SIM_FAT_CHOIR"
 
       - name: Resolve Swift Package dependencies
         working-directory: ios/SoloBandUltra
