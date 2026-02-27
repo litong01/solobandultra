@@ -25,7 +25,7 @@ import kotlin.math.log2
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 private const val TAG = "SBU.Feedback"
-private const val SAMPLE_RATE = 44100
+private const val SAMPLE_RATE = 48000
 private const val BUFFER_SIZE = 4096
 // Slightly permissive threshold to handle the ambient mic environment.
 private const val YIN_THRESHOLD = 0.20

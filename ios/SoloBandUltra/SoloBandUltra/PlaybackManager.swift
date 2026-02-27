@@ -76,9 +76,18 @@ class PlaybackManager: ObservableObject {
 
     // MARK: - Callbacks
 
+    /// When true, playback and capture use a single full-duplex RemoteIO unit instead of
+    /// AVAudioEngine + separate capture. Set by ContentView from midiSettings.includeFeedback.
+    var useDuplexForFeedback: Bool = false
+
     /// Called on every poll tick (~4 Hz) with the current music position in ms.
     /// Set by ContentView to drive FeedbackManager.update(musicMs:).
     var onTimeUpdate: ((Double) -> Void)?
+
+    /// Called at the start of startPlayback(), after the engine is running but before
+    /// scheduling/play. Use this to install the mic tap before playback starts so the
+    /// engine doesn't reconfigure mid-stream (which can stop playback).
+    var beforePlaybackStarts: (() -> Void)?
 
     // MARK: - Dependencies
 
@@ -90,6 +99,15 @@ class PlaybackManager: ObservableObject {
     private let engine = AVAudioEngine()
     private let playerNode = AVAudioPlayerNode()
     private let timePitch = AVAudioUnitTimePitch()
+
+    /// Microphone capture via RemoteIO Audio Unit (cpal-style). Not AVAudioEngine, so
+    /// playback is never reconfigured when capture starts.
+    private var remoteIOCapture: RemoteIOCapture?
+
+    /// Full-duplex path: one RemoteIO for both playback and capture when Feedback is on.
+    private var duplex: RemoteIODuplex?
+    private var duplexPlaybackBuffer: [Float]?
+    private var duplexCaptureHandler: ((AVAudioPCMBuffer) -> Void)?
 
     /// The loaded audio file (WAV written to a temp file).
     private var audioFile: AVAudioFile?
@@ -138,6 +156,10 @@ class PlaybackManager: ObservableObject {
         stopPollTimer()
         playerNode.stop()
         engine.stop()
+        remoteIOCapture?.stop()
+        remoteIOCapture = nil
+        duplex?.stop()
+        duplex = nil
         cleanupTempFile()
         if let obs = interruptionObserver { NotificationCenter.default.removeObserver(obs) }
         if let obs = routeChangeObserver { NotificationCenter.default.removeObserver(obs) }
@@ -153,16 +175,10 @@ class PlaybackManager: ObservableObject {
         engine.connect(timePitch, to: engine.mainMixerNode, format: nil)
     }
 
-    /// Ensure the audio session is active and the engine is running.
-    ///
-    /// The session category (.playAndRecord) is set once at app launch.
-    /// Pre-realizing the inputNode before engine.start() ensures the hardware
-    /// microphone path is configured so installMicrophoneTap always works.
+    /// Ensure the audio session is active and the playback engine is running.
+    /// The input engine is started only when installMicrophoneTap is called.
     private func ensureEngineRunning() throws {
         try audioSessionManager.ensureSessionActive()
-        // Pre-realize the input node so it has a valid hardware format when
-        // installMicrophoneTap() is called after playback starts.
-        _ = engine.inputNode
         if !engine.isRunning {
             try engine.start()
         }
@@ -234,13 +250,17 @@ class PlaybackManager: ObservableObject {
 
     /// Prepare WAV audio data for playback (does not start playing).
     ///
-    /// Writes the WAV to a temp file and opens it as an AVAudioFile.
+    /// Writes the WAV to a temp file and opens it as an AVAudioFile. Does not start
+    /// the engine — that happens on play() so that when Feedback is on we can start
+    /// capture first, then the engine, avoiding session reconfiguration that stops output.
     func prepareAudio(_ wavData: Data) {
         stop()
+        duplexPlaybackBuffer = nil
 
         do {
-            try ensureEngineRunning()
-
+            // Do NOT start the engine here. Start it only in startPlayback() so that
+            // we can start RemoteIO capture first (when Feedback is on), then the
+            // engine — both in one go — avoiding "input after output" session reconfigure.
             // Write WAV to a temp file so AVAudioFile can read it.
             cleanupTempFile()
             let url = FileManager.default.temporaryDirectory
@@ -254,14 +274,12 @@ class PlaybackManager: ObservableObject {
             let sampleRate = file.processingFormat.sampleRate
             durationMs = Double(file.length) / sampleRate * 1000.0
 
-            // Apply current mute state.
+            // Apply current mute state (engine may not be running yet).
             engine.mainMixerNode.outputVolume = isMuted ? 0 : 1
 
             // Show cursor at the beginning.
             sendJS("showCursor(); moveCursor(0);")
 
-            print("[PlaybackManager] Audio prepared: \(String(format: "%.1f", durationMs / 1000.0))s, "
-                + "\(file.length) frames, speed=\(speed)")
         } catch {
             print("[PlaybackManager] Failed to prepare audio: \(error.localizedDescription)")
             audioFile = nil
@@ -281,43 +299,75 @@ class PlaybackManager: ObservableObject {
 
     /// Internal: schedule audio from currentTimeMs and start the player.
     ///
-    /// Always starts from a fully stopped engine (via `stop()`) so the
-    /// audio graph is in a known-good state — no stale DSP buffers, no
-    /// rate mismatches.
+    /// When useDuplexForFeedback is true and we have a capture handler, use a single
+    /// full-duplex RemoteIO for both playback and capture so the session has one client.
     private func startPlayback() {
         guard let file = audioFile else {
             print("[PlaybackManager] No audio data loaded")
             return
         }
 
+        let sr = file.processingFormat.sampleRate
+        let totalFrames = Int(file.length)
+
+        // So that duplex path can use the capture handler, run beforePlaybackStarts first.
+        beforePlaybackStarts?()
+
+        // Duplex path: one RemoteIO for play + capture when Feedback is on.
+        if useDuplexForFeedback, let captureHandler = duplexCaptureHandler {
+            do {
+                if duplexPlaybackBuffer == nil {
+                    try loadPlaybackBufferIntoDuplex(file: file, totalFrames: totalFrames)
+                }
+                guard let buffer = duplexPlaybackBuffer else { return }
+                let startFrame = Int(currentTimeMs / 1000.0 * sr)
+                let duplexObj = RemoteIODuplex(
+                    sampleRate: sr,
+                    playbackBuffer: buffer,
+                    totalFrames: totalFrames,
+                    startFrame: startFrame,
+                    isMuted: isMuted,
+                    onPlaybackFinished: { [weak self] in
+                        DispatchQueue.main.async { self?.playbackDidFinish() }
+                    },
+                    captureHandler: captureHandler
+                )
+                try duplexObj.start()
+                duplex = duplexObj
+                isPlaying = true
+                wallStart = CFAbsoluteTimeGetCurrent()
+                musicStart = currentTimeMs
+                sendJS("startCursorAnimation(\(currentTimeMs), \(speed))")
+                startPollTimer()
+                return
+            } catch {
+                print("[PlaybackManager] Duplex start failed: \(error.localizedDescription)")
+                duplexCaptureHandler = nil
+            }
+        }
+
         do {
             try ensureEngineRunning()
 
-            let sampleRate = file.processingFormat.sampleRate
-            let startFrame = AVAudioFramePosition(currentTimeMs / 1000.0 * sampleRate)
-            let totalFrames = file.length
-            guard startFrame < totalFrames else {
+            let startFrame = AVAudioFramePosition(currentTimeMs / 1000.0 * sr)
+            guard startFrame < file.length else {
                 playbackDidFinish()
                 return
             }
-            let frameCount = AVAudioFrameCount(totalFrames - startFrame)
+            let frameCount = AVAudioFrameCount(totalFrames - Int(startFrame))
 
-            // Apply current settings to the (freshly started) engine.
             timePitch.rate = Float(speed)
             engine.mainMixerNode.outputVolume = isMuted ? 0 : 1
 
-            // Bump generation so any in-flight completion handler is ignored.
             playbackGeneration += 1
             let thisGeneration = playbackGeneration
 
-            // Schedule the segment from the current position.
             playerNode.scheduleSegment(
                 file,
                 startingFrame: startFrame,
                 frameCount: frameCount,
                 at: nil
             ) { [weak self] in
-                // Completion fires on a background thread.
                 DispatchQueue.main.async {
                     guard let self = self, self.playbackGeneration == thisGeneration else { return }
                     self.playbackDidFinish()
@@ -326,20 +376,37 @@ class PlaybackManager: ObservableObject {
 
             playerNode.play()
             isPlaying = true
-
-            // Start wall-clock tracking.
             wallStart = CFAbsoluteTimeGetCurrent()
             musicStart = currentTimeMs
-
-            // Tell the WebView to start its cursor animation.
             sendJS("startCursorAnimation(\(currentTimeMs), \(speed))")
-
             startPollTimer()
-            print("[PlaybackManager] Playing from \(String(format: "%.1f", currentTimeMs / 1000.0))s "
-                + "(speed=\(speed), muted=\(isMuted))")
         } catch {
             print("[PlaybackManager] Failed to start playback: \(error.localizedDescription)")
         }
+    }
+
+    /// Load WAV into stereo Float buffer for duplex playback. Call once per score.
+    private func loadPlaybackBufferIntoDuplex(file: AVAudioFile, totalFrames: Int) throws {
+        let format = file.processingFormat
+        guard format.channelCount == 2 else {
+            throw NSError(domain: "PlaybackManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Duplex expects stereo"])
+        }
+        file.framePosition = 0
+        let capacity = AVAudioFrameCount(totalFrames)
+        guard let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: capacity) else {
+            throw NSError(domain: "PlaybackManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to allocate buffer"])
+        }
+        try file.read(into: buf)
+        let L = buf.floatChannelData?[0]
+        let R = buf.floatChannelData?[1]
+        guard let left = L, let right = R else { return }
+        var stereo: [Float] = []
+        stereo.reserveCapacity(totalFrames * 2)
+        for i in 0..<totalFrames {
+            stereo.append(left[i])
+            stereo.append(right[i])
+        }
+        duplexPlaybackBuffer = stereo
     }
 
     /// Pause playback — cursor stays at the current position.
@@ -348,29 +415,36 @@ class PlaybackManager: ObservableObject {
     func pause() {
         guard isPlaying else { return }
 
-        // Capture position before stopping.
         updateCurrentTime()
 
-        // Full stop of engine — resume will restart cleanly.
-        playbackGeneration += 1
-        playerNode.stop()
-        engine.stop()
-        timePitch.reset()
+        if duplex != nil {
+            duplex?.isPlaying = false
+            duplex?.stop()
+            duplex = nil
+        } else {
+            playbackGeneration += 1
+            playerNode.stop()
+            engine.stop()
+            timePitch.reset()
+        }
         isPlaying = false
         stopPollTimer()
 
         sendJS("stopCursorAnimation(\(currentTimeMs))")
-        print("[PlaybackManager] Paused at \(String(format: "%.1f", currentTimeMs / 1000.0))s")
     }
 
     /// Stop playback and reset cursor to the beginning.
     func stop() {
-        // Bump generation to invalidate any pending completion handlers.
         playbackGeneration += 1
 
-        playerNode.stop()
-        engine.stop()
-        timePitch.reset()   // Flush stale buffers so the next playback starts clean.
+        if duplex != nil {
+            duplex?.stop()
+            duplex = nil
+        } else {
+            playerNode.stop()
+            engine.stop()
+            timePitch.reset()
+        }
         isPlaying = false
         currentTimeMs = 0
         remainingRepeats = 0
@@ -391,11 +465,15 @@ class PlaybackManager: ObservableObject {
         let clampedMs = max(0, min(musicTimeMs, durationMs))
 
         if wasPlaying {
-            // Full stop so restart goes through the clean path.
             playbackGeneration += 1
-            playerNode.stop()
-            engine.stop()
-            timePitch.reset()
+            if let du = duplex {
+                du.stop()
+                duplex = nil
+            } else {
+                playerNode.stop()
+                engine.stop()
+                timePitch.reset()
+            }
             isPlaying = false
             stopPollTimer()
         }
@@ -407,50 +485,58 @@ class PlaybackManager: ObservableObject {
         } else {
             sendJS("stopCursorAnimation(\(clampedMs))")
         }
-        print("[PlaybackManager] Seeked to \(String(format: "%.1f", clampedMs / 1000.0))s")
     }
 
     // MARK: - Position tracking
 
-    /// Update currentTimeMs from the wall clock.
+    /// Update currentTimeMs from the wall clock (engine path) or duplex playhead (duplex path).
     private func updateCurrentTime() {
         guard isPlaying else { return }
-        let elapsed = CFAbsoluteTimeGetCurrent() - wallStart
-        currentTimeMs = min(musicStart + elapsed * speed * 1000.0, durationMs)
+        if let du = duplex, let file = audioFile {
+            let frame = du.currentFrame
+            currentTimeMs = Double(frame) / file.processingFormat.sampleRate * 1000.0
+            currentTimeMs = min(currentTimeMs, durationMs)
+        } else {
+            let elapsed = CFAbsoluteTimeGetCurrent() - wallStart
+            currentTimeMs = min(musicStart + elapsed * speed * 1000.0, durationMs)
+        }
     }
 
-    // MARK: - Microphone tap (shared engine, used by FeedbackManager)
+    // MARK: - Microphone tap (RemoteIO Audio Unit, cpal-style)
 
-    /// Install an input tap on this engine's input node so the microphone and
-    /// the audio output share the same AVAudioEngine instance.
-    /// Safe to call while the engine is already running.
+    /// Install microphone capture. When useDuplexForFeedback is true, stores the handler
+    /// for the duplex path (playback will use the same unit). Otherwise starts RemoteIOCapture.
     func installMicrophoneTap(handler: @escaping (AVAudioPCMBuffer) -> Void) {
-        let inputNode = engine.inputNode
-        inputNode.removeTap(onBus: 0)   // remove any stale tap
-
-        // Build the format from the session's hardware sample rate.
-        // Querying inputNode.outputFormat(forBus:) is unreliable here — it can
-        // return a zero-sampleRate stub if the input wasn't pre-realized before
-        // engine.start(), causing the installTap assertion to fire.
-        let hardwareFormat = inputNode.inputFormat(forBus: 0)
-        guard hardwareFormat.sampleRate > 0 else {
-            print("[PlaybackManager] Cannot install mic tap — invalid sample rate \(AVAudioSession.sharedInstance().sampleRate)")
+        if useDuplexForFeedback {
+            duplexCaptureHandler = handler
             return
         }
-        guard let monoFormat = AVAudioFormat(standardFormatWithSampleRate: hardwareFormat.sampleRate, channels: 1) else {
-            print("[PlaybackManager] Cannot install mic tap — invalid mono format")
-            return
-        }
-        try? inputNode.setVoiceProcessingEnabled(true)
 
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: monoFormat) { buf, _ in
-            handler(buf)
+        remoteIOCapture?.stop()
+        remoteIOCapture = nil
+
+        let session = AVAudioSession.sharedInstance()
+        let sampleRate = session.sampleRate > 0 ? session.sampleRate : 48000
+
+        let capture = RemoteIOCapture(sampleRate: sampleRate, handler: handler)
+        do {
+            try capture.start()
+            remoteIOCapture = capture
+        } catch {
+            print("[PlaybackManager] RemoteIO capture failed to start: \(error.localizedDescription)")
         }
     }
 
-    /// Remove the microphone input tap.
+    /// Remove the microphone capture and stop the RemoteIO/duplex unit.
     func removeMicrophoneTap() {
-        engine.inputNode.removeTap(onBus: 0)
+        duplexCaptureHandler = nil
+        if duplex != nil {
+            duplex?.stop()
+            duplex = nil
+        } else {
+            remoteIOCapture?.stop()
+            remoteIOCapture = nil
+        }
     }
 
     // MARK: - WebView communication (one-shot commands only)
@@ -493,18 +579,21 @@ class PlaybackManager: ObservableObject {
     private func playbackDidFinish() {
         guard isPlaying else { return }
 
-        // Full engine stop for a clean state.
         playbackGeneration += 1
-        playerNode.stop()
-        engine.stop()
-        timePitch.reset()
+        if duplex != nil {
+            duplex?.stop()
+            duplex = nil
+        } else {
+            playerNode.stop()
+            engine.stop()
+            timePitch.reset()
+        }
         isPlaying = false
         stopPollTimer()
         sendJS("stopCursorAnimation(0)")
 
         remainingRepeats -= 1
         if remainingRepeats > 0 {
-            print("[PlaybackManager] Repeat \(repeatCount - remainingRepeats)/\(repeatCount)")
             currentTimeMs = 0
 
             // Capture generation so the delayed restart is cancelled if the user
@@ -519,7 +608,6 @@ class PlaybackManager: ObservableObject {
         }
 
         currentTimeMs = 0
-        print("[PlaybackManager] Playback finished (all repeats done)")
     }
 
     // MARK: - Cleanup

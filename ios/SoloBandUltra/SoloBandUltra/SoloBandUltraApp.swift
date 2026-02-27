@@ -166,23 +166,23 @@ struct SoloBandUltraApp: App {
 
     /// Configure AVAudioSession once at app launch.
     ///
-    /// Using `.playAndRecord` with `.defaultToSpeaker` ensures:
-    /// - Audio plays through the speaker by default (not the earpiece)
-    /// - The microphone input path is always initialized so `AVAudioEngine.inputNode`
-    ///   always has a valid hardware format — this is required for the feedback mic tap.
-    /// - No mid-session category switching: switching categories after the engine has
-    ///   started causes the input node to lose its format and crashes with
-    ///   "IsFormatSampleRateAndChannelCountValid(format)".
+    /// Using `.playAndRecord` with `.defaultToSpeaker` so audio plays from the speaker
+    /// and the mic is available for the feedback pitch tap.
     ///
-    /// The orange microphone indicator only appears when audio is actually being
-    /// captured (tap installed), NOT merely because the category allows input.
+    /// We use mode `.default` (not `.measurement` — that gives very low/no mic input,
+    /// and not `.videoRecording` — that could stop playback when capture starts).
+    /// With a separate input engine and starting input before playback, `.default`
+    /// keeps both playback and capture working.
+    ///
+    /// We avoid `.mixWithOthers` so our app owns the session and playback isn't ducked.
+    /// preferredSampleRate 48000 matches our WAV and typical hardware.
     private static func configureAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .videoRecording,
-                                    options: [.mixWithOthers, .defaultToSpeaker, .allowBluetooth])
+            try session.setCategory(.playAndRecord, mode: .default,
+                                    options: [.defaultToSpeaker, .allowBluetooth])
+            try session.setPreferredSampleRate(48000)
             try session.setActive(true)
-            print("[AudioSession] Configured: playAndRecord (defaultToSpeaker)")
         } catch {
             print("[AudioSession] Failed to configure: \(error.localizedDescription)")
         }

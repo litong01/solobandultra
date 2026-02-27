@@ -282,7 +282,7 @@ pub fn generate_midi_from_bytes(
 /// Parse MusicXML bytes, generate MIDI internally, and render to WAV audio
 /// using the provided SoundFont.
 ///
-/// Returns a complete WAV file (44 100 Hz, stereo, 16-bit) as raw bytes.
+/// Returns a complete WAV file (48 000 Hz, stereo, 16-bit) as raw bytes.
 /// The MIDI is an internal intermediate — it is never returned to the caller.
 pub fn render_audio_from_bytes(
     data: &[u8],

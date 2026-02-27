@@ -4,9 +4,9 @@ import AVFoundation
 // MARK: - Constants
 
 private enum FeedbackConstants {
-    /// Audio capture sample rate (Hz).
-    static let sampleRate: Double = 44100
-    /// Number of samples per YIN analysis buffer (~93 ms at 44100 Hz).
+    /// Audio capture sample rate (Hz). Matches iOS hardware and WAV playback (48 kHz).
+    static let sampleRate: Double = 48000
+    /// Number of samples per YIN analysis buffer (~85 ms at 48000 Hz).
     static let bufferSize: AVAudioFrameCount = 4096
     /// YIN threshold — lower = more accurate but may miss notes.
     static let yinThreshold: Double = 0.15
@@ -51,6 +51,8 @@ final class FeedbackManager: ObservableObject {
     // MARK: Private capture state
 
     private var isListening = false
+    /// Set when record permission is granted (so we can install tap before play next time).
+    private var hasRecordPermission = false
 
     // MARK: Score data
 
@@ -87,13 +89,27 @@ final class FeedbackManager: ObservableObject {
                     onPermissionDenied()
                     return
                 }
-                // Install the tap on PlaybackManager's running engine.
-                self.tapInstaller? { [weak self] buffer in
-                    self?.processBuffer(buffer)
+                self.hasRecordPermission = true
+                // Install the tap on PlaybackManager's running engine (only if not already from installTapIfReady).
+                if !self.isListening {
+                    self.tapInstaller? { [weak self] buffer in
+                        self?.processBuffer(buffer)
+                    }
+                    self.isListening = true
                 }
-                self.isListening = true
             }
         }
+    }
+
+    /// Install the mic tap now if we already have record permission.
+    /// Called from PlaybackManager.beforePlaybackStarts so the tap is in place before
+    /// playback starts, avoiding engine reconfiguration that can stop output.
+    func installTapIfReady() {
+        guard hasRecordPermission else { return }
+        tapInstaller? { [weak self] buffer in
+            self?.processBuffer(buffer)
+        }
+        isListening = true
     }
 
     /// Remove the microphone tap and build the final report.
@@ -191,7 +207,7 @@ final class FeedbackManager: ObservableObject {
 
         // YIN is O(n²) — offload it to a background queue so the real-time audio
         // thread is free to keep rendering output without glitches or dropouts.
-        // Each buffer is ~93 ms of audio at 44100 Hz, so results arrive ~10× per
+        // Each buffer is ~85 ms of audio at 48000 Hz, so results arrive ~10× per
         // second regardless of which thread does the math.
         let sr = buffer.format.sampleRate > 0 ? buffer.format.sampleRate : FeedbackConstants.sampleRate
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in

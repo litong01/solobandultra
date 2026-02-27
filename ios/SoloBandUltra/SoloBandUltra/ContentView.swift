@@ -181,6 +181,23 @@ struct ContentView: View {
             feedbackManager.tapRemover = { [weak playbackManager] in
                 playbackManager?.removeMicrophoneTap()
             }
+            playbackManager.beforePlaybackStarts = { [weak feedbackManager] in
+                guard midiSettings.includeFeedback else { return }
+                feedbackManager?.installTapIfReady()
+            }
+            playbackManager.useDuplexForFeedback = midiSettings.includeFeedback
+            if midiSettings.includeFeedback {
+                feedbackManager.startListening()
+            }
+        }
+        .onChange(of: midiSettings.includeFeedback) { includeFeedback in
+            playbackManager.useDuplexForFeedback = includeFeedback
+            if includeFeedback {
+                // Request permission and install tap handler now so duplex path is ready when user presses Play.
+                feedbackManager.startListening()
+            } else {
+                feedbackManager.stopListening()
+            }
         }
         .onChange(of: playbackManager.isPlaying) { isNowPlaying in
             guard midiSettings.includeFeedback else { return }

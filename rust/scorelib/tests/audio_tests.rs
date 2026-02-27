@@ -67,7 +67,7 @@ fn render_audio_asa_branca_produces_valid_wav() {
     assert_eq!(&wav[12..16], b"fmt ", "Should have fmt chunk");
     assert_eq!(&wav[36..40], b"data", "Should have data chunk");
 
-    // Verify format: PCM (1), stereo (2), 44100 Hz, 16-bit
+    // Verify format: PCM (1), stereo (2), 48000 Hz, 16-bit
     let audio_format = u16::from_le_bytes([wav[20], wav[21]]);
     let num_channels = u16::from_le_bytes([wav[22], wav[23]]);
     let sample_rate = u32::from_le_bytes([wav[24], wav[25], wav[26], wav[27]]);
@@ -75,7 +75,7 @@ fn render_audio_asa_branca_produces_valid_wav() {
 
     assert_eq!(audio_format, 1, "Should be PCM format");
     assert_eq!(num_channels, 2, "Should be stereo");
-    assert_eq!(sample_rate, 44100, "Should be 44100 Hz");
+    assert_eq!(sample_rate, 48000, "Should be 48000 Hz");
     assert_eq!(bits_per_sample, 16, "Should be 16-bit");
 
     // WAV should be substantial (a real piece, not silence)

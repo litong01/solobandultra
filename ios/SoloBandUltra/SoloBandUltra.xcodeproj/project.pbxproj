@@ -28,6 +28,8 @@
 		QQ00000000000000000001B1 /* FeedbackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = QQ00000000000000000001A1 /* FeedbackManager.swift */; };
 		QQ00000000000000000002B1 /* FeedbackReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = QQ00000000000000000002A1 /* FeedbackReport.swift */; };
 		QQ00000000000000000003B1 /* FeedbackReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = QQ00000000000000000003A1 /* FeedbackReportView.swift */; };
+		RR00000000000000000001B1 /* RemoteIOCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = RR00000000000000000001A1 /* RemoteIOCapture.swift */; };
+		SS00000000000000000001B1 /* RemoteIODuplex.swift in Sources */ = {isa = PBXBuildFile; fileRef = SS00000000000000000001A1 /* RemoteIODuplex.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -55,6 +57,8 @@
 		QQ00000000000000000001A1 /* FeedbackManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedbackManager.swift; sourceTree = "<group>"; };
 		QQ00000000000000000002A1 /* FeedbackReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedbackReport.swift; sourceTree = "<group>"; };
 		QQ00000000000000000003A1 /* FeedbackReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedbackReportView.swift; sourceTree = "<group>"; };
+		RR00000000000000000001A1 /* RemoteIOCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteIOCapture.swift; sourceTree = "<group>"; };
+		SS00000000000000000001A1 /* RemoteIODuplex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteIODuplex.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -90,6 +94,8 @@
 				AA00000000000000000004A1 /* AudioSessionManager.swift */,
 				BB00000000000000000001A1 /* ScoreLibBridge.swift */,
 				DD00000000000000000001A1 /* PlaybackManager.swift */,
+				RR00000000000000000001A1 /* RemoteIOCapture.swift */,
+				SS00000000000000000001A1 /* RemoteIODuplex.swift */,
 				EE00000000000000000001A1 /* MidiSettings.swift */,
 				FF00000000000000000001A1 /* AuthManager.swift */,
 				FF00000000000000000002A1 /* kinde-auth.json */,
@@ -202,6 +208,8 @@
 				AA00000000000000000004B1 /* AudioSessionManager.swift in Sources */,
 				BB00000000000000000001B1 /* ScoreLibBridge.swift in Sources */,
 				DD00000000000000000001B1 /* PlaybackManager.swift in Sources */,
+				RR00000000000000000001B1 /* RemoteIOCapture.swift in Sources */,
+				SS00000000000000000001B1 /* RemoteIODuplex.swift in Sources */,
 				EE00000000000000000001B1 /* MidiSettings.swift in Sources */,
 				FF00000000000000000001B1 /* AuthManager.swift in Sources */,
 				PP00000000000000000001B1 /* BundleModel.swift in Sources */,

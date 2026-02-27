@@ -60,12 +60,12 @@ The synthesis engine lives in `rust/scorelib/src/audio.rs` and uses the [rustysy
 
 | Parameter     | Value                          |
 |---------------|--------------------------------|
-| Sample rate   | 44,100 Hz                      |
+| Sample rate   | 48,000 Hz                      |
 | Channels      | 2 (stereo)                     |
 | Bit depth     | 16-bit signed integer (PCM)    |
 | Byte order    | Little-endian                  |
 | Container     | WAV (RIFF, format code 1)      |
-| Byte rate     | 176,400 bytes/sec              |
+| Byte rate     | 192,000 bytes/sec              |
 | Block align   | 4 bytes (2 channels x 2 bytes) |
 
 #### Rendering Process
@@ -75,7 +75,7 @@ pub fn render_audio(midi_data: &[u8], soundfont_data: &[u8]) -> Result<Vec<u8>, 
 ```
 
 1. Load the SoundFont into `Arc<SoundFont>` and the MIDI data into `Arc<MidiFile>`
-2. Create a `Synthesizer` and `MidiFileSequencer` at 44,100 Hz
+2. Create a `Synthesizer` and `MidiFileSequencer` at 48,000 Hz
 3. Calculate total duration = MIDI length + 1.0 second (release tail for sustained notes)
 4. Render in blocks of **8,192 samples** to keep peak memory low:
    - The sequencer advances the MIDI playhead and feeds events to the synthesizer
@@ -104,8 +104,8 @@ Bytes 12–15:  "fmt "
 Bytes 16–19:  16 (fmt chunk size)
 Bytes 20–21:  1 (PCM format)
 Bytes 22–23:  2 (channels)
-Bytes 24–27:  44100 (sample rate)
-Bytes 28–31:  176400 (byte rate)
+Bytes 24–27:  48000 (sample rate)
+Bytes 28–31:  192000 (byte rate)
 Bytes 32–33:  4 (block align)
 Bytes 34–35:  16 (bits per sample)
 Bytes 36–39:  "data"
@@ -113,7 +113,7 @@ Bytes 40–43:  PCM data size
 Bytes 44+:    Interleaved 16-bit PCM samples (L, R, L, R, …)
 ```
 
-Typical sizes: ~10 MB per minute of music (stereo 16-bit at 44.1 kHz).
+Typical sizes: ~11 MB per minute of music (stereo 16-bit at 48 kHz).
 
 ---
 

@@ -171,7 +171,7 @@ enum ScoreLib {
     /// Render MusicXML data to WAV audio using the bundled SoundFont.
     ///
     /// Internally generates MIDI and synthesizes it offline via rustysynth.
-    /// Returns a complete WAV file (44100 Hz, stereo, 16-bit) as Data.
+    /// Returns a complete WAV file (48000 Hz, stereo, 16-bit) as Data.
     static func renderAudio(_ data: Data, extension ext: String? = nil, optionsJson: String? = nil) -> Data? {
         guard let sfData = soundfontData else {
             print("[ScoreLib] Cannot render audio: no SoundFont available")

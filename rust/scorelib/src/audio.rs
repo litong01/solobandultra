@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use rustysynth::{MidiFile, MidiFileSequencer, SoundFont, Synthesizer, SynthesizerSettings};
 
-/// Output sample rate (CD quality).
-const SAMPLE_RATE: i32 = 44100;
+/// Output sample rate (48 kHz — matches iOS hardware for playAndRecord).
+const SAMPLE_RATE: i32 = 48000;
 
 /// Render block size (samples per block).  Keeps peak memory low by
 /// converting f32→i16 incrementally instead of allocating the entire
@@ -36,7 +36,7 @@ const MAX_DURATION_SECS: f64 = 3600.0; // 1 hour
 /// Render MIDI data to a WAV file using the provided SoundFont.
 ///
 /// Returns a complete WAV file (header + PCM data) as bytes.
-/// Format: 44 100 Hz, stereo, 16-bit signed integer, little-endian.
+/// Format: 48 000 Hz, stereo, 16-bit signed integer, little-endian.
 ///
 /// An extra second of silence is appended so release tails ring out
 /// naturally instead of being abruptly cut.
@@ -193,9 +193,9 @@ mod tests {
 
     #[test]
     fn test_build_wav_header() {
-        // 1 second of silence, mono, 16-bit, 44100 Hz
-        let pcm = vec![0u8; 44100 * 2]; // 1 second mono 16-bit
-        let wav = build_wav(44100, 1, 16, &pcm).unwrap();
+        // 1 second of silence, mono, 16-bit, 48000 Hz
+        let pcm = vec![0u8; 48000 * 2]; // 1 second mono 16-bit
+        let wav = build_wav(48000, 1, 16, &pcm).unwrap();
 
         // Check RIFF header
         assert_eq!(&wav[0..4], b"RIFF");
