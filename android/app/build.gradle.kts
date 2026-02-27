@@ -27,6 +27,9 @@ android {
         versionCode = 1
         versionName = "1.0"
 
+        // Cloud choir WebSocket base URL (e.g. https://your-server.com). Set when building; /ws is appended.
+        buildConfigField("String", "CHOIR_WS_BASE_URL", "\"https://websocket-888861749871.us-south1.run.app\"")
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
@@ -54,6 +57,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     composeOptions {
@@ -96,6 +100,7 @@ dependencies {
 
     // Kinde Authentication SDK
     implementation("com.kinde:android-sdk:1.5.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
 

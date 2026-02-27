@@ -21,7 +21,6 @@ cd "$(dirname "$0")"
 
 DOCKER_IMAGE="scorelib-builder"
 RUST_SRC="rust/scorelib"
-CHOIR_SRC="rust/choirlib"
 # With rust/Cargo.toml workspace, both crates build into rust/target/, not $CRATE/target/
 RUST_TARGET_DIR="rust/target"
 IOS_LIB_DIR="ios/SoloBandUltra/lib"
@@ -60,16 +59,6 @@ docker_cargo() {
     docker run --rm --platform linux/amd64 \
         -v "$(pwd):/project" \
         -w "/project/$RUST_SRC" \
-        -v scorelib-cargo-registry:/usr/local/cargo/registry \
-        -v scorelib-cargo-git:/usr/local/cargo/git \
-        "$DOCKER_IMAGE" \
-        bash -c "set -euo pipefail; $1"
-}
-
-docker_cargo_choir() {
-    docker run --rm --platform linux/amd64 \
-        -v "$(pwd):/project" \
-        -w "/project/$CHOIR_SRC" \
         -v scorelib-cargo-registry:/usr/local/cargo/registry \
         -v scorelib-cargo-git:/usr/local/cargo/git \
         "$DOCKER_IMAGE" \
@@ -169,40 +158,6 @@ build_ios() {
     echo "  Device:    $(lipo -info "$XCFW/ios-arm64/libscorelib.a" 2>/dev/null || echo 'see xcframework')"
     echo "  Simulator: $(lipo -info "$XCFW/ios-arm64_x86_64-simulator/libscorelib.a" 2>/dev/null || echo 'see xcframework')"
 
-    # ─── choirlib for iOS ───────────────────────────────────────────────
-    docker_cargo_choir '
-        echo "→ Adjusting choirlib Cargo.toml for iOS staticlib build..."
-        cp Cargo.toml Cargo.toml.orig
-        trap "mv Cargo.toml.orig Cargo.toml 2>/dev/null || true" EXIT
-        sed -i '\''s/crate-type = .*/crate-type = ["lib", "staticlib"]/'\'' Cargo.toml
-
-        echo "→ Building choirlib aarch64-apple-ios-sim..."
-        cargo build --release --target aarch64-apple-ios-sim 2>&1
-        echo "→ Building choirlib x86_64-apple-ios..."
-        cargo build --release --target x86_64-apple-ios 2>&1
-        echo "→ Building choirlib aarch64-apple-ios..."
-        cargo build --release --target aarch64-apple-ios 2>&1
-        echo "✓ iOS choirlib compilation complete"
-    '
-
-    local CHOIR_SIM_FAT="$RUST_TARGET_DIR/libchoirlib-sim.a"
-    lipo -create \
-        "$RUST_TARGET_DIR/aarch64-apple-ios-sim/release/libchoirlib.a" \
-        "$RUST_TARGET_DIR/x86_64-apple-ios/release/libchoirlib.a" \
-        -output "$CHOIR_SIM_FAT"
-
-    local CHOIR_INCLUDE_DIR="ios/SoloBandUltra/include_choirlib"
-    local CHOIR_XCFW="$IOS_LIB_DIR/libchoirlib.xcframework"
-    rm -rf "$CHOIR_XCFW"
-    xcodebuild -create-xcframework \
-        -library "$RUST_TARGET_DIR/aarch64-apple-ios/release/libchoirlib.a" \
-        -headers "$CHOIR_INCLUDE_DIR" \
-        -library "$CHOIR_SIM_FAT" \
-        -headers "$CHOIR_INCLUDE_DIR" \
-        -output "$CHOIR_XCFW"
-    rm -f "$CHOIR_SIM_FAT"
-    echo "✓ iOS: $CHOIR_XCFW"
-
     deploy_fonts
     echo ""
 }
@@ -235,23 +190,8 @@ build_android() {
     cp "$RUST_TARGET_DIR/aarch64-linux-android/release/libscorelib.so" "$ANDROID_JNI_DIR/arm64-v8a/"
     cp "$RUST_TARGET_DIR/x86_64-linux-android/release/libscorelib.so"  "$ANDROID_JNI_DIR/x86_64/"
 
-    docker_cargo_choir '
-        NDK_BIN="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin"
-        export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="${NDK_BIN}/aarch64-linux-android21-clang"
-        export CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER="${NDK_BIN}/x86_64-linux-android21-clang"
-        export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-z -C link-arg=max-page-size=16384"
-        export CARGO_TARGET_X86_64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-z -C link-arg=max-page-size=16384"
-        echo "→ Building choirlib for Android..."
-        cargo build --release --target aarch64-linux-android 2>&1
-        cargo build --release --target x86_64-linux-android 2>&1
-        echo "✓ Android choirlib compilation complete"
-    '
-
-    cp "$RUST_TARGET_DIR/aarch64-linux-android/release/libchoirlib.so" "$ANDROID_JNI_DIR/arm64-v8a/"
-    cp "$RUST_TARGET_DIR/x86_64-linux-android/release/libchoirlib.so"  "$ANDROID_JNI_DIR/x86_64/"
-
-    echo "✓ Android: $ANDROID_JNI_DIR/arm64-v8a/libscorelib.so, libchoirlib.so"
-    echo "✓ Android: $ANDROID_JNI_DIR/x86_64/libscorelib.so, libchoirlib.so"
+    echo "✓ Android: $ANDROID_JNI_DIR/arm64-v8a/libscorelib.so"
+    echo "✓ Android: $ANDROID_JNI_DIR/x86_64/libscorelib.so"
 
     deploy_fonts
     echo ""

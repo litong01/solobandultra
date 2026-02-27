@@ -851,51 +851,59 @@ private extension Font.TextStyle {
 struct ChoirSheet: View {
     @Binding var isPresented: Bool
     @ObservedObject var choirManager: ChoirManager
+    @EnvironmentObject var authManager: AuthManager
 
+    @State private var choirName = ""
     @State private var joinPassword = ""
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
-                    // ── Join a choir (iOS cannot host; start choir on an Android device) ───────────
                     SettingsSection("Join a choir") {
                         VStack(alignment: .leading, spacing: 12) {
-                            if !choirManager.discoveredChoirName.isEmpty {
-                                Text(choirManager.discoveredChoirName)
-                                    .font(.settingsLabel)
-                            } else if let err = choirManager.discoveryError, !err.isEmpty {
-                                Text("Discovery error: \(err)")
+                            Text("Choir name")
+                                .font(.settingsLabel)
+                            TextField("Choir name", text: $choirName)
+                                .textFieldStyle(.roundedBorder)
+                                .textInputAutocapitalization(.words)
+                                .autocorrectionDisabled()
+                            Text("Password")
+                                .font(.settingsLabel)
+                            SecureField("Password", text: $joinPassword)
+                                .textFieldStyle(.roundedBorder)
+                            if let err = choirManager.joinError {
+                                Text(err)
                                     .font(.settingsLabel)
                                     .foregroundStyle(.red)
-                            } else {
-                                Text("No choir discovered")
+                            }
+                            if choirManager.isReconnecting {
+                                Text("Reconnecting…")
                                     .font(.settingsLabel)
                                     .foregroundStyle(.secondary)
                             }
-                            Button("Discover choirs") {
-                                choirManager.discover()
-                            }
-                            .buttonStyle(.bordered)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Join password")
-                                    .font(.settingsLabel)
-                                SecureField("Join password", text: $joinPassword)
-                                    .textFieldStyle(.roundedBorder)
-                            }
                             Button(action: {
-                                if choirManager.isJoined {
+                                if choirManager.isJoined || choirManager.isReconnecting {
                                     choirManager.leave()
                                 } else {
-                                    choirManager.join(choirName: choirManager.discoveredChoirName, password: joinPassword)
+                                    let room = choirName.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    if !room.isEmpty {
+                                        UserDefaults.standard.set(room, forKey: "lastChoirName")
+                                        UserDefaults.standard.set(joinPassword, forKey: "lastChoirPassword")
+                                    }
+                                    choirManager.join(
+                                        choirName: choirName,
+                                        password: joinPassword,
+                                        tokenProvider: { try await authManager.getAccessToken() }
+                                    )
                                 }
                             }) {
-                                Text(choirManager.isJoined ? "Leave" : "Join")
+                                Text((choirManager.isJoined || choirManager.isReconnecting) ? "Leave" : "Join")
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 10)
                             }
                             .buttonStyle(.borderedProminent)
-                            .disabled(choirManager.discoveredChoirName.isEmpty)
+                            .disabled(!choirManager.isJoined && !choirManager.isReconnecting && choirName.trimmingCharacters(in: .whitespaces).isEmpty)
                         }
                     }
                 }
@@ -909,7 +917,10 @@ struct ChoirSheet: View {
                 }
             }
             .onAppear {
-                choirManager.discover()
+                if choirName.isEmpty {
+                    choirName = UserDefaults.standard.string(forKey: "lastChoirName") ?? ""
+                    joinPassword = UserDefaults.standard.string(forKey: "lastChoirPassword") ?? ""
+                }
             }
         }
     }

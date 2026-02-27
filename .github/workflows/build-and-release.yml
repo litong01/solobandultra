@@ -52,22 +52,11 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             rust/target
-          key: ios-cargo-${{ hashFiles('rust/Cargo.toml', 'rust/scorelib/Cargo.toml', 'rust/choirlib/Cargo.toml') }}
+          key: ios-cargo-${{ hashFiles('rust/Cargo.toml', 'rust/scorelib/Cargo.toml') }}
           restore-keys: ios-cargo-
 
       - name: Build Rust scorelib (iOS Device + Simulator)
         working-directory: rust/scorelib
-        run: |
-          cp Cargo.toml Cargo.toml.orig
-          sed -i '' 's/crate-type = .*/crate-type = ["lib", "staticlib"]/' Cargo.toml
-          trap "mv Cargo.toml.orig Cargo.toml 2>/dev/null || true" EXIT
-
-          cargo build --release --target aarch64-apple-ios
-          cargo build --release --target aarch64-apple-ios-sim
-          cargo build --release --target x86_64-apple-ios
-
-      - name: Build Rust choirlib (iOS Device + Simulator)
-        working-directory: rust/choirlib
         run: |
           cp Cargo.toml Cargo.toml.orig
           sed -i '' 's/crate-type = .*/crate-type = ["lib", "staticlib"]/' Cargo.toml
@@ -100,23 +89,6 @@ jobs:
             -headers "$INCLUDE_SCORE" \
             -output "$LIB_DIR/libscorelib.xcframework"
           rm -f "$SIM_FAT_SCORE"
-
-          # --- libchoirlib.xcframework ---
-          INCLUDE_CHOIR=ios/SoloBandUltra/include_choirlib
-          SIM_FAT_CHOIR="${RUST_TARGET}/libchoirlib-sim.a"
-          lipo -create \
-            "${RUST_TARGET}/aarch64-apple-ios-sim/release/libchoirlib.a" \
-            "${RUST_TARGET}/x86_64-apple-ios/release/libchoirlib.a" \
-            -output "$SIM_FAT_CHOIR"
-
-          rm -rf "$LIB_DIR/libchoirlib.xcframework"
-          xcodebuild -create-xcframework \
-            -library "${RUST_TARGET}/aarch64-apple-ios/release/libchoirlib.a" \
-            -headers "$INCLUDE_CHOIR" \
-            -library "$SIM_FAT_CHOIR" \
-            -headers "$INCLUDE_CHOIR" \
-            -output "$LIB_DIR/libchoirlib.xcframework"
-          rm -f "$SIM_FAT_CHOIR"
 
       - name: Resolve Swift Package dependencies
         working-directory: ios/SoloBandUltra
@@ -183,7 +155,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             rust/target
-          key: android-cargo-${{ hashFiles('rust/Cargo.toml', 'rust/scorelib/Cargo.toml', 'rust/choirlib/Cargo.toml') }}
+          key: android-cargo-${{ hashFiles('rust/Cargo.toml', 'rust/scorelib/Cargo.toml') }}
           restore-keys: android-cargo-
 
       - name: Build Rust scorelib (Android)
@@ -200,20 +172,6 @@ jobs:
           cargo build --release --target aarch64-linux-android
           cargo build --release --target x86_64-linux-android
 
-      - name: Build Rust choirlib (Android)
-        working-directory: rust/choirlib
-        run: |
-          NDK_HOME="${ANDROID_NDK_HOME:-$ANDROID_NDK_LATEST_HOME}"
-          NDK_BIN="${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin"
-
-          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="${NDK_BIN}/aarch64-linux-android21-clang"
-          export CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER="${NDK_BIN}/x86_64-linux-android21-clang"
-          export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-z -C link-arg=max-page-size=16384"
-          export CARGO_TARGET_X86_64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-z -C link-arg=max-page-size=16384"
-
-          cargo build --release --target aarch64-linux-android --features android
-          cargo build --release --target x86_64-linux-android --features android
-
       - name: Copy .so files to jniLibs
         run: |
           RUST_TARGET=rust/target
@@ -222,8 +180,6 @@ jobs:
 
           cp "$RUST_TARGET/aarch64-linux-android/release/libscorelib.so" "$JNI/arm64-v8a/"
           cp "$RUST_TARGET/x86_64-linux-android/release/libscorelib.so" "$JNI/x86_64/"
-          cp "$RUST_TARGET/aarch64-linux-android/release/libchoirlib.so" "$JNI/arm64-v8a/"
-          cp "$RUST_TARGET/x86_64-linux-android/release/libchoirlib.so" "$JNI/x86_64/"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4

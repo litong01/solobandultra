@@ -68,6 +68,12 @@ class AuthManager: ObservableObject {
 
     @Published var logoutFailed: Bool = false
 
+    /// Get the current Kinde access token for API calls (e.g. WebSocket Authorization header).
+    /// Call only when `isAuthenticated` is true; throws if not authenticated or token refresh fails.
+    func getAccessToken() async throws -> String {
+        try await KindeSDKAPI.auth.getToken(desiredToken: .accessToken)
+    }
+
     /// Log the user out of Kinde.
     func logout() {
         KindeSDKAPI.auth.logout { [weak self] success in
