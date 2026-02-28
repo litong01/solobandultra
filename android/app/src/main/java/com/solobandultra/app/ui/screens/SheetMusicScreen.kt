@@ -1012,8 +1012,7 @@ fun SheetMusicScreen(
             )
         }
     }
-
-    // ── Choir: cloud client onCommand is wired in ChoirSheetContent; no polling.
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 // Paste Link helper
@@ -1164,13 +1163,14 @@ private fun ChoirSheetContent(
                 Button(
                     onClick = {
                         if (state.isJoined || state.isReconnecting) {
+                            val clientToDisconnect = state.cloudClient
                             choirState.value = choirState.value.copy(
                                 userRequestedLeave = true,
                                 isJoined = false,
                                 cloudClient = null,
                                 isReconnecting = false
                             )
-                            state.cloudClient?.disconnect()
+                            clientToDisconnect?.disconnect()
                             choirState.value = choirState.value.copy(cloudClient = null, joinError = null)
                         } else {
                             val token = getAccessToken()
