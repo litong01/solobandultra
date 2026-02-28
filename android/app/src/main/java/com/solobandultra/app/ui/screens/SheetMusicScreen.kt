@@ -1252,12 +1252,6 @@ private fun ChoirSheetContent(
                 ) {
                     Text(if (state.isJoined || state.isReconnecting) "Leave" else "Join")
                 }
-                if (!state.isJoined && baseUrl.isNotEmpty()) {
-                    Text(
-                        "First to join creates the room; others with the same name and password join it.",
-                        style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    )
-                }
             }
         }
 
