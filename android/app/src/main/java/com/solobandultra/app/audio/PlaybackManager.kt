@@ -154,8 +154,13 @@ class PlaybackManager(
 
     /**
      * Start or resume playback.
+     * If the player was stopped (released), re-prepares from the last loaded WAV so choir
+     * "play" after "stop" works (iOS keeps the engine; Android must re-prepare after stop()).
      */
     fun play() {
+        if (mediaPlayer == null && wavTempFile != null) {
+            loadWavFromFile(wavTempFile!!)
+        }
         val player = mediaPlayer ?: run {
             Log.w(TAG, "No audio data loaded")
             return
@@ -212,6 +217,8 @@ class PlaybackManager(
 
     /**
      * Stop playback and reset to the beginning.
+     * Releases the MediaPlayer but keeps the WAV file reference so a subsequent
+     * play() can re-prepare and start (matches choir flow: stop then play again).
      */
     fun stop() {
         mediaPlayer?.let { player ->
@@ -233,10 +240,7 @@ class PlaybackManager(
         // Reset cursor to the beginning (keep it visible)
         updateCursor(0.0)
 
-        // Clean up temp file
-        wavTempFile?.delete()
-        wavTempFile = null
-
+        // Keep wavTempFile so play() can re-prepare after stop (choir: stop then play again)
         Log.d(TAG, "Stopped")
     }
 
@@ -371,6 +375,7 @@ class PlaybackManager(
      */
     private fun loadWavFromFile(tempFile: File) {
         try {
+            wavTempFile?.takeIf { it != tempFile }?.delete()
             wavTempFile = tempFile
 
             val player = MediaPlayer()

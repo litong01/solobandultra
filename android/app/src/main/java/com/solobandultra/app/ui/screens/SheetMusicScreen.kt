@@ -672,6 +672,28 @@ fun SheetMusicScreen(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val choirSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
 
+    // Choir command executor: updated every composition so CloudChoirClient always has a valid callback
+    // even when the Choir sheet is closed or after recomposition (fixes intermittent "receive but no play").
+    val choirCommandExecutorHolder = remember {
+        object {
+            var executor: (cmd: String, executeAtMs: Long) -> Unit = { _, _ -> }
+        }
+    }
+    choirCommandExecutorHolder.executor = { cmd, executeAtMs ->
+        val delayMs = (executeAtMs - System.currentTimeMillis()).coerceAtLeast(0L)
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            Log.d("Choir", "executing cmd=$cmd delayMs=$delayMs playbackManager=${if (playbackManager != null) "ok" else "NULL"}")
+            when (cmd) {
+                "play" -> playbackManager?.play()
+                "pause" -> playbackManager?.pause()
+                "stop" -> playbackManager?.stop()
+                "prev" -> { val idx = currentPieceIndex; if (idx != null && idx > 0) selectPiece(unlockedPieces[idx - 1]) }
+                "next" -> { val idx = currentPieceIndex; if (idx != null && idx < unlockedPieces.size - 1) selectPiece(unlockedPieces[idx + 1]) }
+                else -> { }
+            }
+        }, delayMs)
+    }
+
     // Send choir command (cloud client).
     fun sendChoirCommand(cmd: String) {
         choirState.value.cloudClient?.sendCommand(cmd)
@@ -995,19 +1017,7 @@ fun SheetMusicScreen(
                 choirState = choirState,
                 scope = scope,
                 getAccessToken = getAccessToken,
-                onChoirCommand = { cmd, executeAtMs ->
-                    val delayMs = (executeAtMs - System.currentTimeMillis()).coerceAtLeast(0L)
-                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                        Log.d("Choir", "executing cmd=$cmd")
-                        when (cmd) {
-                            "play" -> playbackManager?.play()
-                            "pause" -> playbackManager?.pause()
-                            "stop" -> playbackManager?.stop()
-                            "prev" -> { val idx = currentPieceIndex; if (idx != null && idx > 0) selectPiece(unlockedPieces[idx - 1]) }
-                            "next" -> { val idx = currentPieceIndex; if (idx != null && idx < unlockedPieces.size - 1) selectPiece(unlockedPieces[idx + 1]) }
-                        }
-                    }, delayMs)
-                },
+                onChoirCommand = { cmd, executeAtMs -> choirCommandExecutorHolder.executor(cmd, executeAtMs) },
                 onDone = { showChoir = false }
             )
         }

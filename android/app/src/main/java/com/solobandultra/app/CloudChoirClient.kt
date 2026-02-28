@@ -78,8 +78,16 @@ class CloudChoirClient(
                     deferred.complete(result)
                     return
                 }
-                parseCommand(text)?.let { (cmd, at) ->
-                    mainHandler.post { onCommand(cmd, at) }
+                Log.d(TAG, "onMessage (command) len=${text.length} preview=${text.take(80)}")
+                val parsed = parseCommand(text)
+                if (parsed != null) {
+                    val (cmd, at) = parsed
+                    Log.d(TAG, "parsed cmd=$cmd executeAtMs=$at posting to main")
+                    mainHandler.post {
+                        onCommand(cmd, at)
+                    }
+                } else {
+                    Log.w(TAG, "parseCommand returned null (dropped message)")
                 }
             }
 
@@ -158,10 +166,12 @@ class CloudChoirClient(
                 obj.has("next") -> "next" to obj.getJSONObject("next").optString("startAt", "")
                 else -> return null
             }
-            val serverMs = iso8601ToMs(startAt) ?: return null
-            val executeAtMs = serverMs - serverOffsetMs.get()
+            val serverMs = iso8601ToMs(startAt)
+            val executeAtMs = if (serverMs != null) serverMs - serverOffsetMs.get()
+            else System.currentTimeMillis()  // fallback if startAt missing/invalid: execute now
             cmd to executeAtMs
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "parseCommand exception: ${e.message}", e)
             null
         }
     }
