@@ -1100,7 +1100,7 @@ private fun ChoirSheetContent(
     var choirName by remember { mutableStateOf(choirState.value.reconnectRoom ?: "") }
     var joinPassword by remember { mutableStateOf(choirState.value.reconnectPassword ?: "") }
     val state = choirState.value
-    val baseUrl = BuildConfig.CHOIR_WS_BASE_URL?.takeIf { it.isNotBlank() } ?: ""
+    val baseUrl = BuildConfig.CHOIR_WS_BASE_URL.takeIf { it.isNotBlank() } ?: ""
 
     Column(
         modifier = Modifier
@@ -1200,7 +1200,7 @@ private fun ChoirSheetContent(
                                         reconnectAttempt = 0
                                     )
                                 },
-                                onLeft = { reason ->
+                                onLeft = { _ ->
                                     val s = choirState.value
                                     if (s.userRequestedLeave) {
                                         choirState.value = s.copy(
@@ -1280,7 +1280,7 @@ private fun ChoirSheetContent(
                         reconnectAttempt = 0
                     )
                 },
-                onLeft = { reason ->
+                onLeft = { _ ->
                     val s = choirState.value
                     if (s.userRequestedLeave) {
                         choirState.value = s.copy(userRequestedLeave = false, isJoined = false, cloudClient = null)
@@ -1316,7 +1316,9 @@ private fun ChoirSheetContent(
 private fun parseFirstChoirName(json: String?): String? {
     if (json.isNullOrBlank()) return null
     return kotlin.runCatching {
-        org.json.JSONArray(json).optJSONObject(0)?.optString("choir_name", null)
+        org.json.JSONArray(json).optJSONObject(0)?.let { obj ->
+            obj.optString("choir_name").takeIf { it.isNotEmpty() }
+        }
     }.getOrNull()
 }
 
