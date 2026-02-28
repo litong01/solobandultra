@@ -97,7 +97,7 @@ struct ContentView: View {
                         Label("Paste Link", systemImage: "doc.on.clipboard")
                     }
                     .disabled(!clipboardHasUrl)
-                    Button(action: { showChoir = true }) {
+                    Button(action: { requireAuth(for: .showChoir) }) {
                         Label("Choir", systemImage: "person.3")
                     }
                     Button(action: { requireAuth(for: .showSettings) }) {
@@ -351,6 +351,8 @@ struct ContentView: View {
         switch action {
         case .showSettings:
             showSettings = true
+        case .showChoir:
+            showChoir = true
         case .openFile:
             showFilePicker = true
         case .pasteLink:

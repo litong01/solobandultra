@@ -127,6 +127,7 @@ private fun midiOptionsToJson(
 /** Actions that require authentication. */
 enum class PendingAuthAction {
     ShowSettings,
+    ShowChoir,
     OpenFile,
     PasteLink,
     /** The file URI was already stored in openFileUri by the Activity. */
@@ -405,6 +406,7 @@ fun SheetMusicScreen(
         if (!isAuthenticated || pendingAuthAction == null) return@LaunchedEffect
         when (pendingAuthAction) {
             PendingAuthAction.ShowSettings -> showSettings = true
+            PendingAuthAction.ShowChoir -> showChoir = true
             PendingAuthAction.OpenFile -> openDocumentLauncher.launch(arrayOf("*/*"))
             PendingAuthAction.PasteLink -> {
                 if (!isDownloading) {
@@ -776,7 +778,11 @@ fun SheetMusicScreen(
                             text = { Text("Choir") },
                             onClick = {
                                 showMenu = false
-                                showChoir = true
+                                if (isAuthenticated) {
+                                    showChoir = true
+                                } else {
+                                    onLoginRequested(PendingAuthAction.ShowChoir)
+                                }
                             }
                         )
                         DropdownMenuItem(

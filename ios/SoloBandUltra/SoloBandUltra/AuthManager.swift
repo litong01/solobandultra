@@ -4,6 +4,7 @@ import KindeSDK
 /// Actions that require authentication and should be deferred until login completes.
 enum PendingAuthAction {
     case showSettings
+    case showChoir
     case openFile
     case pasteLink
     case loadExternal(Data, String) // (fileData, fileName)
