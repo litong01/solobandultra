@@ -135,8 +135,8 @@ class CloudChoirClient(
                 val clientMs = System.currentTimeMillis()
                 serverOffsetMs.set(serverMs - clientMs)
             }
-        } catch (_: Exception) {
-            // GET /time is optional; keep using offset from join
+        } catch (e: Exception) {
+            Log.d(TAG, "Optional GET /time failed, using join offset: ${e.message}")
         }
     }
 

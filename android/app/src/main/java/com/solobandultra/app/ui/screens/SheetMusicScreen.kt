@@ -260,11 +260,17 @@ fun SheetMusicScreen(
         for (filename in mbkFiles) {
             val bytes = withContext(Dispatchers.IO) {
                 try { context.assets.open("sheetmusic/$filename").use { it.readBytes() } }
-                catch (_: Exception) { null }
+                catch (e: Exception) {
+                    Log.w("SheetMusic", "Failed to read asset sheetmusic/$filename: ${e.message}")
+                    null
+                }
             } ?: continue
             val bundle = withContext(Dispatchers.IO) {
                 try { MbkExtractor.extractAndParse(bytes, MbkExtractor.mbkCacheRoot(context)) }
-                catch (_: Exception) { null }
+                catch (e: Exception) {
+                    Log.w("SheetMusic", "Failed to extract/parse $filename: ${e.message}")
+                    null
+                }
             } ?: continue
             // Only register if not already present (e.g. opened via "Open With").
             if (!activeBundles.containsKey(bundle.bookId)) {
@@ -284,7 +290,9 @@ fun SheetMusicScreen(
         try {
             val bundle = BookBundle.parse(jsonFile.readBytes(), cacheDir)
             activeBundles = activeBundles + (bookId to bundle)
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            Log.w("SheetMusic", "Failed to re-load bundle from cache ($bookId): ${e.message}")
+        }
     }
 
     /** Read a content URI on IO, validate, and set external file state. */
@@ -293,7 +301,10 @@ fun SheetMusicScreen(
             val bytes = withContext(Dispatchers.IO) {
                 try {
                     context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                } catch (_: Exception) { null }
+                } catch (e: Exception) {
+                    Log.w("SheetMusic", "Failed to read content URI: ${e.message}")
+                    null
+                }
             } ?: return@launch
 
             var displayName = "unknown"
@@ -488,6 +499,7 @@ fun SheetMusicScreen(
         scope.launch {
             val currentOptionsJson = optionsJson
             val currentTranspose = transpose
+            var renderFailureReason: String? = null
             val result = withContext(Dispatchers.IO) {
                 try {
                     // Ensure SoundFont is cached (no-op after first call)
@@ -511,6 +523,8 @@ fun SheetMusicScreen(
                         listOf(svg, pmap, timeline, audio)
                     }
                 } catch (e: Exception) {
+                    renderFailureReason = e.message ?: e.javaClass.simpleName
+                    Log.e("SheetMusic", "loadScore failed: $filePath", e)
                     listOf(null, null, null, null)
                 }
             }
@@ -546,7 +560,8 @@ fun SheetMusicScreen(
                     }
                 }
             } else {
-                errorMessage = "Failed to render $filePath"
+                errorMessage = renderFailureReason?.let { "Failed to render $filePath: $it" }
+                    ?: "Failed to render $filePath"
             }
         }
     }
@@ -652,7 +667,8 @@ fun SheetMusicScreen(
                 } else {
                     ScoreLib.renderAudioFromAsset(context, filePath, currentOptionsJson)
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.w("SheetMusic", "Audio render failed for $filePath: ${e.message}")
                 null
             }
         }
@@ -1038,6 +1054,7 @@ fun SheetMusicScreen(
 private fun clipboardHasMusicXmlUrl(context: android.content.Context): Boolean {
     val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager
     val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString()?.trim() ?: return false
+    if (text.length > 2048) return false
     val url = try { URL(text) } catch (_: Exception) { return false }
     val scheme = url.protocol?.lowercase()
     if (scheme != "http" && scheme != "https") return false
@@ -1055,7 +1072,9 @@ private fun pasteFromClipboard(
     val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager
     val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString()?.trim()
 
-    val url = try { text?.let { URL(it) } } catch (_: Exception) { null }
+    val url = try {
+        if (text == null || text.length > 2048) null else URL(text)
+    } catch (_: Exception) { null }
     val scheme = url?.protocol?.lowercase()
     if (url == null || (scheme != "http" && scheme != "https")) return
 
@@ -1076,7 +1095,8 @@ private fun pasteFromClipboard(
                 } else {
                     null
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.w("SheetMusic", "Download failed for $url: ${e.message}")
                 null
             }
         }

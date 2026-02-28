@@ -75,7 +75,7 @@ struct BookBundle: Equatable {
             throw ParseError.invalidJSON
         }
 
-        guard let bookId = top["bookId"] as? String else {
+        guard let bookId = top["bookId"] as? String, !bookId.trimmingCharacters(in: .whitespaces).isEmpty else {
             throw ParseError.missingField("bookId")
         }
         guard let version = top["version"] as? Int else {

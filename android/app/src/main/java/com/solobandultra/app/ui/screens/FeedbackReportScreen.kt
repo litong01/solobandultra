@@ -1,5 +1,6 @@
 package com.solobandultra.app.ui.screens
 
+import android.util.Log
 import android.webkit.WebView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -217,7 +218,8 @@ private fun buildOverlayDotsJson(report: FeedbackReport, playbackMapJson: String
             dotsArray.put(dotEntry)
         }
         dotsArray.toString()
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+        Log.w("FeedbackReport", "Failed to build overlay JSON: ${e.message}")
         null
     }
 }

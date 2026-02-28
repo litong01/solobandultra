@@ -55,10 +55,12 @@ data class BookBundle(
     }
 
     companion object {
-        /** Parse the bytes of a `book.json` file into a [BookBundle]. */
+        /** Parse the bytes of a `book.json` file into a [BookBundle]. Throws on invalid JSON or missing required fields. */
         fun parse(jsonBytes: ByteArray, cacheDir: File): BookBundle {
+            require(cacheDir.isDirectory) { "cacheDir must be an existing directory: $cacheDir" }
             val top = JSONObject(String(jsonBytes, Charsets.UTF_8))
-            val bookId  = top.getString("bookId")
+            val bookId  = top.optString("bookId", "").takeIf { it.isNotBlank() }
+                ?: throw IllegalArgumentException("book.json: missing or empty bookId")
             val version = top.getInt("version")
             val title   = top.optString("title", bookId)
 

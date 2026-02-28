@@ -222,9 +222,10 @@ class FeedbackManager {
                     AudioFormat.ENCODING_PCM_16BIT,
                     minBuf
                 )
-            } catch (_: Exception) { null } ?: continue
-
-            if (record.state != AudioRecord.STATE_INITIALIZED) {
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to create AudioRecord for source $source: ${e.message}")
+                null
+            } ?: continue
                 record.release()
                 Log.w(TAG, "AudioRecord not initialized for source=$source")
                 continue

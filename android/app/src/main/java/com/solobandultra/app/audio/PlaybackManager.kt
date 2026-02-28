@@ -97,11 +97,15 @@ class PlaybackManager(
             try {
                 if (player.isPlaying) player.pause()
                 player.seekTo(0)
-            } catch (_: IllegalStateException) { /* ignore */ }
+            } catch (e: IllegalStateException) {
+            Log.d(TAG, "MediaPlayer IllegalStateException (expected in Error state): ${e.message}")
+        }
         } else if (player != null && _currentTimeMs.value > 0.0) {
             try {
                 player.seekTo(0)
-            } catch (_: IllegalStateException) { /* ignore */ }
+            } catch (e: IllegalStateException) {
+            Log.d(TAG, "MediaPlayer IllegalStateException (expected in Error state): ${e.message}")
+        }
         } else {
             return
         }
@@ -198,15 +202,17 @@ class PlaybackManager(
     fun pause() {
         val player = mediaPlayer ?: return
         try {
-            if (player.isPlaying) player.pause()
-        } catch (_: IllegalStateException) {
-            // Player may be in Error state
-        }
+                if (player.isPlaying) player.pause()
+            } catch (e: IllegalStateException) {
+                Log.d(TAG, "MediaPlayer IllegalStateException (expected in Error state): ${e.message}")
+            }
         _isPlaying.value = false
         // With PlaybackParams, currentPosition is in media time (music time).
         try {
             _currentTimeMs.value = player.currentPosition.toDouble()
-        } catch (_: IllegalStateException) { /* ignore */ }
+        } catch (e: IllegalStateException) {
+            Log.d(TAG, "MediaPlayer IllegalStateException (expected in Error state): ${e.message}")
+        }
         stopChoreographer()
 
         // Keep cursor at the paused position
@@ -224,8 +230,8 @@ class PlaybackManager(
         mediaPlayer?.let { player ->
             try {
                 if (player.isPlaying) player.stop()
-            } catch (_: IllegalStateException) {
-                // Player may be in Error state
+            } catch (e: IllegalStateException) {
+                Log.d(TAG, "MediaPlayer IllegalStateException (expected in Error state): ${e.message}")
             } finally {
                 player.release()
             }
@@ -273,7 +279,8 @@ class PlaybackManager(
         val clampedMs = musicTimeMs.coerceIn(0.0, _durationMs.value)
         try {
             player.seekTo(clampedMs.toInt())
-        } catch (_: IllegalStateException) {
+        } catch (e: IllegalStateException) {
+            Log.d(TAG, "MediaPlayer IllegalStateException (expected in Error state): ${e.message}")
             return
         }
         _currentTimeMs.value = clampedMs
@@ -307,7 +314,9 @@ class PlaybackManager(
                         val musicMs = player.currentPosition.toDouble()
                         _currentTimeMs.value = musicMs
                         updateCursor(musicMs)
-                    } catch (_: IllegalStateException) { /* ignore */ }
+                    } catch (e: IllegalStateException) {
+            Log.d(TAG, "MediaPlayer IllegalStateException (expected in Error state): ${e.message}")
+        }
                     Choreographer.getInstance().postFrameCallback(this)
                 }
             }
@@ -440,7 +449,8 @@ class PlaybackManager(
                 _currentTimeMs.value = 0.0
                 mediaPlayer?.let { applyPlaybackSpeed(it) }
                 mediaPlayer?.start()
-            } catch (_: IllegalStateException) {
+            } catch (e: IllegalStateException) {
+                Log.d(TAG, "MediaPlayer IllegalStateException (expected in Error state): ${e.message}")
                 stop()
             }
             return

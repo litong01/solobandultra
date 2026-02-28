@@ -6,6 +6,9 @@ import java.io.File
 /**
  * JNI bridge to the Rust scorelib library for MusicXML rendering,
  * playback map generation, and MIDI generation.
+ *
+ * Native methods return null on failure (e.g. parse error, invalid input).
+ * Callers should check for null and surface an appropriate error to the user.
  */
 object ScoreLib {
 
@@ -23,12 +26,17 @@ object ScoreLib {
     /**
      * Load and cache the SoundFont from assets. Safe to call multiple times;
      * only reads from assets on the first invocation.
+     * On failure (e.g. missing asset), leaves cache null; audio rendering will return null.
      */
     fun loadSoundFont(context: Context) {
         if (cachedSoundFont == null) {
             synchronized(this) {
                 if (cachedSoundFont == null) {
-                    cachedSoundFont = context.assets.open("GeneralUser_GS.sf2").use { it.readBytes() }
+                    try {
+                        cachedSoundFont = context.assets.open("GeneralUser_GS.sf2").use { it.readBytes() }
+                    } catch (e: Exception) {
+                        android.util.Log.e("ScoreLib", "Failed to load SoundFont: ${e.message}")
+                    }
                 }
             }
         }

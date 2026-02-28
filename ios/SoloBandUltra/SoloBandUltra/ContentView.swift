@@ -393,6 +393,7 @@ struct ContentView: View {
 
         guard let clipString = UIPasteboard.general.string?.trimmingCharacters(in: .whitespacesAndNewlines),
               !clipString.isEmpty,
+              clipString.count <= 2048,
               let url = URL(string: clipString),
               let scheme = url.scheme?.lowercased(),
               scheme == "http" || scheme == "https" else {
@@ -406,6 +407,7 @@ struct ContentView: View {
         }
 
         isDownloading = true
+        downloadError = nil
         let filename = url.lastPathComponent
 
         URLSession.shared.dataTask(with: url) { data, response, error in

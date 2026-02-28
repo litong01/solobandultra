@@ -2,6 +2,7 @@ package com.solobandultra.app.ui.screens
 
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
+import android.util.Log
 import android.os.ParcelFileDescriptor
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -254,7 +255,8 @@ private fun renderPage(renderer: PdfRenderer, pageIndex: Int, targetWidthPx: Int
             page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
             bitmap
         }
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+        Log.w("PdfViewer", "Failed to render page $pageIndex: ${e.message}")
         null
     }
 }

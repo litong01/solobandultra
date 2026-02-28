@@ -54,7 +54,10 @@ struct SoloBandUltraApp: App {
                 at: folder,
                 includingPropertiesForKeys: nil
             )
-        } catch { return }
+        } catch {
+            print("[SoloBandUltra] loadBundledMbkFiles: failed to list sheetmusic directory: \(error)")
+            return
+        }
 
         let mbkFiles = allFiles.filter { $0.pathExtension.lowercased() == "mbk" }
         guard !mbkFiles.isEmpty else { return }
@@ -72,7 +75,7 @@ struct SoloBandUltraApp: App {
                     midiSettings.activeBundles[bundle.bookId] = bundle
                 }
             } catch {
-                // Silently skip malformed bundled .mbk files.
+                print("[SoloBandUltra] loadBundledMbkFiles: failed to load \(fileURL.lastPathComponent): \(error)")
             }
         }
     }
@@ -186,7 +189,7 @@ struct SoloBandUltraApp: App {
             try session.setPreferredSampleRate(48000)
             try session.setActive(true)
         } catch {
-            print("[AudioSession] Failed to configure: \(error.localizedDescription)")
+            print("[SoloBandUltra] AudioSession failed to configure: \(error.localizedDescription)")
         }
     }
 }
