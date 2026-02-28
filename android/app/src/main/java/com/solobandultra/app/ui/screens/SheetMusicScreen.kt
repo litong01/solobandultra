@@ -1256,7 +1256,7 @@ private fun ChoirSheetContent(
             var st = choirState.value
             if (!st.isReconnecting || st.userRequestedLeave || st.reconnectRoom.isNullOrBlank()) return@LaunchedEffect
             val attempt = st.reconnectAttempt
-            val delayMs = minOf((1000.0 * kotlin.math.pow(2.0, attempt.toDouble())).toLong(), 30_000L)
+            val delayMs = minOf(1000L * (1L shl attempt.coerceIn(0, 30)), 30_000L)
             kotlinx.coroutines.delay(delayMs)
             st = choirState.value
             if (st.userRequestedLeave || st.reconnectRoom.isNullOrBlank()) return@LaunchedEffect
