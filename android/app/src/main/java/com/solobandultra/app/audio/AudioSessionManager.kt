@@ -143,7 +143,7 @@ class AudioSessionManager(
     fun setPlayAndRecordMode(enabled: Boolean) {
         if (enabled) {
             audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-            audioManager.isSpeakerphoneOn = true
+            audioManager.setSpeakerphoneOn(true)
             Log.d(TAG, "Play-and-record mode ON (MODE_IN_COMMUNICATION, speakerphone on)")
         } else {
             audioManager.mode = AudioManager.MODE_NORMAL

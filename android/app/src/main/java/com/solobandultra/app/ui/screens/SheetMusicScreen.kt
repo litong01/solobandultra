@@ -52,7 +52,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import android.Manifest
+import android.util.Log
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Close
 import com.solobandultra.app.BookBundle
@@ -61,6 +63,8 @@ import com.solobandultra.app.FeedbackReport
 import com.solobandultra.app.FeedbackState
 import com.solobandultra.app.MbkExtractor
 import com.solobandultra.app.NoteEvent
+import com.solobandultra.app.BuildConfig
+import com.solobandultra.app.CloudChoirClient
 import com.solobandultra.app.ScoreLib
 import com.solobandultra.app.audio.FeedbackManager
 import com.solobandultra.app.audio.PlaybackManager
@@ -123,6 +127,7 @@ private fun midiOptionsToJson(
 /** Actions that require authentication. */
 enum class PendingAuthAction {
     ShowSettings,
+    ShowChoir,
     OpenFile,
     PasteLink,
     /** The file URI was already stored in openFileUri by the Activity. */
@@ -142,6 +147,7 @@ fun SheetMusicScreen(
     isAuthenticated: Boolean = false,
     pendingAuthAction: PendingAuthAction? = null,
     onPendingActionConsumed: () -> Unit = {},
+    getAccessToken: () -> String? = { null },
     onLoginRequested: (PendingAuthAction?) -> Unit = {},
     onLogoutRequested: () -> Unit = {}
 ) {
@@ -149,6 +155,9 @@ fun SheetMusicScreen(
         ?: remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showChoir by remember { mutableStateOf(false) }
+    val choirState = remember { mutableStateOf(ChoirUiState()) }
+    val choirCanSend = choirState.value.isJoined
 
     // ── Feedback Manager ─────────────────────────────────────────────
     val feedbackManager = remember { FeedbackManager() }
@@ -397,6 +406,7 @@ fun SheetMusicScreen(
         if (!isAuthenticated || pendingAuthAction == null) return@LaunchedEffect
         when (pendingAuthAction) {
             PendingAuthAction.ShowSettings -> showSettings = true
+            PendingAuthAction.ShowChoir -> showChoir = true
             PendingAuthAction.OpenFile -> openDocumentLauncher.launch(arrayOf("*/*"))
             PendingAuthAction.PasteLink -> {
                 if (!isDownloading) {
@@ -662,6 +672,34 @@ fun SheetMusicScreen(
 
     // Bottom sheet state
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val choirSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+
+    // Choir command executor: updated every composition so CloudChoirClient always has a valid callback
+    // even when the Choir sheet is closed or after recomposition (fixes intermittent "receive but no play").
+    val choirCommandExecutorHolder = remember {
+        object {
+            var executor: (cmd: String, executeAtMs: Long) -> Unit = { _, _ -> }
+        }
+    }
+    choirCommandExecutorHolder.executor = { cmd, executeAtMs ->
+        val delayMs = (executeAtMs - System.currentTimeMillis()).coerceAtLeast(0L)
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            Log.d("Choir", "executing cmd=$cmd delayMs=$delayMs playbackManager=${if (playbackManager != null) "ok" else "NULL"}")
+            when (cmd) {
+                "play" -> playbackManager?.play()
+                "pause" -> playbackManager?.pause()
+                "stop" -> playbackManager?.stop()
+                "prev" -> { val idx = currentPieceIndex; if (idx != null && idx > 0) selectPiece(unlockedPieces[idx - 1]) }
+                "next" -> { val idx = currentPieceIndex; if (idx != null && idx < unlockedPieces.size - 1) selectPiece(unlockedPieces[idx + 1]) }
+                else -> { }
+            }
+        }, delayMs)
+    }
+
+    // Send choir command (cloud client).
+    fun sendChoirCommand(cmd: String) {
+        choirState.value.cloudClient?.sendCommand(cmd)
+    }
 
     Scaffold(
         topBar = {
@@ -737,6 +775,17 @@ fun SheetMusicScreen(
                             }
                         )
                         DropdownMenuItem(
+                            text = { Text("Choir") },
+                            onClick = {
+                                showMenu = false
+                                if (isAuthenticated) {
+                                    showChoir = true
+                                } else {
+                                    onLoginRequested(PendingAuthAction.ShowChoir)
+                                }
+                            }
+                        )
+                        DropdownMenuItem(
                             text = { Text("Settings") },
                             onClick = {
                                 showMenu = false
@@ -778,10 +827,10 @@ fun SheetMusicScreen(
                 bundleActive  = activeBundle != null,
                 canGoPrev     = canGoPrev,
                 canGoNext     = canGoNext,
-                onPrev        = { val idx = currentPieceIndex; if (idx != null && idx > 0) selectPiece(unlockedPieces[idx - 1]) },
-                onPlayPause   = { playbackManager?.togglePlayPause() },
-                onStop        = { playbackManager?.stop() },
-                onNext        = { val idx = currentPieceIndex; if (idx != null && idx < unlockedPieces.size - 1) selectPiece(unlockedPieces[idx + 1]) },
+                onPrev        = if (choirCanSend) { { Log.d("Choir", "sendCommand prev"); sendChoirCommand("prev") } } else { { val idx = currentPieceIndex; if (idx != null && idx > 0) selectPiece(unlockedPieces[idx - 1]) } },
+                onPlayPause   = if (choirCanSend) { { val cmd = if (isPlaying) "pause" else "play"; Log.d("Choir", "sendCommand $cmd"); sendChoirCommand(cmd) } } else { { playbackManager?.togglePlayPause() } },
+                onStop        = if (choirCanSend) { { Log.d("Choir", "sendCommand stop"); sendChoirCommand("stop") } } else { { playbackManager?.stop() } },
+                onNext        = if (choirCanSend) { { Log.d("Choir", "sendCommand next"); sendChoirCommand("next") } } else { { val idx = currentPieceIndex; if (idx != null && idx < unlockedPieces.size - 1) selectPiece(unlockedPieces[idx + 1]) } },
                 onSettings    = {
                     if (isAuthenticated) showSettings = true
                     else onLoginRequested(PendingAuthAction.ShowSettings)
@@ -963,6 +1012,22 @@ fun SheetMusicScreen(
             } // end MaterialTheme(typography = settingsTypography)
         }
     }
+
+    // ── Choir Bottom Sheet ────────────────────────────────────────────
+    if (showChoir) {
+        ModalBottomSheet(
+            onDismissRequest = { showChoir = false },
+            sheetState = choirSheetState
+        ) {
+            ChoirSheetContent(
+                choirState = choirState,
+                scope = scope,
+                getAccessToken = getAccessToken,
+                onChoirCommand = { cmd, executeAtMs -> choirCommandExecutorHolder.executor(cmd, executeAtMs) },
+                onDone = { showChoir = false }
+            )
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1022,6 +1087,249 @@ private fun pasteFromClipboard(
             Toast.makeText(context, "Download failed.", Toast.LENGTH_SHORT).show()
         }
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Choir state and sheet content
+// ═══════════════════════════════════════════════════════════════════════
+
+data class ChoirUiState(
+    var isJoined: Boolean = false,
+    var joinError: String? = null,
+    var cloudClient: CloudChoirClient? = null,
+    var userRequestedLeave: Boolean = false,
+    var isReconnecting: Boolean = false,
+    var reconnectAttempt: Int = 0,
+    var reconnectRoom: String? = null,
+    var reconnectPassword: String? = null
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChoirSheetContent(
+    choirState: MutableState<ChoirUiState>,
+    scope: kotlinx.coroutines.CoroutineScope,
+    getAccessToken: () -> String?,
+    onChoirCommand: (command: String, executeAtMs: Long) -> Unit,
+    onDone: () -> Unit
+) {
+    var choirName by remember { mutableStateOf(choirState.value.reconnectRoom ?: "") }
+    var joinPassword by remember { mutableStateOf(choirState.value.reconnectPassword ?: "") }
+    val state = choirState.value
+    val baseUrl = BuildConfig.CHOIR_WS_BASE_URL.takeIf { it.isNotBlank() } ?: ""
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Choir",
+                style = MaterialTheme.typography.headlineSmall
+            )
+            TextButton(onClick = onDone) {
+                Text("Done", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+
+        // ── Join a choir (cloud) ─────────────────────────────────────────────
+        SettingsCard("Join a choir") {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (baseUrl.isEmpty()) {
+                    Text(
+                        "Choir server URL not configured (CHOIR_WS_BASE_URL).",
+                        style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.error)
+                    )
+                }
+                OutlinedTextField(
+                    value = choirName,
+                    onValueChange = { choirName = it },
+                    label = { Text("Choir name") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = joinPassword,
+                    onValueChange = { joinPassword = it },
+                    label = { Text("Password") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation()
+                )
+                state.joinError?.let { err ->
+                    Text(
+                        text = err,
+                        style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.error)
+                    )
+                }
+                if (state.isReconnecting) {
+                    Text(
+                        text = "Reconnecting…",
+                        style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    )
+                }
+                Button(
+                    onClick = {
+                        if (state.isJoined || state.isReconnecting) {
+                            val clientToDisconnect = state.cloudClient
+                            choirState.value = choirState.value.copy(
+                                userRequestedLeave = true,
+                                isJoined = false,
+                                cloudClient = null,
+                                isReconnecting = false
+                            )
+                            clientToDisconnect?.disconnect()
+                            choirState.value = choirState.value.copy(cloudClient = null, joinError = null)
+                        } else {
+                            val token = getAccessToken()
+                            if (token.isNullOrBlank()) {
+                                choirState.value = choirState.value.copy(joinError = "Sign in to join a choir.")
+                                return@Button
+                            }
+                            if (baseUrl.isEmpty()) return@Button
+                            val room = choirName.trim()
+                            if (room.isEmpty()) return@Button
+                            choirState.value = choirState.value.copy(
+                                joinError = null,
+                                reconnectRoom = room,
+                                reconnectPassword = joinPassword,
+                                userRequestedLeave = false
+                            )
+                            val client = CloudChoirClient(
+                                baseUrl = baseUrl,
+                                token = token,
+                                room = room,
+                                password = joinPassword,
+                                onJoined = {
+                                    choirState.value = choirState.value.copy(
+                                        isJoined = true,
+                                        joinError = null,
+                                        isReconnecting = false,
+                                        reconnectAttempt = 0
+                                    )
+                                },
+                                onLeft = { _ ->
+                                    val s = choirState.value
+                                    if (s.userRequestedLeave) {
+                                        choirState.value = s.copy(
+                                            userRequestedLeave = false,
+                                            isJoined = false,
+                                            cloudClient = null
+                                        )
+                                        return@CloudChoirClient
+                                    }
+                                    choirState.value = s.copy(
+                                        isJoined = false,
+                                        cloudClient = null,
+                                        isReconnecting = true
+                                    )
+                                },
+                                onCommand = onChoirCommand
+                            )
+                            choirState.value = choirState.value.copy(cloudClient = client)
+                            scope.launch(Dispatchers.IO) {
+                                runCatching { client.connect() }
+                                    .onFailure { e ->
+                                        kotlinx.coroutines.withContext(Dispatchers.Main) {
+                                            val st = choirState.value
+                                            if (st.userRequestedLeave) return@withContext
+                                            choirState.value = st.copy(
+                                                isJoined = false,
+                                                cloudClient = null,
+                                                isReconnecting = true,
+                                                reconnectAttempt = st.reconnectAttempt + 1,
+                                                joinError = e.message
+                                            )
+                                        }
+                                    }
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = state.isJoined || state.isReconnecting || choirName.trim().isNotEmpty()
+                ) {
+                    Text(if (state.isJoined || state.isReconnecting) "Leave" else "Join")
+                }
+            }
+        }
+
+        // ── Auto-reconnect when connection dropped (not when user tapped Leave) ───────
+        LaunchedEffect(choirState.value.isReconnecting, choirState.value.reconnectAttempt) {
+            var st = choirState.value
+            if (!st.isReconnecting || st.userRequestedLeave || st.reconnectRoom.isNullOrBlank()) return@LaunchedEffect
+            val attempt = st.reconnectAttempt
+            val delayMs = minOf(1000L * (1L shl attempt.coerceIn(0, 30)), 30_000L)
+            kotlinx.coroutines.delay(delayMs)
+            st = choirState.value
+            if (st.userRequestedLeave || st.reconnectRoom.isNullOrBlank()) return@LaunchedEffect
+            val token = getAccessToken()
+            if (token.isNullOrBlank()) {
+                choirState.value = st.copy(isReconnecting = false)
+                return@LaunchedEffect
+            }
+            val room = st.reconnectRoom!!
+            val password = st.reconnectPassword ?: ""
+            val client = CloudChoirClient(
+                baseUrl = baseUrl,
+                token = token,
+                room = room,
+                password = password,
+                onJoined = {
+                    choirState.value = choirState.value.copy(
+                        isJoined = true,
+                        joinError = null,
+                        isReconnecting = false,
+                        reconnectAttempt = 0
+                    )
+                },
+                onLeft = { _ ->
+                    val s = choirState.value
+                    if (s.userRequestedLeave) {
+                        choirState.value = s.copy(userRequestedLeave = false, isJoined = false, cloudClient = null)
+                        return@CloudChoirClient
+                    }
+                    choirState.value = s.copy(isJoined = false, cloudClient = null, isReconnecting = true)
+                },
+                onCommand = onChoirCommand
+            )
+            withContext(Dispatchers.Main) {
+                choirState.value = choirState.value.copy(cloudClient = client)
+            }
+            runCatching {
+                withContext(Dispatchers.IO) { client.connect() }
+            }.onFailure {
+                withContext(Dispatchers.Main) {
+                    val s = choirState.value
+                    if (!s.userRequestedLeave) {
+                        choirState.value = s.copy(
+                            isJoined = false,
+                            cloudClient = null,
+                            isReconnecting = true,
+                            reconnectAttempt = s.reconnectAttempt + 1,
+                            joinError = it.message
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun parseFirstChoirName(json: String?): String? {
+    if (json.isNullOrBlank()) return null
+    return kotlin.runCatching {
+        org.json.JSONArray(json).optJSONObject(0)?.let { obj ->
+            obj.optString("choir_name").takeIf { it.isNotEmpty() }
+        }
+    }.getOrNull()
 }
 
 // ═══════════════════════════════════════════════════════════════════════

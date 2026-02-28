@@ -21,6 +21,8 @@ cd "$(dirname "$0")"
 
 DOCKER_IMAGE="scorelib-builder"
 RUST_SRC="rust/scorelib"
+# With rust/Cargo.toml workspace, both crates build into rust/target/, not $CRATE/target/
+RUST_TARGET_DIR="rust/target"
 IOS_LIB_DIR="ios/SoloBandUltra/lib"
 ANDROID_JNI_DIR="android/app/src/main/jniLibs"
 FONTS_SRC="assets/fonts"
@@ -128,10 +130,10 @@ build_ios() {
     # XCFramework solves this by bundling separate slices per platform.
     echo "→ Creating universal simulator library (lipo on host)..."
     mkdir -p "$IOS_LIB_DIR"
-    local SIM_FAT="$RUST_SRC/target/libscorelib-sim.a"
+    local SIM_FAT="$RUST_TARGET_DIR/libscorelib-sim.a"
     lipo -create \
-        "$RUST_SRC/target/aarch64-apple-ios-sim/release/libscorelib.a" \
-        "$RUST_SRC/target/x86_64-apple-ios/release/libscorelib.a" \
+        "$RUST_TARGET_DIR/aarch64-apple-ios-sim/release/libscorelib.a" \
+        "$RUST_TARGET_DIR/x86_64-apple-ios/release/libscorelib.a" \
         -output "$SIM_FAT"
 
     echo "→ Creating XCFramework..."
@@ -144,7 +146,7 @@ build_ios() {
     rm -f "$IOS_LIB_DIR/libscorelib.a"
 
     xcodebuild -create-xcframework \
-        -library "$RUST_SRC/target/aarch64-apple-ios/release/libscorelib.a" \
+        -library "$RUST_TARGET_DIR/aarch64-apple-ios/release/libscorelib.a" \
         -headers "$INCLUDE_DIR" \
         -library "$SIM_FAT" \
         -headers "$INCLUDE_DIR" \
@@ -185,8 +187,8 @@ build_android() {
 
     echo "→ Copying .so files to Android jniLibs..."
     mkdir -p "$ANDROID_JNI_DIR/arm64-v8a" "$ANDROID_JNI_DIR/x86_64"
-    cp "$RUST_SRC/target/aarch64-linux-android/release/libscorelib.so" "$ANDROID_JNI_DIR/arm64-v8a/"
-    cp "$RUST_SRC/target/x86_64-linux-android/release/libscorelib.so"  "$ANDROID_JNI_DIR/x86_64/"
+    cp "$RUST_TARGET_DIR/aarch64-linux-android/release/libscorelib.so" "$ANDROID_JNI_DIR/arm64-v8a/"
+    cp "$RUST_TARGET_DIR/x86_64-linux-android/release/libscorelib.so"  "$ANDROID_JNI_DIR/x86_64/"
 
     echo "✓ Android: $ANDROID_JNI_DIR/arm64-v8a/libscorelib.so"
     echo "✓ Android: $ANDROID_JNI_DIR/x86_64/libscorelib.so"

@@ -3,8 +3,7 @@
 # proguardFiles setting in build.gradle.kts.
 
 # Keep Rust JNI bridge — ScoreLib has native method declarations that R8
-# must not rename or strip, and the JNI function names encode the full
-# class path (Java_com_solobandultra_app_ScoreLib_*).
+# must not rename or strip; JNI function names encode the full class path.
 -keep class com.solobandultra.app.ScoreLib { *; }
 
 # Keep the JavaScript interface class used by the WebView for seek-to-tap.

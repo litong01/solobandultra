@@ -51,47 +51,44 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            rust/scorelib/target
-          key: ios-cargo-${{ hashFiles('rust/scorelib/Cargo.toml', 'rust/scorelib/Cargo.lock') }}
+            rust/target
+          key: ios-cargo-${{ hashFiles('rust/Cargo.toml', 'rust/scorelib/Cargo.toml') }}
           restore-keys: ios-cargo-
 
-      - name: Build Rust static library (iOS Device + Simulator)
+      - name: Build Rust scorelib (iOS Device + Simulator)
         working-directory: rust/scorelib
         run: |
-          # Temporarily adjust crate-type for static lib only (no cdylib linker needed)
           cp Cargo.toml Cargo.toml.orig
           sed -i '' 's/crate-type = .*/crate-type = ["lib", "staticlib"]/' Cargo.toml
+          trap "mv Cargo.toml.orig Cargo.toml 2>/dev/null || true" EXIT
 
           cargo build --release --target aarch64-apple-ios
           cargo build --release --target aarch64-apple-ios-sim
           cargo build --release --target x86_64-apple-ios
 
-          mv Cargo.toml.orig Cargo.toml
-
-      - name: Create XCFramework
+      - name: Create XCFrameworks
         run: |
-          RUST_SRC=rust/scorelib
+          # Workspace target dir (both crates build here)
+          RUST_TARGET=rust/target
           LIB_DIR=ios/SoloBandUltra/lib
-          INCLUDE_DIR=ios/SoloBandUltra/include
           mkdir -p "$LIB_DIR"
 
-          # Create fat simulator library (ARM64 + x86_64)
-          SIM_FAT="$RUST_SRC/target/libscorelib-sim.a"
+          # --- libscorelib.xcframework ---
+          INCLUDE_SCORE=ios/SoloBandUltra/include
+          SIM_FAT_SCORE="${RUST_TARGET}/libscorelib-sim.a"
           lipo -create \
-            "$RUST_SRC/target/aarch64-apple-ios-sim/release/libscorelib.a" \
-            "$RUST_SRC/target/x86_64-apple-ios/release/libscorelib.a" \
-            -output "$SIM_FAT"
+            "${RUST_TARGET}/aarch64-apple-ios-sim/release/libscorelib.a" \
+            "${RUST_TARGET}/x86_64-apple-ios/release/libscorelib.a" \
+            -output "$SIM_FAT_SCORE"
 
-          # Create XCFramework with device + simulator slices
           rm -rf "$LIB_DIR/libscorelib.xcframework"
           xcodebuild -create-xcframework \
-            -library "$RUST_SRC/target/aarch64-apple-ios/release/libscorelib.a" \
-            -headers "$INCLUDE_DIR" \
-            -library "$SIM_FAT" \
-            -headers "$INCLUDE_DIR" \
+            -library "${RUST_TARGET}/aarch64-apple-ios/release/libscorelib.a" \
+            -headers "$INCLUDE_SCORE" \
+            -library "$SIM_FAT_SCORE" \
+            -headers "$INCLUDE_SCORE" \
             -output "$LIB_DIR/libscorelib.xcframework"
-
-          rm -f "$SIM_FAT"
+          rm -f "$SIM_FAT_SCORE"
 
       - name: Resolve Swift Package dependencies
         working-directory: ios/SoloBandUltra
@@ -157,21 +154,18 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            rust/scorelib/target
-          key: android-cargo-${{ hashFiles('rust/scorelib/Cargo.toml', 'rust/scorelib/Cargo.lock') }}
+            rust/target
+          key: android-cargo-${{ hashFiles('rust/Cargo.toml', 'rust/scorelib/Cargo.toml') }}
           restore-keys: android-cargo-
 
-      - name: Build Rust shared library (Android)
+      - name: Build Rust scorelib (Android)
         working-directory: rust/scorelib
         run: |
-          # The Android NDK is pre-installed on GitHub Actions runners
           NDK_HOME="${ANDROID_NDK_HOME:-$ANDROID_NDK_LATEST_HOME}"
           NDK_BIN="${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin"
 
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="${NDK_BIN}/aarch64-linux-android21-clang"
           export CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER="${NDK_BIN}/x86_64-linux-android21-clang"
-
-          # 16 KB page alignment required for Google Play (Android 15+)
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-z -C link-arg=max-page-size=16384"
           export CARGO_TARGET_X86_64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-z -C link-arg=max-page-size=16384"
 
@@ -180,12 +174,12 @@ jobs:
 
       - name: Copy .so files to jniLibs
         run: |
-          mkdir -p android/app/src/main/jniLibs/arm64-v8a
-          mkdir -p android/app/src/main/jniLibs/x86_64
-          cp rust/scorelib/target/aarch64-linux-android/release/libscorelib.so \
-            android/app/src/main/jniLibs/arm64-v8a/
-          cp rust/scorelib/target/x86_64-linux-android/release/libscorelib.so \
-            android/app/src/main/jniLibs/x86_64/
+          RUST_TARGET=rust/target
+          JNI=android/app/src/main/jniLibs
+          mkdir -p "$JNI/arm64-v8a" "$JNI/x86_64"
+
+          cp "$RUST_TARGET/aarch64-linux-android/release/libscorelib.so" "$JNI/arm64-v8a/"
+          cp "$RUST_TARGET/x86_64-linux-android/release/libscorelib.so" "$JNI/x86_64/"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4

@@ -9,6 +9,7 @@ struct SoloBandUltraApp: App {
     @StateObject private var midiSettings = MidiSettings()
     @StateObject private var authManager: AuthManager
     @StateObject private var feedbackManager = FeedbackManager()
+    @StateObject private var choirManager = ChoirManager()
 
     init() {
         // Configure the Kinde authentication SDK FIRST — AuthManager.init() checks isAuthenticated.
@@ -32,6 +33,7 @@ struct SoloBandUltraApp: App {
                 .environmentObject(midiSettings)
                 .environmentObject(authManager)
                 .environmentObject(feedbackManager)
+                .environmentObject(choirManager)
                 .onOpenURL { url in
                     handleIncomingFile(url)
                 }

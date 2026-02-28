@@ -4,6 +4,7 @@ import KindeSDK
 /// Actions that require authentication and should be deferred until login completes.
 enum PendingAuthAction {
     case showSettings
+    case showChoir
     case openFile
     case pasteLink
     case loadExternal(Data, String) // (fileData, fileName)
@@ -67,6 +68,12 @@ class AuthManager: ObservableObject {
     // MARK: - Logout
 
     @Published var logoutFailed: Bool = false
+
+    /// Get the current Kinde access token for API calls (e.g. WebSocket Authorization header).
+    /// Call only when `isAuthenticated` is true; throws if not authenticated or token refresh fails.
+    func getAccessToken() async throws -> String {
+        try await KindeSDKAPI.auth.getToken(desiredToken: .accessToken)
+    }
 
     /// Log the user out of Kinde.
     func logout() {

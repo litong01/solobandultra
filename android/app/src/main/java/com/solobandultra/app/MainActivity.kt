@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import au.kinde.sdk.GrantType
 import au.kinde.sdk.KindeSDK
 import au.kinde.sdk.SDKListener
+import au.kinde.sdk.model.TokenType
 import com.solobandultra.app.audio.AudioSessionManager
 import com.solobandultra.app.audio.PlaybackManager
 import com.solobandultra.app.ui.screens.PendingAuthAction
@@ -113,6 +114,7 @@ class MainActivity : ComponentActivity() {
                         isAuthenticated = isAuthenticated.value,
                         pendingAuthAction = pendingAuthAction.value,
                         onPendingActionConsumed = { pendingAuthAction.value = null },
+                        getAccessToken = { kindeSDK?.getToken(TokenType.ACCESS_TOKEN) },
                         onLoginRequested = { action ->
                             val sdk = kindeSDK
                             if (sdk != null) {
