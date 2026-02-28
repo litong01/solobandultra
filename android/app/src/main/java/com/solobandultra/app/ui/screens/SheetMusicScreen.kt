@@ -235,6 +235,10 @@ fun SheetMusicScreen(
     }
     val canGoPrev = (currentPieceIndex ?: 0) > 0
     val canGoNext = currentPieceIndex != null && currentPieceIndex < unlockedPieces.size - 1
+    /** Show prev/next when a bundle is active and has more than one piece. */
+    val showPrevNext = activeBundle != null && unlockedPieces.size > 1
+    /** Show book icon only when the active bundle has a PDF file. */
+    val showBookButton = activeBundle?.hasPdfFile() == true
 
     fun selectPiece(piece: BookPiece) {
         val bundle = activeBundle ?: return
@@ -334,11 +338,20 @@ fun SheetMusicScreen(
                     activeBundles = activeBundles + (bundle.bookId to bundle)
                     selectedSourceId = "mbk:${bundle.bookId}"
                     val first = bundle.unlockedPieces.firstOrNull() ?: bundle.allPieces.firstOrNull()
-                    if (first != null) selectedFileUrl = "mbk://${bundle.bookId}/${first.xml}"
+                    if (bundle.allPieces.isEmpty()) {
+                        selectedFileUrl = "mbk://${bundle.bookId}/"
+                        bundleErrorMessage = "This bundle contains no music."
+                    } else if (first != null) {
+                        selectedFileUrl = "mbk://${bundle.bookId}/${first.xml}"
+                    }
                     // Persist the bundle selection so the same bundle opens on next launch
                     prefs.edit()
                         .putString("selectedSourceId", "mbk:${bundle.bookId}")
-                        .putString("selectedFileUrl", if (first != null) "mbk://${bundle.bookId}/${first.xml}" else "file://sheetmusic/$DEFAULT_LANDING_FILE")
+                        .putString("selectedFileUrl", when {
+                            bundle.allPieces.isEmpty() -> "mbk://${bundle.bookId}/"
+                            first != null -> "mbk://${bundle.bookId}/${first.xml}"
+                            else -> "file://sheetmusic/$DEFAULT_LANDING_FILE"
+                        })
                         .apply()
                 }
                 "musicxml", "mxl", "xml" -> {
@@ -839,22 +852,24 @@ fun SheetMusicScreen(
         },
         bottomBar = {
             PlaybackControlBar(
-                isPlaying     = isPlaying,
-                bundleActive  = activeBundle != null,
-                canGoPrev     = canGoPrev,
-                canGoNext     = canGoNext,
-                onPrev        = if (choirCanSend) { { Log.d("Choir", "sendCommand prev"); sendChoirCommand("prev") } } else { { val idx = currentPieceIndex; if (idx != null && idx > 0) selectPiece(unlockedPieces[idx - 1]) } },
-                onPlayPause   = if (choirCanSend) { { val cmd = if (isPlaying) "pause" else "play"; Log.d("Choir", "sendCommand $cmd"); sendChoirCommand(cmd) } } else { { playbackManager?.togglePlayPause() } },
-                onStop        = if (choirCanSend) { { Log.d("Choir", "sendCommand stop"); sendChoirCommand("stop") } } else { { playbackManager?.stop() } },
-                onNext        = if (choirCanSend) { { Log.d("Choir", "sendCommand next"); sendChoirCommand("next") } } else { { val idx = currentPieceIndex; if (idx != null && idx < unlockedPieces.size - 1) selectPiece(unlockedPieces[idx + 1]) } },
-                onSettings    = {
+                isPlaying       = isPlaying,
+                bundleActive    = activeBundle != null,
+                showPrevNext    = showPrevNext,
+                canGoPrev       = canGoPrev,
+                canGoNext       = canGoNext,
+                onPrev          = if (choirCanSend) { { Log.d("Choir", "sendCommand prev"); sendChoirCommand("prev") } } else { { val idx = currentPieceIndex; if (idx != null && idx > 0) selectPiece(unlockedPieces[idx - 1]) } },
+                onPlayPause     = if (choirCanSend) { { val cmd = if (isPlaying) "pause" else "play"; Log.d("Choir", "sendCommand $cmd"); sendChoirCommand(cmd) } } else { { playbackManager?.togglePlayPause() } },
+                onStop          = if (choirCanSend) { { Log.d("Choir", "sendCommand stop"); sendChoirCommand("stop") } } else { { playbackManager?.stop() } },
+                onNext          = if (choirCanSend) { { Log.d("Choir", "sendCommand next"); sendChoirCommand("next") } } else { { val idx = currentPieceIndex; if (idx != null && idx < unlockedPieces.size - 1) selectPiece(unlockedPieces[idx + 1]) } },
+                onSettings      = {
                     if (isAuthenticated) showSettings = true
                     else onLoginRequested(PendingAuthAction.ShowSettings)
                 },
-                onBook           = { showPdfViewer = true },
-                feedbackEnabled  = includeFeedback,
-                reportAvailable  = feedbackReport != null,
-                onReport         = { showReport = true }
+                showBookButton  = showBookButton,
+                onBook          = { showPdfViewer = true },
+                feedbackEnabled = includeFeedback,
+                reportAvailable = feedbackReport != null,
+                onReport        = { showReport = true }
             )
         }
     ) { paddingValues ->
@@ -871,6 +886,12 @@ fun SheetMusicScreen(
                 contentAlignment = Alignment.Center
             ) {
                 when {
+                    activeBundle != null && activeBundle.allPieces.isEmpty() -> {
+                        Text(
+                            text = "This bundle contains no music.",
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
                     isLoading -> {
                         CircularProgressIndicator()
                     }
@@ -916,8 +937,8 @@ fun SheetMusicScreen(
         }
     }
 
-    // ── PDF Viewer (full-screen) ─────────────────────────────────────
-    if (showPdfViewer && activeBundle != null) {
+    // ── PDF Viewer (full-screen); only when bundle has a PDF file ─────
+    if (showPdfViewer && activeBundle != null && activeBundle.hasPdfFile()) {
         val bundle = activeBundle
         androidx.compose.ui.window.Dialog(
             onDismissRequest = { showPdfViewer = false },
@@ -1495,7 +1516,11 @@ private fun SettingsSheetContent(
                                     // Auto-select the first non-locked item of the new source.
                                     val first = source.items.firstOrNull { !it.url.startsWith("mbk://") || !it.name.endsWith("🔒") }
                                         ?: source.items.firstOrNull()
-                                    if (first != null) selectedFileUrl = first.url
+                                    selectedFileUrl = when {
+                                        first != null -> first.url
+                                        source.id.startsWith("mbk:") -> "mbk://${source.id.removePrefix("mbk:")}/"
+                                        else -> selectedFileUrl
+                                    }
                                     sourceExpanded = false
                                 },
                                 modifier = Modifier.defaultMinSize(minHeight = 36.dp),
@@ -2024,6 +2049,7 @@ private fun buildHtml(svg: String, playbackMapJson: String?, cursorBarVisible: B
 private fun PlaybackControlBar(
     isPlaying: Boolean,
     bundleActive: Boolean = false,
+    showPrevNext: Boolean = false,
     canGoPrev: Boolean = false,
     canGoNext: Boolean = false,
     onPrev: () -> Unit = {},
@@ -2031,6 +2057,7 @@ private fun PlaybackControlBar(
     onStop: () -> Unit,
     onNext: () -> Unit = {},
     onSettings: () -> Unit,
+    showBookButton: Boolean = false,
     onBook: () -> Unit = {},
     feedbackEnabled: Boolean = false,
     reportAvailable: Boolean = false,
@@ -2048,8 +2075,8 @@ private fun PlaybackControlBar(
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // ── Bundle: Previous ──
-            if (bundleActive) {
+            // ── Bundle: Previous (only when bundle has more than one piece) ──
+            if (showPrevNext) {
                 IconButton(onClick = onPrev, enabled = canGoPrev) {
                     Icon(
                         imageVector = Icons.Default.SkipPrevious,
@@ -2086,8 +2113,8 @@ private fun PlaybackControlBar(
 
             Spacer(modifier = Modifier.width(24.dp))
 
-            // ── Bundle: Next ──
-            if (bundleActive) {
+            // ── Bundle: Next (only when bundle has more than one piece) ──
+            if (showPrevNext) {
                 IconButton(onClick = onNext, enabled = canGoNext) {
                     Icon(
                         imageVector = Icons.Default.SkipNext,
@@ -2112,8 +2139,8 @@ private fun PlaybackControlBar(
                 )
             }
 
-            // ── Bundle: Book (PDF viewer) ──
-            if (bundleActive) {
+            // ── Bundle: Book (PDF viewer; only when bundle has a PDF file) ──
+            if (showBookButton) {
                 IconButton(onClick = onBook) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.MenuBook,

@@ -38,6 +38,9 @@ data class BookBundle(
     /** File path for the cached book.pdf. */
     val pdfFile: File get() = File(cacheDir, "book.pdf")
 
+    /** True if book.pdf exists in the bundle cache (bundles may omit the PDF). */
+    fun hasPdfFile(): Boolean = pdfFile.exists()
+
     /** Resolve an `mbk://<bookId>/…` URL to a local File. */
     fun resolveToLocalFile(mbkUrl: String): File? {
         val prefix = "mbk://$bookId/"

@@ -1,12 +1,12 @@
 package com.solobandultra.app.audio
 
+import android.annotation.SuppressLint
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.NoiseSuppressor
 import android.util.Log
-import android.os.Build
 import com.solobandultra.app.FeedbackReport
 import com.solobandultra.app.FeedbackState
 import com.solobandultra.app.NoteEvent
@@ -86,6 +86,7 @@ class FeedbackManager {
      * Begin microphone capture.
      * The caller must have already obtained [android.Manifest.permission.RECORD_AUDIO].
      */
+    @SuppressLint("MissingPermission")
     fun startListening() {
         if (isListening) return
         Log.d(TAG, "startListening: timeline=${timeline.size} notes")
@@ -185,7 +186,7 @@ class FeedbackManager {
      * Try to create an [AudioRecord] using the best available audio source.
      *
      * Source order:
-     *  1. UNPROCESSED (API 24+) — avoids aggressive OEM processing (AEC/NS/AGC),
+     *  1. UNPROCESSED — avoids aggressive OEM processing (AEC/NS/AGC),
      *     best when you want to pick up real acoustic instruments / room audio.
      *  2. MIC — common default.
      *  3. CAMCORDER — sometimes has different gain/processing on devices that
@@ -197,17 +198,15 @@ class FeedbackManager {
      * Encoding: PCM_16BIT only (universally supported; PCM_FLOAT may block on
      * some HALs even after STATE_INITIALIZED succeeds).
      */
+    @SuppressLint("MissingPermission")
     private fun createAudioRecord(): AudioRecord? {
-        val sources = buildList {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                // Guarded access: field exists only on API 24+.
-                add(MediaRecorder.AudioSource.UNPROCESSED)
-            }
-            add(MediaRecorder.AudioSource.MIC)
-            add(MediaRecorder.AudioSource.CAMCORDER)
-            add(MediaRecorder.AudioSource.VOICE_RECOGNITION)
-            add(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
-        }
+        val sources = listOf(
+            MediaRecorder.AudioSource.UNPROCESSED,
+            MediaRecorder.AudioSource.MIC,
+            MediaRecorder.AudioSource.CAMCORDER,
+            MediaRecorder.AudioSource.VOICE_RECOGNITION,
+            MediaRecorder.AudioSource.VOICE_COMMUNICATION
+        )
 
         val minBuf = maxOf(
             AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT),
@@ -226,6 +225,8 @@ class FeedbackManager {
                 Log.w(TAG, "Failed to create AudioRecord for source $source: ${e.message}")
                 null
             } ?: continue
+
+            if (record.state != AudioRecord.STATE_INITIALIZED) {
                 record.release()
                 Log.w(TAG, "AudioRecord not initialized for source=$source")
                 continue
@@ -249,9 +250,8 @@ class FeedbackManager {
                 MediaRecorder.AudioSource.CAMCORDER -> "CAMCORDER"
                 MediaRecorder.AudioSource.VOICE_RECOGNITION -> "VOICE_RECOG"
                 MediaRecorder.AudioSource.VOICE_COMMUNICATION -> "VOICE_COMM"
-                else -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N &&
-                    source == MediaRecorder.AudioSource.UNPROCESSED
-                ) "UNPROCESSED" else "SRC_$source"
+                MediaRecorder.AudioSource.UNPROCESSED -> "UNPROCESSED"
+                else -> "SRC_$source"
             }
             Log.d(TAG, "AudioRecord created: $sourceName / PCM_16BIT  bufBytes=$minBuf")
             return record

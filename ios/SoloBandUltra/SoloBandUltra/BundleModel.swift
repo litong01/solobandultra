@@ -44,6 +44,11 @@ struct BookBundle: Equatable {
         cacheDir.appendingPathComponent("book.pdf")
     }
 
+    /// True if book.pdf exists in the bundle cache (bundles may omit the PDF).
+    var hasPdfFile: Bool {
+        (try? pdfURL.checkResourceIsReachable()) == true
+    }
+
     /// Resolve an `mbk://<bookId>/…` URL to a local file URL.
     func resolveToLocalURL(_ mbkURL: String) -> URL? {
         let prefix = "mbk://\(bookId)/"

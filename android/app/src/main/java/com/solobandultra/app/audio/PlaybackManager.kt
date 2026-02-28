@@ -17,16 +17,6 @@ import java.io.File
  * Uses MediaPlayer with PlaybackParams for native WAV playback with speed control
  * (time-stretch without pitch change) and Choreographer for frame-accurate cursor
  * position updates.
- *
- * Supports:
- * - **Speed** — uses PlaybackParams for time-stretch speed control.
- * - **Mute** — sets MediaPlayer volume to zero.
- * - **Repeat** — replays the piece N times automatically.
- *
- * **Settings model:** Changing speed, mute, cursor visibility, or repeat
- * count stops playback and resets the cursor to the beginning.  The user
- * presses play to restart with the new settings.  This avoids all the
- * complexity of reconfiguring the MediaPlayer mid-playback.
  */
 class PlaybackManager(
     private val context: Context,
@@ -49,7 +39,6 @@ class PlaybackManager(
 
     // ── Playback settings ──────────────────────────────────────────────
 
-    /** Playback speed multiplier. Clamped to [0.1, 5.0]. Changing stops playback. */
     var speed: Double = 1.0
         set(value) {
             val clamped = value.coerceIn(0.1, 5.0)
@@ -59,7 +48,6 @@ class PlaybackManager(
             }
         }
 
-    /** When `true`, volume is zero. Changing stops playback. */
     var isMuted: Boolean = false
         set(value) {
             if (field != value) {
@@ -68,7 +56,6 @@ class PlaybackManager(
             }
         }
 
-    /** Total number of plays (1 = play once, 2 = play twice, …). Changing stops playback. */
     var repeatCount: Int = 1
         set(value) {
             if (field != value) {
@@ -77,7 +64,6 @@ class PlaybackManager(
             }
         }
 
-    /** Whether to show the orange cursor bar overlay. Changing stops playback. */
     var showCursorEnabled: Boolean = true
         set(value) {
             if (field != value) {
@@ -87,25 +73,23 @@ class PlaybackManager(
             }
         }
 
-    /**
-     * Stop playback and reset to the beginning when any setting changes.
-     * Keeps the MediaPlayer prepared so the user can press play immediately.
-     */
     private fun resetPlayback() {
         val player = mediaPlayer
         if (player != null && _isPlaying.value) {
             try {
-                if (player.isPlaying) player.pause()
+                if (player.isPlaying) {
+                    player.pause()
+                }
                 player.seekTo(0)
             } catch (e: IllegalStateException) {
-            Log.d(TAG, "MediaPlayer IllegalStateException (expected in Error state): ${e.message}")
-        }
+                Log.d(TAG, "MediaPlayer IllegalStateException: ${e.message}")
+            }
         } else if (player != null && _currentTimeMs.value > 0.0) {
             try {
                 player.seekTo(0)
             } catch (e: IllegalStateException) {
-            Log.d(TAG, "MediaPlayer IllegalStateException (expected in Error state): ${e.message}")
-        }
+                Log.d(TAG, "MediaPlayer IllegalStateException: ${e.message}")
+            }
         } else {
             return
         }
@@ -115,7 +99,6 @@ class PlaybackManager(
         stopChoreographer()
         audioSessionManager.abandonAudioFocus()
         updateCursor(0.0)
-        Log.d(TAG, "Settings changed — playback reset to beginning")
     }
 
     // ── Internal state ──────────────────────────────────────────────────
@@ -125,17 +108,10 @@ class PlaybackManager(
     var webView: WebView? = null
 
     private var choreographerCallback: Choreographer.FrameCallback? = null
-
-    /** Remaining repeats (decremented on each finish). */
     private var remainingRepeats: Int = 0
 
     // ── Public API ──────────────────────────────────────────────────────
 
-    /**
-     * Write WAV data to a temp file on a background thread.
-     * Returns the temp file, or null on error.
-     * This is the only part that should run on Dispatchers.IO.
-     */
     fun writeTempWav(wavBytes: ByteArray): File? {
         return try {
             val tempFile = File.createTempFile("playback", ".wav", context.cacheDir)
@@ -147,20 +123,11 @@ class PlaybackManager(
         }
     }
 
-    /**
-     * Prepare a previously written WAV temp file for playback.
-     * MUST be called on the main thread (MediaPlayer needs a Looper).
-     */
     fun prepareFromFile(tempFile: File) {
         stop()
         loadWavFromFile(tempFile)
     }
 
-    /**
-     * Start or resume playback.
-     * If the player was stopped (released), re-prepares from the last loaded WAV so choir
-     * "play" after "stop" works (iOS keeps the engine; Android must re-prepare after stop()).
-     */
     fun play() {
         if (mediaPlayer == null && wavTempFile != null) {
             loadWavFromFile(wavTempFile!!)
@@ -170,14 +137,12 @@ class PlaybackManager(
             return
         }
 
-        // Only reset the repeat counter when starting fresh, not when resuming
-        // from a paused state mid-repeat.
         if (!_isPlaying.value && _currentTimeMs.value == 0.0) {
             remainingRepeats = repeatCount
         }
 
         if (!audioSessionManager.requestAudioFocus()) {
-            Log.w(TAG, "Audio focus denied, not starting playback")
+            Log.w(TAG, "Audio focus denied")
             return
         }
 
@@ -192,46 +157,36 @@ class PlaybackManager(
         }
         _isPlaying.value = true
         startChoreographer()
-
-        Log.d(TAG, "Playing (speed=$speed, muted=$isMuted)")
     }
 
-    /**
-     * Pause playback.
-     */
     fun pause() {
         val player = mediaPlayer ?: return
         try {
-                if (player.isPlaying) player.pause()
-            } catch (e: IllegalStateException) {
-                Log.d(TAG, "MediaPlayer IllegalStateException (expected in Error state): ${e.message}")
+            if (player.isPlaying) {
+                player.pause()
             }
+        } catch (e: IllegalStateException) {
+            Log.d(TAG, "MediaPlayer IllegalStateException: ${e.message}")
+        }
         _isPlaying.value = false
-        // With PlaybackParams, currentPosition is in media time (music time).
         try {
             _currentTimeMs.value = player.currentPosition.toDouble()
         } catch (e: IllegalStateException) {
-            Log.d(TAG, "MediaPlayer IllegalStateException (expected in Error state): ${e.message}")
+            Log.d(TAG, "MediaPlayer IllegalStateException: ${e.message}")
         }
         stopChoreographer()
-
-        // Keep cursor at the paused position
         updateCursor(_currentTimeMs.value)
-
-        Log.d(TAG, "Paused at ${_currentTimeMs.value / 1000.0}s")
     }
 
-    /**
-     * Stop playback and reset to the beginning.
-     * Releases the MediaPlayer but keeps the WAV file reference so a subsequent
-     * play() can re-prepare and start (matches choir flow: stop then play again).
-     */
     fun stop() {
-        mediaPlayer?.let { player ->
+        val player = mediaPlayer
+        if (player != null) {
             try {
-                if (player.isPlaying) player.stop()
+                if (player.isPlaying) {
+                    player.stop()
+                }
             } catch (e: IllegalStateException) {
-                Log.d(TAG, "MediaPlayer IllegalStateException (expected in Error state): ${e.message}")
+                Log.d(TAG, "MediaPlayer IllegalStateException: ${e.message}")
             } finally {
                 player.release()
             }
@@ -242,81 +197,53 @@ class PlaybackManager(
         remainingRepeats = 0
         stopChoreographer()
         audioSessionManager.abandonAudioFocus()
-
-        // Reset cursor to the beginning (keep it visible)
         updateCursor(0.0)
-
-        // Keep wavTempFile so play() can re-prepare after stop (choir: stop then play again)
-        Log.d(TAG, "Stopped")
     }
 
-    /**
-     * Toggle play/pause.
-     */
     fun togglePlayPause() {
-        if (_isPlaying.value) {
-            pause()
-        } else {
-            play()
-        }
+        if (_isPlaying.value) pause() else play()
     }
 
-    /**
-     * Enable or disable audio mode for simultaneous play and record (feedback capture).
-     * Call with true before starting microphone capture, and false when stopping.
-     */
     fun setPlayAndRecordMode(enabled: Boolean) {
         audioSessionManager.setPlayAndRecordMode(enabled)
     }
 
-    /**
-     * Seek to a specific *music* time in milliseconds.
-     * MUST be called on the main thread.
-     */
     fun seekTo(musicTimeMs: Double) {
         val player = mediaPlayer ?: return
-
-        val clampedMs = musicTimeMs.coerceIn(0.0, _durationMs.value)
+        val clampedMs = musicTimeMs.coerceIn(0.0, durationMs.value)
         try {
             player.seekTo(clampedMs.toInt())
         } catch (e: IllegalStateException) {
-            Log.d(TAG, "MediaPlayer IllegalStateException (expected in Error state): ${e.message}")
+            Log.d(TAG, "MediaPlayer IllegalStateException: ${e.message}")
             return
         }
         _currentTimeMs.value = clampedMs
-
-        // Update cursor immediately at the seek position
         updateCursor(clampedMs)
-
-        Log.d(TAG, "Seeked to ${clampedMs / 1000.0}s")
     }
 
-    /**
-     * Release all resources. Call when the activity/composable is destroyed.
-     */
     fun release() {
         stop()
         webView = null
         audioSessionManager.release()
     }
 
-    // ── Choreographer (frame-accurate cursor updates) ───────────────────
+    // ── Choreographer ───────────────────────────────────────────────────
 
     private fun startChoreographer() {
         stopChoreographer()
         val callback = object : Choreographer.FrameCallback {
             override fun doFrame(frameTimeNanos: Long) {
                 if (_isPlaying.value) {
-                    val player = mediaPlayer ?: return
-                    // With PlaybackParams speed control, currentPosition is in media time
-                    // (i.e. music time) — it advances through the original timeline.
-                    try {
-                        val musicMs = player.currentPosition.toDouble()
-                        _currentTimeMs.value = musicMs
-                        updateCursor(musicMs)
-                    } catch (e: IllegalStateException) {
-            Log.d(TAG, "MediaPlayer IllegalStateException (expected in Error state): ${e.message}")
-        }
+                    val player = mediaPlayer
+                    if (player != null) {
+                        try {
+                            val musicMs = player.currentPosition.toDouble()
+                            _currentTimeMs.value = musicMs
+                            updateCursor(musicMs)
+                        } catch (e: IllegalStateException) {
+                            Log.d(TAG, "MediaPlayer IllegalStateException: ${e.message}")
+                        }
+                    }
                     Choreographer.getInstance().postFrameCallback(this)
                 }
             }
@@ -344,17 +271,6 @@ class PlaybackManager(
         }
     }
 
-    private fun hideCursor() {
-        val wv = webView ?: return
-        wv.post {
-            wv.evaluateJavascript(
-                "if (typeof hideCursor === 'function') { hideCursor(); }",
-                null
-            )
-        }
-    }
-
-    /** Toggle the orange cursor bar visibility via JS. Auto-scroll keeps working. */
     private fun setCursorBarVisible(visible: Boolean) {
         val wv = webView ?: return
         wv.post {
@@ -365,7 +281,6 @@ class PlaybackManager(
         }
     }
 
-    /** Update the cursor bar color for real-time feedback. */
     fun setCursorColor(color: String) {
         val wv = webView ?: return
         wv.post {
@@ -378,10 +293,6 @@ class PlaybackManager(
 
     // ── Private helpers ─────────────────────────────────────────────────
 
-    /**
-     * Load a WAV temp file into a MediaPlayer.
-     * Must be called on the main thread (Looper required for MediaPlayer).
-     */
     private fun loadWavFromFile(tempFile: File) {
         try {
             wavTempFile?.takeIf { it != tempFile }?.delete()
@@ -399,17 +310,12 @@ class PlaybackManager(
             player.setOnErrorListener { _, what, extra ->
                 Log.e(TAG, "MediaPlayer error: what=$what extra=$extra")
                 stop()
-                true // error handled
+                true
             }
 
             mediaPlayer = player
-            // Duration is the full length of the WAV (music time)
             _durationMs.value = player.duration.toDouble()
-
-            // Show cursor at the beginning
             updateCursor(0.0)
-
-            Log.d(TAG, "Audio prepared: ${_durationMs.value / 1000.0}s, speed=$speed")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to prepare audio: ${e.message}")
             mediaPlayer = null
@@ -417,54 +323,40 @@ class PlaybackManager(
         }
     }
 
-    /** Apply playback speed via PlaybackParams (time-stretch, no pitch change). */
     private fun applyPlaybackSpeed(player: MediaPlayer) {
         try {
             val params = PlaybackParams()
                 .setSpeed(speed.toFloat())
-                .setPitch(1.0f) // Keep original pitch
+                .setPitch(1.0f)
             player.playbackParams = params
         } catch (e: Exception) {
             Log.w(TAG, "Failed to set playback speed: ${e.message}")
         }
     }
 
-    /** Apply mute volume to the current MediaPlayer. */
     private fun applyMuteVolume(player: MediaPlayer) {
-        if (isMuted) {
-            player.setVolume(0f, 0f)
-        } else {
-            player.setVolume(1f, 1f)
-        }
+        if (isMuted) player.setVolume(0f, 0f) else player.setVolume(1f, 1f)
     }
 
-    /** Called when playback reaches the end naturally. */
     private fun playbackDidFinish() {
         remainingRepeats--
         if (remainingRepeats > 0) {
-            // ── More repeats to go — restart from the beginning ──
-            Log.d(TAG, "Repeat ${repeatCount - remainingRepeats}/$repeatCount")
             try {
                 mediaPlayer?.seekTo(0)
                 _currentTimeMs.value = 0.0
                 mediaPlayer?.let { applyPlaybackSpeed(it) }
                 mediaPlayer?.start()
             } catch (e: IllegalStateException) {
-                Log.d(TAG, "MediaPlayer IllegalStateException (expected in Error state): ${e.message}")
+                Log.d(TAG, "MediaPlayer IllegalStateException: ${e.message}")
                 stop()
             }
             return
         }
 
-        // ── All repeats done ──
         _isPlaying.value = false
         stopChoreographer()
         _currentTimeMs.value = 0.0
         audioSessionManager.abandonAudioFocus()
-
-        // Reset cursor to the beginning (keep it visible)
         updateCursor(0.0)
-
-        Log.d(TAG, "Playback finished (all repeats done)")
     }
 }

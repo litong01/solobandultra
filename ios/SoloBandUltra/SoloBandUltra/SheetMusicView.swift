@@ -83,11 +83,33 @@ struct SheetMusicView: View {
         return (data, ext)
     }
 
+    /// True when the current selection is an mbk bundle that has no pieces.
+    private var isInvalidEmptyBundle: Bool {
+        guard isSbfFile else { return false }
+        let url = midiSettings.selectedFileUrl
+        let withoutScheme = String(url.dropFirst("mbk://".count))
+        let bookId = withoutScheme.split(separator: "/", maxSplits: 1).first.map(String.init) ?? ""
+        guard !bookId.isEmpty, let bundle = midiSettings.activeBundles[bookId] else { return false }
+        return bundle.allPieces.isEmpty
+    }
+
     var body: some View {
         GeometryReader { geometry in
             VStack(spacing: 0) {
                 // Score display
-                if isLoading {
+                if isInvalidEmptyBundle {
+                    VStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 40))
+                            .foregroundStyle(.secondary)
+                        Text("This bundle contains no music.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if isLoading {
                     ProgressView("Rendering score...")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let error = errorMessage {

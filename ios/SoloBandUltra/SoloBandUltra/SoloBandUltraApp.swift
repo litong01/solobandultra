@@ -114,8 +114,10 @@ struct SoloBandUltraApp: App {
                     midiSettings.activeBundles[bundle.bookId] = bundle
                     let sourceId = "mbk:\(bundle.bookId)"
                     midiSettings.selectedSourceId = sourceId
-                    // Select the first unlocked piece, falling back to first piece.
-                    if let first = bundle.unlockedPieces.first ?? bundle.allPieces.first {
+                    if bundle.allPieces.isEmpty {
+                        midiSettings.selectedFileUrl = "mbk://\(bundle.bookId)/"
+                        midiSettings.errorMessage = "This bundle contains no music."
+                    } else if let first = bundle.unlockedPieces.first ?? bundle.allPieces.first {
                         midiSettings.selectedFileUrl = "mbk://\(bundle.bookId)/\(first.xml)"
                     }
                 }

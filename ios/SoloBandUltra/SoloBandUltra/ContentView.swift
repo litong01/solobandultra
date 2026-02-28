@@ -137,6 +137,7 @@ struct ContentView: View {
             PlaybackControlBar(
                 isPlaying: $playbackManager.isPlaying,
                 bundleActive: activeBundle != nil,
+                showPrevNext: activeBundle != nil && (activeBundle?.unlockedPieces.count ?? 0) > 1,
                 canGoPrev: canGoPrev,
                 canGoNext: canGoNext,
                 onPrev:     choirManager.isJoined ? { choirManager.sendCommand("prev") } : goToPrev,
@@ -144,6 +145,7 @@ struct ContentView: View {
                 onStop:      choirManager.isJoined ? { choirManager.sendCommand("stop") } : { playbackManager.stop() },
                 onNext:     choirManager.isJoined ? { choirManager.sendCommand("next") } : goToNext,
                 onSettings:  { requireAuth(for: .showSettings) },
+                showBook: activeBundle?.hasPdfFile == true,
                 onBook:      { showPdfViewer = true },
                 feedbackEnabled: midiSettings.includeFeedback,
                 reportAvailable: feedbackManager.report != nil,
@@ -154,7 +156,7 @@ struct ContentView: View {
             .background(.ultraThinMaterial)
         }
         .fullScreenCover(isPresented: $showPdfViewer) {
-            if let bundle = activeBundle {
+            if let bundle = activeBundle, bundle.hasPdfFile {
                 PdfViewerView(
                     bundle: bundle,
                     startPage: currentPdfPage,
@@ -285,7 +287,10 @@ struct ContentView: View {
                             await MainActor.run {
                                 midiSettings.activeBundles[bundle.bookId] = bundle
                                 midiSettings.selectedSourceId = "mbk:\(bundle.bookId)"
-                                if let first = bundle.unlockedPieces.first ?? bundle.allPieces.first {
+                                if bundle.allPieces.isEmpty {
+                                    midiSettings.selectedFileUrl = "mbk://\(bundle.bookId)/"
+                                    midiSettings.errorMessage = "This bundle contains no music."
+                                } else if let first = bundle.unlockedPieces.first ?? bundle.allPieces.first {
                                     midiSettings.selectedFileUrl = "mbk://\(bundle.bookId)/\(first.xml)"
                                 }
                                 midiSettings.saveToDisk()
@@ -444,8 +449,10 @@ struct ContentView: View {
 
 struct PlaybackControlBar: View {
     @Binding var isPlaying: Bool
-    /// True when a bundle is loaded (shows prev/next/book buttons).
+    /// True when a bundle is loaded.
     var bundleActive: Bool = false
+    /// Show prev/next when bundle has more than one piece.
+    var showPrevNext: Bool = false
     var canGoPrev: Bool = false
     var canGoNext: Bool = false
     var onPrev: (() -> Void)?
@@ -453,6 +460,8 @@ struct PlaybackControlBar: View {
     let onStop: () -> Void
     var onNext: (() -> Void)?
     let onSettings: () -> Void
+    /// Show book button only when bundle has a PDF file.
+    var showBook: Bool = false
     var onBook: (() -> Void)?
     /// Whether the Feedback toggle is on (gates report button visibility).
     var feedbackEnabled: Bool = false
@@ -464,8 +473,8 @@ struct PlaybackControlBar: View {
         HStack(spacing: 0) {
             Spacer()
 
-            // ── Bundle navigation (shown only when a bundle is active) ──
-            if bundleActive {
+            // ── Bundle navigation (prev/next only when more than one piece) ──
+            if showPrevNext {
                 Button(action: { onPrev?() }) {
                     Image(systemName: "backward.end.fill")
                         .font(.title3)
@@ -491,8 +500,8 @@ struct PlaybackControlBar: View {
             }
             .padding(.horizontal, 16)
 
-            // Next (bundle)
-            if bundleActive {
+            // Next (bundle; only when more than one piece)
+            if showPrevNext {
                 Button(action: { onNext?() }) {
                     Image(systemName: "forward.end.fill")
                         .font(.title3)
@@ -517,8 +526,8 @@ struct PlaybackControlBar: View {
             }
             .frame(minWidth: 44)
 
-            // Book (bundle PDF viewer)
-            if bundleActive {
+            // Book (bundle PDF viewer; only when bundle has a PDF file)
+            if showBook {
                 Button(action: { onBook?() }) {
                     Image(systemName: "book.fill")
                         .font(.title2)
