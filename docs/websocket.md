@@ -246,6 +246,7 @@ The SoloBand Ultra iOS and Android apps join the cloud choir by room name and pa
 Users must be signed in (Kinde). One section: **Choir name**, **Password**, and **Join** / **Leave**. First to join creates the room; others with the same name and password join the same room.
 
 - **Runtime**: Tokio
-- **HTTP/WS**: Axum (with built-in WebSocket support via tokio-tungstenite)
+- **Mobile sync**: The iOS and Android apps use server time so play/stop/pause stay in sync: join sends **clientUtc**, the server responds with **serverUtc**, and the apps convert broadcast **startAt** (server time) to local execution time. They also call **GET /time** once after join when the server supports it, to refine the offset (e.g. reduce RTT error); the offset is then cached for the whole session with no periodic refresh.
+- **HTTP/WS**: Axum (with built-in WebSocket support via tokio-tungstenite) (with built-in WebSocket support via tokio-tungstenite)
 - **Auth**: Kinde JWT validation using JWKS from `https://<KINDE_DOMAIN>.kinde.com/.well-known/jwks`
 - **Passwords**: bcrypt for room passwords

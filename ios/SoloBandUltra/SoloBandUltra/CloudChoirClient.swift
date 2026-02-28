@@ -16,7 +16,8 @@ final class CloudChoirClient: @unchecked Sendable {
     private let password: String
     private var task: URLSessionWebSocketTask?
     private let commandDelayMs: Int64 = 500
-    private var serverOffsetMs: Int64 = 0  // server_utc_ms - client_utc_ms at join
+    private var serverOffsetMs: Int64 = 0  // server_utc_ms - client_utc_ms; convert server startAt -> local
+    private let offsetLock = NSLock()
     private let onJoined: () -> Void
     private let onLeft: (String) -> Void
     private let onCommand: (String, Int64) -> Void
@@ -93,9 +94,14 @@ final class CloudChoirClient: @unchecked Sendable {
         }
         let clientMs = Self.iso8601ToMs(clientUtc) ?? 0
         let serverMs = Self.iso8601ToMs(serverUtc) ?? 0
+        offsetLock.lock()
         serverOffsetMs = serverMs - clientMs
+        offsetLock.unlock()
 
         DispatchQueue.main.async { self.onJoined() }
+
+        // Optional: refine offset once with GET /time to reduce RTT error from join (no periodic refresh).
+        await refreshServerTime()
 
         // Receive loop: get messages; parse commands and deliver executeAtMs (local).
         while !isShutdown {
@@ -114,9 +120,29 @@ final class CloudChoirClient: @unchecked Sendable {
     /// Close the WebSocket (optional leave first: send {"leave":{}} then close).
     func disconnect() {
         queue.async { [weak self] in
-            self?.isShutdown = true
-            self?.task?.cancel(with: .goingAway, reason: nil)
-            self?.task = nil
+            guard let self = self else { return }
+            self.isShutdown = true
+            self.task?.cancel(with: .goingAway, reason: nil)
+            self.task = nil
+        }
+    }
+
+    /// Fetch GET /time (optional server endpoint), update serverOffsetMs so command execution stays in sync.
+    private func refreshServerTime() async {
+        guard let timeURL = Self.makeTimeURL(baseURL: baseURL) else { return }
+        var request = URLRequest(url: timeURL)
+        request.httpMethod = "GET"
+        do {
+            let (data, _) = try await URLSession.shared.data(for: request)
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let serverUtc = json["utc"] as? String,
+                  let serverMs = Self.iso8601ToMs(serverUtc) else { return }
+            let clientMs = Int64(Date().timeIntervalSince1970 * 1000)
+            offsetLock.lock()
+            serverOffsetMs = serverMs - clientMs
+            offsetLock.unlock()
+        } catch {
+            // GET /time is optional; keep using offset from join
         }
     }
 
@@ -159,7 +185,10 @@ final class CloudChoirClient: @unchecked Sendable {
         else { return nil }
         guard let c = cmd, let at = startAt else { return nil }
         let serverMs = Self.iso8601ToMs(at) ?? 0
-        let executeAtMs = serverMs - serverOffsetMs
+        offsetLock.lock()
+        let offset = serverOffsetMs
+        offsetLock.unlock()
+        let executeAtMs = serverMs - offset
         return (c, executeAtMs)
     }
 
@@ -173,6 +202,17 @@ final class CloudChoirClient: @unchecked Sendable {
         let base = "\(wsScheme)://\(host)\(path)"
         let urlStr = path.isEmpty ? "\(base)/ws" : base
         return URL(string: urlStr)!
+    }
+
+    private static func makeTimeURL(baseURL: String) -> URL? {
+        let trimmed = baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let scheme = trimmed.lowercased().hasPrefix("https") ? "https" : "http"
+        let host = trimmed
+            .replacingOccurrences(of: "https://", with: "")
+            .replacingOccurrences(of: "http://", with: "")
+        let path = host.contains("/") ? "" : "/time"
+        let urlStr = path.isEmpty ? "\(scheme)://\(host)/time" : "\(scheme)://\(host)\(path)"
+        return URL(string: urlStr)
     }
 
     private static func iso8601Utc(from date: Date) -> String {

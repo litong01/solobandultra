@@ -13,10 +13,12 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Cloud choir WebSocket client. Connect to wss://base/ws with Kinde Bearer token;
  * send join(room, password). First joiner creates the room. Protocol per docs/websocket.md.
+ * Uses server time from join response (and optional GET /time) to convert broadcast startAt to local execute time.
  */
 class CloudChoirClient(
     private val baseUrl: String,
@@ -29,7 +31,7 @@ class CloudChoirClient(
 ) {
     private var webSocket: WebSocket? = null
     private var joinReceived = false
-    private var serverOffsetMs = 0L
+    private val serverOffsetMs = AtomicLong(0L)
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private val client = OkHttpClient.Builder()
@@ -101,6 +103,33 @@ class CloudChoirClient(
         this@CloudChoirClient.webSocket = client.newWebSocket(request, listener)
         deferred.await().getOrThrow()
         mainHandler.post { onJoined() }
+        // Optional: refine offset once with GET /time to reduce RTT error from join (no periodic refresh).
+        refreshServerTime()
+    }
+
+    private fun timeUrl(): String {
+        val trimmed = baseUrl.trim().removeSuffix("/")
+        val scheme = if (trimmed.startsWith("https", ignoreCase = true)) "https" else "http"
+        val host = trimmed.removePrefix("https://").removePrefix("http://")
+        return "$scheme://$host/time"
+    }
+
+    private fun refreshServerTime() {
+        try {
+            val request = Request.Builder().url(timeUrl()).get().build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return
+                val body = response.body?.string() ?: return
+                val obj = JSONObject(body)
+                if (!obj.has("utc")) return
+                val serverUtc = obj.optString("utc", "")
+                val serverMs = iso8601ToMs(serverUtc) ?: return
+                val clientMs = System.currentTimeMillis()
+                serverOffsetMs.set(serverMs - clientMs)
+            }
+        } catch (_: Exception) {
+            // GET /time is optional; keep using offset from join
+        }
     }
 
     private fun parseJoinResponse(text: String, clientUtc: String): Result<Unit> {
@@ -111,7 +140,7 @@ class CloudChoirClient(
             val serverUtc = obj.optString("serverUtc", "")
             val clientMs = iso8601ToMs(clientUtc) ?: 0L
             val serverMs = iso8601ToMs(serverUtc) ?: 0L
-            serverOffsetMs = serverMs - clientMs
+            serverOffsetMs.set(serverMs - clientMs)
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -130,7 +159,7 @@ class CloudChoirClient(
                 else -> return null
             }
             val serverMs = iso8601ToMs(startAt) ?: return null
-            val executeAtMs = serverMs - serverOffsetMs
+            val executeAtMs = serverMs - serverOffsetMs.get()
             cmd to executeAtMs
         } catch (_: Exception) {
             null
