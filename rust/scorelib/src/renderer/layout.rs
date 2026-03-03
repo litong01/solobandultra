@@ -16,11 +16,14 @@ pub(super) struct ScoreLayout {
     pub(super) total_height: f64,
 }
 
-/// Info about one part's staves within a system
+/// Info about one part's staves within a system.
+/// When `staff_nums` is non-empty, only those staves (1-based) are drawn; otherwise 1..=num_staves.
 pub(super) struct PartStaffInfo {
     pub(super) part_idx: usize,
     pub(super) y_offset: f64,
     pub(super) num_staves: usize,
+    /// 1-based staff numbers to draw (e.g. [2] for bass clef only). Empty means draw all 1..=num_staves.
+    pub(super) staff_nums: Vec<usize>,
 }
 
 pub(super) struct SystemLayout {
@@ -114,7 +117,23 @@ pub(super) fn cancellation_natural_count(old_fifths: i32, new_fifths: i32) -> u3
 // Main layout computation
 // ═══════════════════════════════════════════════════════════════════════
 
+/// Build (part_idx, staff_nums) from (part_idx, num_staves). Empty staff_nums means all staves 1..=n.
+fn expand_parts_staves(_score: &Score, parts_staves: &[(usize, usize)]) -> Vec<(usize, Vec<usize>)> {
+    parts_staves
+        .iter()
+        .map(|&(pidx, n)| (pidx, (1..=n).collect()))
+        .collect()
+}
+
 pub(super) fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], page_width: f64) -> ScoreLayout {
+    compute_layout_with_staff_filter(score, &expand_parts_staves(score, parts_staves), page_width)
+}
+
+pub(super) fn compute_layout_with_staff_filter(
+    score: &Score,
+    parts_with_staves: &[(usize, Vec<usize>)],
+    page_width: f64,
+) -> ScoreLayout {
     let content_width = page_width - PAGE_MARGIN_LEFT - PAGE_MARGIN_RIGHT;
     let mut systems: Vec<SystemLayout> = Vec::new();
 
@@ -129,7 +148,7 @@ pub(super) fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], pag
     };
     let mut current_y = first_system_top;
 
-    let ref_part = &score.parts[parts_staves[0].0];
+    let ref_part = &score.parts[parts_with_staves[0].0];
 
     let mut measure_beats: Vec<f64> = Vec::with_capacity(ref_part.measures.len());
     let mut running_keys: Vec<Option<Key>> = Vec::with_capacity(ref_part.measures.len());
@@ -247,7 +266,7 @@ pub(super) fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], pag
         system_groups.push(current_group);
     }
 
-    let total_staves: usize = parts_staves.iter().map(|&(_, ns)| ns).sum();
+    let total_staves: usize = parts_with_staves.iter().map(|(_, sn)| sn.len()).sum();
 
     let mut divisions_per_part: Vec<i32> = vec![1; score.parts.len()];
 
@@ -284,17 +303,17 @@ pub(super) fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], pag
             let w = measure_weights[j] * scale;
 
             let mut all_beat_times: Vec<Vec<f64>> = Vec::new();
-            for &(pidx, _) in parts_staves {
-                let part = &score.parts[pidx];
+            for (pidx, _) in parts_with_staves {
+                let part = &score.parts[*pidx];
                 if mi < part.measures.len() {
                     if let Some(ref attrs) = part.measures[mi].attributes {
                         if let Some(d) = attrs.divisions {
-                            divisions_per_part[pidx] = d;
+                            divisions_per_part[*pidx] = d;
                         }
                     }
                     let beat_times = compute_note_beat_times(
                         &part.measures[mi].notes,
-                        divisions_per_part[pidx],
+                        divisions_per_part[*pidx],
                     );
                     all_beat_times.push(beat_times);
                 }
@@ -358,7 +377,7 @@ pub(super) fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], pag
             // For pickup/implicit measures, use the actual note content duration
             // so notes are spaced the same as in full measures.
             let total_quarters = if mi < ref_part.measures.len() && ref_part.measures[mi].implicit {
-                let div = divisions_per_part[parts_staves[0].0].max(1);
+                let div = divisions_per_part[parts_with_staves[0].0].max(1);
                 let mut total_divs = 0i32;
                 for note in &ref_part.measures[mi].notes {
                     if !note.chord && !note.grace {
@@ -393,27 +412,29 @@ pub(super) fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], pag
         let mut parts_info: Vec<PartStaffInfo> = Vec::new();
         let mut y_offset = 0.0;
 
-        for (i, &(pidx, num_staves)) in parts_staves.iter().enumerate() {
+        for (i, (pidx, staff_nums)) in parts_with_staves.iter().enumerate() {
+            let num_staves = staff_nums.len();
             parts_info.push(PartStaffInfo {
-                part_idx: pidx,
+                part_idx: *pidx,
                 y_offset,
                 num_staves,
+                staff_nums: staff_nums.clone(),
             });
 
             let part_height = STAFF_HEIGHT
                 + (num_staves as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP);
             y_offset += part_height;
 
-            if i < parts_staves.len() - 1 {
+            if i < parts_with_staves.len() - 1 {
                 y_offset += PART_GAP;
             }
         }
 
         let mut max_lyric_verses = 0i32;
         for ml_check in &measures {
-            for &(pidx, _) in parts_staves {
-                if ml_check.measure_idx < score.parts[pidx].measures.len() {
-                    for note in &score.parts[pidx].measures[ml_check.measure_idx].notes {
+            for (pidx, _) in parts_with_staves {
+                if ml_check.measure_idx < score.parts[*pidx].measures.len() {
+                    for note in &score.parts[*pidx].measures[ml_check.measure_idx].notes {
                         for lyric in &note.lyrics {
                             max_lyric_verses = max_lyric_verses.max(lyric.number);
                         }
@@ -424,12 +445,12 @@ pub(super) fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], pag
 
         let mut max_below_dir_lines: usize = 0;
         for ml_check2 in &measures {
-            for &(pidx, _) in parts_staves {
-                if ml_check2.measure_idx < score.parts[pidx].measures.len() {
-                    let count = score.parts[pidx].measures[ml_check2.measure_idx].directions.iter()
+            for (pidx, _) in parts_with_staves {
+                if ml_check2.measure_idx < score.parts[*pidx].measures.len() {
+                    let count = score.parts[*pidx].measures[ml_check2.measure_idx].directions.iter()
                         .filter(|dir| {
                             dir.placement.as_deref() == Some("below")
-                                && dir.words.as_ref().map_or(false, |w| !w.is_empty() && !is_jump_text(w))
+                                && dir.words.as_ref().map_or(false, |w: &String| !w.is_empty() && !is_jump_text(w))
                         })
                         .count();
                     if count > max_below_dir_lines {

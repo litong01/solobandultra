@@ -504,7 +504,7 @@ fn generate_midi_from_bytes_with_transpose() {
 #[test]
 fn render_bytes_to_svg_musicxml() {
     let data = std::fs::read("../../sheetmusic/asa-branca.musicxml").unwrap();
-    let svg = scorelib::render_bytes_to_svg(&data, Some("musicxml"), None, 0)
+    let svg = scorelib::render_bytes_to_svg(&data, Some("musicxml"), None, 0, None)
         .expect("render_bytes_to_svg should succeed");
 
     assert!(svg.starts_with("<svg"));
@@ -515,7 +515,7 @@ fn render_bytes_to_svg_musicxml() {
 #[test]
 fn render_bytes_to_svg_mxl() {
     let data = std::fs::read("../../sheetmusic/童年.mxl").unwrap();
-    let svg = scorelib::render_bytes_to_svg(&data, Some("mxl"), None, 0)
+    let svg = scorelib::render_bytes_to_svg(&data, Some("mxl"), None, 0, None)
         .expect("render_bytes_to_svg (MXL) should succeed");
 
     assert!(svg.starts_with("<svg"));
@@ -526,8 +526,8 @@ fn render_bytes_to_svg_mxl() {
 #[test]
 fn render_bytes_to_svg_with_transpose() {
     let data = std::fs::read("../../sheetmusic/asa-branca.musicxml").unwrap();
-    let svg_orig = scorelib::render_bytes_to_svg(&data, Some("musicxml"), None, 0).unwrap();
-    let svg_trans = scorelib::render_bytes_to_svg(&data, Some("musicxml"), None, 3).unwrap();
+    let svg_orig = scorelib::render_bytes_to_svg(&data, Some("musicxml"), None, 0, None).unwrap();
+    let svg_trans = scorelib::render_bytes_to_svg(&data, Some("musicxml"), None, 3, None).unwrap();
 
     assert!(svg_orig.starts_with("<svg"));
     assert!(svg_trans.starts_with("<svg"));
@@ -540,8 +540,8 @@ fn render_bytes_to_svg_with_transpose() {
 #[test]
 fn render_bytes_to_svg_with_page_width() {
     let data = std::fs::read("../../sheetmusic/asa-branca.musicxml").unwrap();
-    let svg_wide = scorelib::render_bytes_to_svg(&data, Some("musicxml"), Some(820.0), 0).unwrap();
-    let svg_narrow = scorelib::render_bytes_to_svg(&data, Some("musicxml"), Some(390.0), 0).unwrap();
+    let svg_wide = scorelib::render_bytes_to_svg(&data, Some("musicxml"), Some(820.0), 0, None).unwrap();
+    let svg_narrow = scorelib::render_bytes_to_svg(&data, Some("musicxml"), Some(390.0), 0, None).unwrap();
 
     assert!(svg_wide.contains("viewBox=\"0 0 820"));
     assert!(svg_narrow.contains("viewBox=\"0 0 390"));
@@ -555,7 +555,7 @@ fn render_bytes_to_svg_with_page_width() {
 #[test]
 fn playback_map_from_bytes_returns_valid_json() {
     let data = std::fs::read("../../sheetmusic/asa-branca.musicxml").unwrap();
-    let json = scorelib::playback_map_from_bytes(&data, Some("musicxml"), None, 0)
+    let json = scorelib::playback_map_from_bytes(&data, Some("musicxml"), None, 0, None)
         .expect("playback_map_from_bytes should succeed");
 
     let parsed: serde_json::Value = serde_json::from_str(&json).expect("Should be valid JSON");

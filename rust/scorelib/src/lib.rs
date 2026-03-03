@@ -219,14 +219,17 @@ pub fn score_to_json(score: &Score) -> Result<String, String> {
 /// fits fewer measures per system and keeps notes readable.
 ///
 /// `transpose` shifts all pitches by the given number of semitones (0 = no change).
+///
+/// `staff_indices_1based` limits which staves are drawn by global staff index (1 = first staff, 2 = second, etc.). Pass `None` for all.
 pub fn render_file_to_svg<P: AsRef<std::path::Path>>(
     path: P,
     page_width: Option<f64>,
     transpose: i32,
+    staff_indices_1based: Option<&[usize]>,
 ) -> Result<String, String> {
     let mut score = parse_file(path)?;
     transpose_score(&mut score, transpose);
-    Ok(render_score_to_svg(&score, page_width))
+    Ok(render_score_to_svg(&score, page_width, staff_indices_1based))
 }
 
 /// Parse MusicXML bytes and render to SVG.
@@ -235,15 +238,18 @@ pub fn render_file_to_svg<P: AsRef<std::path::Path>>(
 /// default (820).
 ///
 /// `transpose` shifts all pitches by the given number of semitones (0 = no change).
+///
+/// `staff_indices_1based` limits which staves are drawn by global staff index (1 = first staff, 2 = second, etc.). Pass `None` for all.
 pub fn render_bytes_to_svg(
     data: &[u8],
     extension: Option<&str>,
     page_width: Option<f64>,
     transpose: i32,
+    staff_indices_1based: Option<&[usize]>,
 ) -> Result<String, String> {
     let mut score = parse_bytes(data, extension)?;
     transpose_score(&mut score, transpose);
-    Ok(render_score_to_svg(&score, page_width))
+    Ok(render_score_to_svg(&score, page_width, staff_indices_1based))
 }
 
 /// Generate MIDI bytes from a parsed score.
@@ -309,8 +315,12 @@ pub fn add_feedback_overlay(svg: &str, overlay_dots_json: &str) -> Result<String
 ///
 /// The playback map contains measure positions, system positions and the
 /// timemap — everything the WebView needs to animate a playback cursor.
-pub fn playback_map_from_score(score: &Score, page_width: Option<f64>) -> String {
-    let map = generate_playback_map(score, page_width);
+pub fn playback_map_from_score(
+    score: &Score,
+    page_width: Option<f64>,
+    staff_indices_1based: Option<&[usize]>,
+) -> String {
+    let map = generate_playback_map(score, page_width, staff_indices_1based);
     playback::playback_map_to_json(&map)
 }
 
@@ -318,15 +328,17 @@ pub fn playback_map_from_score(score: &Score, page_width: Option<f64>) -> String
 ///
 /// `transpose` shifts all pitches by the given number of semitones (0 = no change).
 /// This must match the transpose used for SVG rendering so positions are consistent.
+/// Pass the same staff filter as used for SVG so cursor y/height and positions match.
 pub fn playback_map_from_bytes(
     data: &[u8],
     extension: Option<&str>,
     page_width: Option<f64>,
     transpose: i32,
+    staff_indices_1based: Option<&[usize]>,
 ) -> Result<String, String> {
     let mut score = parse_bytes(data, extension)?;
     transpose_score(&mut score, transpose);
-    Ok(playback_map_from_score(&score, page_width))
+    Ok(playback_map_from_score(&score, page_width, staff_indices_1based))
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -335,6 +347,25 @@ pub fn playback_map_from_bytes(
 
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
+
+/// Parse "1,3,5" (comma-separated 1-based global staff indices) into a Vec<usize>.
+/// Returns None if the string is null/empty or invalid (no valid numbers).
+/// Used by FFI to pass staff filter for SVG rendering (1 = first staff, 2 = second, etc.).
+pub fn parse_parts_filter(s: Option<&str>) -> Option<Vec<usize>> {
+    let s = s?.trim();
+    if s.is_empty() {
+        return None;
+    }
+    let parts: Vec<usize> = s
+        .split(',')
+        .map(|p| p.trim().parse::<usize>().ok())
+        .collect::<Option<Vec<_>>>()?;
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts)
+    }
+}
 
 /// Convert a Rust string to a C string for FFI, stripping null bytes so CString::new never fails.
 fn string_to_c_string(s: String) -> CString {
@@ -347,13 +378,16 @@ fn string_to_c_string(s: String) -> CString {
 ///
 /// `page_width` sets the SVG width in user units. Pass 0.0 to use the default.
 ///
+/// `parts_filter` optional comma-separated 1-based part indices (e.g. "1,3,5"). Pass null for all parts.
+///
 /// # Safety
-/// `path` must be a valid null-terminated UTF-8 C string.
+/// `path` must be a valid null-terminated UTF-8 C string. `parts_filter` may be null.
 #[no_mangle]
 pub unsafe extern "C" fn scorelib_render_file(
     path: *const c_char,
     page_width: f64,
     transpose: i32,
+    parts_filter: *const c_char,
 ) -> *mut c_char {
     if path.is_null() {
         return std::ptr::null_mut();
@@ -365,9 +399,15 @@ pub unsafe extern "C" fn scorelib_render_file(
     };
 
     let pw = if page_width > 0.0 { Some(page_width) } else { None };
+    let part_indices = if parts_filter.is_null() {
+        None
+    } else {
+        unsafe { CStr::from_ptr(parts_filter) }.to_str().ok().and_then(|s| parse_parts_filter(Some(s)))
+    };
+    let parts_ref = part_indices.as_deref();
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        render_file_to_svg(path_str, pw, transpose)
+        render_file_to_svg(path_str, pw, transpose, parts_ref)
     }));
 
     match result {
@@ -381,8 +421,10 @@ pub unsafe extern "C" fn scorelib_render_file(
 ///
 /// `page_width` sets the SVG width in user units. Pass 0.0 to use the default.
 ///
+/// `parts_filter` optional comma-separated 1-based part indices (e.g. "1,3,5"). Pass null for all parts.
+///
 /// # Safety
-/// `data` must point to `len` valid bytes. `extension` may be null.
+/// `data` must point to `len` valid bytes. `extension` and `parts_filter` may be null.
 #[no_mangle]
 pub unsafe extern "C" fn scorelib_render_bytes(
     data: *const u8,
@@ -390,6 +432,7 @@ pub unsafe extern "C" fn scorelib_render_bytes(
     extension: *const c_char,
     page_width: f64,
     transpose: i32,
+    parts_filter: *const c_char,
 ) -> *mut c_char {
     if data.is_null() || len == 0 {
         return std::ptr::null_mut();
@@ -402,9 +445,15 @@ pub unsafe extern "C" fn scorelib_render_bytes(
     };
 
     let pw = if page_width > 0.0 { Some(page_width) } else { None };
+    let part_indices = if parts_filter.is_null() {
+        None
+    } else {
+        unsafe { CStr::from_ptr(parts_filter) }.to_str().ok().and_then(|s| parse_parts_filter(Some(s)))
+    };
+    let parts_ref = part_indices.as_deref();
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        render_bytes_to_svg(bytes, ext, pw, transpose)
+        render_bytes_to_svg(bytes, ext, pw, transpose, parts_ref)
     }));
 
     match result {
@@ -504,9 +553,11 @@ pub unsafe extern "C" fn scorelib_free_midi(ptr: *mut u8, len: usize) {
 /// The caller must free the returned string with `scorelib_free_string`.
 ///
 /// `page_width` sets the SVG width in user units. Pass 0.0 to use the default.
+/// `parts_filter` must match the filter used for SVG rendering (e.g. "1,3" for staves 1 and 3).
+/// Pass null for all staves so cursor positions match the rendered SVG.
 ///
 /// # Safety
-/// `data` must point to `len` valid bytes. `extension` may be null.
+/// `data` must point to `len` valid bytes. `extension` and `parts_filter` may be null.
 #[no_mangle]
 pub unsafe extern "C" fn scorelib_playback_map(
     data: *const u8,
@@ -514,6 +565,7 @@ pub unsafe extern "C" fn scorelib_playback_map(
     extension: *const c_char,
     page_width: f64,
     transpose: i32,
+    parts_filter: *const c_char,
 ) -> *mut c_char {
     if data.is_null() || len == 0 {
         return std::ptr::null_mut();
@@ -524,11 +576,20 @@ pub unsafe extern "C" fn scorelib_playback_map(
     } else {
         unsafe { CStr::from_ptr(extension) }.to_str().ok()
     };
+    let staff_indices = if parts_filter.is_null() {
+        None
+    } else {
+        unsafe { CStr::from_ptr(parts_filter) }
+            .to_str()
+            .ok()
+            .and_then(|s| parse_parts_filter(Some(s)))
+    };
+    let staff_ref = staff_indices.as_deref();
 
     let pw = if page_width > 0.0 { Some(page_width) } else { None };
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        playback_map_from_bytes(bytes, ext, pw, transpose)
+        playback_map_from_bytes(bytes, ext, pw, transpose, staff_ref)
     }));
 
     match result {

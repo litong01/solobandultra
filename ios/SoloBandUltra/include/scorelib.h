@@ -8,20 +8,22 @@
  * Parse a MusicXML file at the given path and render it to SVG.
  * `page_width` sets the SVG width in user units. Pass 0.0 for the default (820).
  * `transpose` shifts all pitches by this many semitones (0 = no change).
+ * `parts_filter` optional comma-separated 1-based part indices (e.g. "1,3,5"). Pass NULL for all parts.
  * Returns a null-terminated SVG string, or NULL on error.
  * The caller must free the returned string with scorelib_free_string().
  */
-char* scorelib_render_file(const char* path, double page_width, int32_t transpose);
+char* scorelib_render_file(const char* path, double page_width, int32_t transpose, const char* parts_filter);
 
 /**
  * Parse MusicXML data from a byte buffer and render to SVG.
  * `extension` is an optional format hint ("musicxml", "mxl", "xml"), may be NULL.
  * `page_width` sets the SVG width in user units. Pass 0.0 for the default (820).
  * `transpose` shifts all pitches by this many semitones (0 = no change).
+ * `parts_filter` optional comma-separated 1-based part indices (e.g. "1,3,5"). Pass NULL for all parts.
  * Returns a null-terminated SVG string, or NULL on error.
  * The caller must free the returned string with scorelib_free_string().
  */
-char* scorelib_render_bytes(const uint8_t* data, size_t len, const char* extension, double page_width, int32_t transpose);
+char* scorelib_render_bytes(const uint8_t* data, size_t len, const char* extension, double page_width, int32_t transpose, const char* parts_filter);
 
 /**
  * Generate a playback map JSON string from MusicXML data.
@@ -30,10 +32,11 @@ char* scorelib_render_bytes(const uint8_t* data, size_t len, const char* extensi
  * `extension` is an optional format hint, may be NULL.
  * `page_width` sets the SVG width in user units. Pass 0.0 for the default (820).
  * `transpose` shifts all pitches by this many semitones (0 = no change).
+ * `parts_filter` must match the filter used for SVG rendering (e.g. "1,3"). Pass NULL for all.
  * Returns a null-terminated JSON string, or NULL on error.
  * The caller must free the returned string with scorelib_free_string().
  */
-char* scorelib_playback_map(const uint8_t* data, size_t len, const char* extension, double page_width, int32_t transpose);
+char* scorelib_playback_map(const uint8_t* data, size_t len, const char* extension, double page_width, int32_t transpose, const char* parts_filter);
 
 /**
  * Generate MIDI (SMF Type 1) bytes from MusicXML data.

@@ -528,7 +528,7 @@ pub fn ms_to_ticks(target_ms: f64, timemap: &[TimemapEntry]) -> u32 {
     ticks.round() as u32
 }
 
-/// Detect the number of staves in a part by scanning attributes and note staff numbers.
+/// Detect the number of staves in a part by scanning attributes and note specifc parts.
 /// Clamped to [1, 8] to prevent OOM from malformed input (negative values wrapping
 /// to huge usize, or absurdly large stave counts).
 fn detect_staves(part: &crate::model::Part) -> usize {

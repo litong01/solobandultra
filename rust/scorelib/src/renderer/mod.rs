@@ -52,7 +52,15 @@ fn octave_shift_amount(size: i32) -> i32 {
 /// `page_width` sets the SVG width in user units. Pass `None` (or 0.0 from FFI)
 /// to use the default (820). On phones, pass the screen width in points so the
 /// renderer fits fewer measures per system and keeps notes readable.
-pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
+///
+/// `staff_indices_1based` limits which staves are drawn by global staff index (1-based).
+/// Staff 1 = first staff in the score, 2 = second staff (e.g. bass clef of piano), etc.
+/// Pass `None` or empty to render all staves. If none of the requested indices exist, staff 1 is rendered.
+pub fn render_score_to_svg(
+    score: &Score,
+    page_width: Option<f64>,
+    staff_indices_1based: Option<&[usize]>,
+) -> String {
     let page_width = match page_width {
         Some(w) if w > 0.0 => w,
         _ => DEFAULT_PAGE_WIDTH,
@@ -62,15 +70,54 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
         return empty_svg("No parts in score");
     }
 
-    // Determine staves per part
-    let parts_staves: Vec<(usize, usize)> = score
+    // Build global staff list: (part_idx, staff_num) for each staff in order.
+    let global_staves: Vec<(usize, usize)> = score
         .parts
         .iter()
         .enumerate()
-        .map(|(i, part)| (i, detect_staves(part)))
+        .flat_map(|(pidx, part)| {
+            let n = detect_staves(part);
+            (1..=n).map(move |staff_num| (pidx, staff_num))
+        })
         .collect();
 
-    let layout = compute_layout(score, &parts_staves, page_width);
+    let parts_with_staves: Vec<(usize, Vec<usize>)> = match staff_indices_1based {
+        None | Some([]) => score
+            .parts
+            .iter()
+            .enumerate()
+            .map(|(pidx, part)| (pidx, (1..=detect_staves(part)).collect()))
+            .collect(),
+        Some(list) => {
+            let selected: Vec<(usize, usize)> = list
+                .iter()
+                .filter_map(|&one_based| one_based.checked_sub(1))
+                .filter_map(|gi| global_staves.get(gi).copied())
+                .collect();
+            if selected.is_empty() {
+                if let Some(&first) = global_staves.first() {
+                    vec![(first.0, vec![first.1])]
+                } else {
+                    return empty_svg("No staves in score");
+                }
+            } else {
+                // Group by part_idx, collect staff numbers per part (sorted, deduped).
+                let mut by_part: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
+                for (pidx, staff_num) in selected {
+                    by_part.entry(pidx).or_default().push(staff_num);
+                }
+                for staves in by_part.values_mut() {
+                    staves.sort_unstable();
+                    staves.dedup();
+                }
+                let mut result: Vec<(usize, Vec<usize>)> = by_part.into_iter().collect();
+                result.sort_by_key(|&(p, _)| p);
+                result
+            }
+        }
+    };
+
+    let layout = compute_layout_with_staff_filter(score, &parts_with_staves, page_width);
 
     let mut svg = SvgBuilder::new(page_width, layout.total_height);
 
@@ -91,10 +138,10 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
         octave_shift: i32,
     }
 
-    let mut part_states: Vec<PartState> = parts_staves
-        .iter()
-        .map(|&(pidx, ns)| {
+    let mut part_states: Vec<PartState> = (0..score.parts.len())
+        .map(|pidx| {
             let part = &score.parts[pidx];
+            let ns = detect_staves(part);
             let mut clefs: Vec<Option<Clef>> = vec![None; ns + 1];
             let mut key = None;
             let mut time = None;
@@ -209,10 +256,10 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
         for part_info in &system.parts {
             let ps = &part_states[part_info.part_idx];
 
-            for staff_num in 1..=part_info.num_staves {
+            for (display_idx, &staff_num) in part_info.staff_nums.iter().enumerate() {
                 let staff_y = system_y
                     + part_info.y_offset
-                    + (staff_num as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP);
+                    + (display_idx as f64) * (STAFF_HEIGHT + GRAND_STAFF_GAP);
 
                 render_staff_lines(&mut svg, sys_prefix_x, system.x_end, staff_y);
 
@@ -299,15 +346,12 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                     continue;
                 }
                 let measure = &score.parts[pidx].measures[ml_pre.measure_idx];
-                let bottom_staff_num = part_info.num_staves;
+                let bottom_staff_num = part_info.staff_nums.last().copied().unwrap_or(1);
                 let staff_y_bottom = system_y
                     + part_info.y_offset
-                    + (bottom_staff_num as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP);
-                let staff_filter = if part_info.num_staves > 1 {
-                    Some(bottom_staff_num as i32)
-                } else {
-                    None
-                };
+                    + (part_info.num_staves as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP);
+                // Always filter by staff so we only consider notes on the staves we're drawing.
+                let staff_filter = Some(bottom_staff_num as i32);
                 let lowest = measure_lowest_note_y(
                     measure, staff_y_bottom,
                     ps.clefs.get(bottom_staff_num).and_then(|c| c.as_ref()),
@@ -364,7 +408,7 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
             std::collections::HashMap::new();
         for part_info in &system.parts {
             let pidx = part_info.part_idx;
-            for staff_num in 1..=part_info.num_staves {
+            for (display_idx, &staff_num) in part_info.staff_nums.iter().enumerate() {
                 let mut staff_slurs = std::collections::HashMap::new();
                 let keys_to_remove: Vec<(usize, usize, i32)> = global_open_slurs.keys()
                     .filter(|&&(p, s, _)| p == pidx && s == staff_num)
@@ -374,7 +418,7 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                     if let Some(start) = global_open_slurs.remove(&key) {
                         let staff_y = system_y
                             + part_info.y_offset
-                            + (staff_num as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP);
+                            + (display_idx as f64) * (STAFF_HEIGHT + GRAND_STAFF_GAP);
                         let y_offset = start.y - start.staff_y;
                         staff_slurs.insert(key.2, SlurStart {
                             x: PAGE_MARGIN_LEFT + CLEF_SPACE,
@@ -394,7 +438,7 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
             std::collections::HashMap::new();
         for part_info in &system.parts {
             let pidx = part_info.part_idx;
-            for staff_num in 1..=part_info.num_staves {
+            for (display_idx, &staff_num) in part_info.staff_nums.iter().enumerate() {
                 let mut staff_ties = std::collections::HashMap::new();
                 let keys_to_remove: Vec<(usize, usize, String)> = global_open_ties.keys()
                     .filter(|k| k.0 == pidx && k.1 == staff_num)
@@ -404,7 +448,7 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                     if let Some(start) = global_open_ties.remove(&key) {
                         let staff_y = system_y
                             + part_info.y_offset
-                            + (staff_num as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP);
+                            + (display_idx as f64) * (STAFF_HEIGHT + GRAND_STAFF_GAP);
                         let y_offset = start.y - start.staff_y;
                         staff_ties.insert(key.2, TieStart {
                             x: PAGE_MARGIN_LEFT + CLEF_SPACE,
@@ -476,10 +520,10 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                     }
                 }
 
-                for staff_num in 1..=part_info.num_staves {
+                for (display_idx, &staff_num) in part_info.staff_nums.iter().enumerate() {
                     let staff_y = system_y
                         + part_info.y_offset
-                        + (staff_num as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP);
+                        + (display_idx as f64) * (STAFF_HEIGHT + GRAND_STAFF_GAP);
 
                     // ── Inline key/time signature changes ──
                     let mut inline_x = mx + 10.0;
@@ -526,7 +570,7 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                     }
 
                     // ── Directions (only on top staff of first part) ──
-                    if staff_num == 1 && pidx == parts_staves[0].0 {
+                    if display_idx == 0 && pidx == system.parts[0].part_idx {
                         let mut below_word_idx: usize = 0;
                         let mut above_word_idx: usize = 0;
                         for dir in &measure.directions {
@@ -564,16 +608,12 @@ pub fn render_score_to_svg(score: &Score, page_width: Option<f64>) -> String {
                     }
 
                     // Chord symbols (only on top staff of first part)
-                    if staff_num == 1 && pidx == parts_staves[0].0 {
+                    if display_idx == 0 && pidx == system.parts[0].part_idx {
                         render_harmonies(&mut svg, measure, mx, mw, staff_y);
                     }
 
-                    // Notes and rests for this staff
-                    let staff_filter = if part_info.num_staves > 1 {
-                        Some(staff_num as i32)
-                    } else {
-                        None
-                    };
+                    // Notes and rests for this staff — always filter so only notes on this staff are drawn.
+                    let staff_filter = Some(staff_num as i32);
 
                     let effective_transpose = ps.transpose_octave + ps.octave_shift;
 
@@ -706,6 +746,10 @@ pub const FEEDBACK_DOTS_OFFSET: f64 = 16.0;
 
 /// Compute the visual position of each measure and system in the SVG.
 ///
+/// When `staff_indices_1based` is set (e.g. `Some(&[1, 3])`), uses the same
+/// filtered layout as `render_score_to_svg`, so cursor y/height and measure
+/// positions match the rendered SVG.
+///
 /// Returns two vectors:
 /// - Measures: `(measure_idx, x, width, system_idx, beat_x_map)` for each measure
 /// - Systems: `(y, height, dots_base_y)` for each system (line of music).
@@ -717,6 +761,7 @@ pub const FEEDBACK_DOTS_OFFSET: f64 = 16.0;
 pub fn compute_measure_positions(
     score: &Score,
     page_width: Option<f64>,
+    staff_indices_1based: Option<&[usize]>,
 ) -> (Vec<(usize, f64, f64, usize, Vec<(f64, f64)>)>, Vec<(f64, f64, f64)>) {
     let page_width = match page_width {
         Some(w) if w > 0.0 => w,
@@ -727,14 +772,54 @@ pub fn compute_measure_positions(
         return (Vec::new(), Vec::new());
     }
 
-    let parts_staves: Vec<(usize, usize)> = score
-        .parts
-        .iter()
-        .enumerate()
-        .map(|(i, part)| (i, detect_staves(part)))
-        .collect();
-
-    let layout = compute_layout(score, &parts_staves, page_width);
+    let layout = match staff_indices_1based {
+        None | Some([]) => {
+            let parts_staves: Vec<(usize, usize)> = score
+                .parts
+                .iter()
+                .enumerate()
+                .map(|(i, part)| (i, detect_staves(part)))
+                .collect();
+            compute_layout(score, &parts_staves, page_width)
+        }
+        Some(list) => {
+            let global_staves: Vec<(usize, usize)> = score
+                .parts
+                .iter()
+                .enumerate()
+                .flat_map(|(pidx, part)| {
+                    let n = detect_staves(part);
+                    (1..=n).map(move |staff_num| (pidx, staff_num))
+                })
+                .collect();
+            let selected: Vec<(usize, usize)> = list
+                .iter()
+                .filter_map(|&one_based| one_based.checked_sub(1))
+                .filter_map(|gi| global_staves.get(gi).copied())
+                .collect();
+            let parts_with_staves: Vec<(usize, Vec<usize>)> = if selected.is_empty() {
+                if let Some(&first) = global_staves.first() {
+                    vec![(first.0, vec![first.1])]
+                } else {
+                    return (Vec::new(), Vec::new());
+                }
+            } else {
+                let mut by_part: std::collections::HashMap<usize, Vec<usize>> =
+                    std::collections::HashMap::new();
+                for (pidx, staff_num) in selected {
+                    by_part.entry(pidx).or_default().push(staff_num);
+                }
+                for staves in by_part.values_mut() {
+                    staves.sort_unstable();
+                    staves.dedup();
+                }
+                let mut result: Vec<(usize, Vec<usize>)> = by_part.into_iter().collect();
+                result.sort_by_key(|&(p, _)| p);
+                result
+            };
+            compute_layout_with_staff_filter(score, &parts_with_staves, page_width)
+        }
+    };
 
     let mut measure_positions = Vec::new();
     let mut system_positions = Vec::new();

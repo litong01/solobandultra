@@ -572,6 +572,10 @@ struct SettingsSheet: View {
     @State private var repeatCount: Int = 1
     @State private var transpose: Int = 0
     @State private var showCursor: Bool = true
+    @State private var scoreRenderingMode: String = "staff"
+    @State private var staffStavesOption: String = "all"
+    @State private var staffStavesList: String = ""
+    @State private var jianpuStaffNumber: String = "1"
     @State private var showLockedAlert: Bool = false
 
     /// Available music sources: built-in bundle + any loaded .mbk bundles.
@@ -756,6 +760,91 @@ struct SettingsSheet: View {
                         }
                         .padding(.vertical, 4)
                     }
+
+                    // ── 5. Score Rendering ─────────────────────────────
+                    SettingsSection("Score Rendering") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            // Row 1: Staff + All + Specific staves + narrow entry when Staff & custom
+                            HStack(alignment: .center, spacing: 8) {
+                                Button { scoreRenderingMode = "staff" } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: scoreRenderingMode == "staff" ? "largecircle.fill.circle" : "circle")
+                                            .font(.body)
+                                        Text("Staff")
+                                            .font(.settingsLabel)
+                                    }
+                                    .foregroundStyle(.primary)
+                                }
+                                .buttonStyle(.plain)
+                                Button {
+                                    scoreRenderingMode = "staff"
+                                    staffStavesOption = "all"
+                                    staffStavesList = ""
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: staffStavesOption == "all" ? "largecircle.fill.circle" : "circle")
+                                            .font(.caption)
+                                        Text("All")
+                                            .font(.caption)
+                                    }
+                                    .foregroundStyle(.primary)
+                                }
+                                .buttonStyle(.plain)
+                                Button {
+                                    scoreRenderingMode = "staff"
+                                    staffStavesOption = "custom"
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: staffStavesOption == "custom" ? "largecircle.fill.circle" : "circle")
+                                            .font(.caption)
+                                        Text("Specific parts")
+                                            .font(.caption)
+                                    }
+                                    .foregroundStyle(.primary)
+                                }
+                                .buttonStyle(.plain)
+                                if scoreRenderingMode == "staff" && staffStavesOption == "custom" {
+                                    TextField("1,3,4,6", text: $staffStavesList)
+                                        .textFieldStyle(.roundedBorder)
+                                        .keyboardType(.numbersAndPunctuation)
+                                        .frame(width: 80)
+                                        .onChange(of: staffStavesList) { newValue in
+                                            staffStavesList = newValue.filter { $0.isNumber || $0 == "," }
+                                        }
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                            // Row 2: Jianpu + Specific part + narrow entry
+                            HStack(alignment: .center, spacing: 8) {
+                                Button { scoreRenderingMode = "jianpu" } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: scoreRenderingMode == "jianpu" ? "largecircle.fill.circle" : "circle")
+                                            .font(.body)
+                                        Text("Jianpu")
+                                            .font(.settingsLabel)
+                                    }
+                                    .foregroundStyle(.primary)
+                                }
+                                .buttonStyle(.plain)
+                                if scoreRenderingMode == "jianpu" {
+                                    Text("Specific part")
+                                        .font(.settingsLabel)
+                                    TextField("1", text: $jianpuStaffNumber)
+                                        .textFieldStyle(.roundedBorder)
+                                        .keyboardType(.numberPad)
+                                        .frame(width: 40)
+                                        .onChange(of: jianpuStaffNumber) { newValue in
+                                            let firstSegment = newValue.split(separator: ",").first.map(String.init) ?? newValue
+                                            let digitsOnly = firstSegment.filter { $0.isNumber }
+                                            jianpuStaffNumber = String(digitsOnly.prefix(4))
+                                        }
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .padding(.vertical, 4)
+                    }
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 32)
@@ -797,6 +886,10 @@ struct SettingsSheet: View {
         repeatCount = midiSettings.repeatCount
         transpose = midiSettings.transpose
         showCursor = midiSettings.showCursor
+        scoreRenderingMode = midiSettings.scoreRenderingMode
+        staffStavesOption = midiSettings.staffStavesOption
+        staffStavesList = midiSettings.staffStavesList
+        jianpuStaffNumber = midiSettings.jianpuStaffNumber
     }
 
     /// Write local working copies back to midiSettings and dismiss.
@@ -815,6 +908,10 @@ struct SettingsSheet: View {
         midiSettings.repeatCount = repeatCount
         midiSettings.transpose = transpose
         midiSettings.showCursor = showCursor
+        midiSettings.scoreRenderingMode = scoreRenderingMode
+        midiSettings.staffStavesOption = staffStavesOption
+        midiSettings.staffStavesList = staffStavesList
+        midiSettings.jianpuStaffNumber = jianpuStaffNumber
         midiSettings.saveToDisk()
         isPresented = false
     }

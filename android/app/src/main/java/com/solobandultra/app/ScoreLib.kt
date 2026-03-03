@@ -53,32 +53,36 @@ object ScoreLib {
      * Render a MusicXML file at the given path to SVG.
      * @param pageWidth SVG width in user-units (pass 0f for the default 820).
      * @param transpose Semitones to transpose (0 = no change).
+     * @param partsFilter Optional comma-separated 1-based part indices (e.g. "1,3,5"). Pass null for all parts.
      */
-    external fun renderFile(path: String, pageWidth: Float, transpose: Int): String?
+    external fun renderFile(path: String, pageWidth: Float, transpose: Int, partsFilter: String?): String?
 
     /**
      * Render MusicXML bytes to SVG.
      * @param pageWidth SVG width in user-units (pass 0f for the default 820).
      * @param transpose Semitones to transpose (0 = no change).
+     * @param partsFilter Optional comma-separated 1-based part indices (e.g. "1,3,5"). Pass null for all parts.
      */
-    external fun renderBytes(data: ByteArray, extension: String?, pageWidth: Float, transpose: Int): String?
+    external fun renderBytes(data: ByteArray, extension: String?, pageWidth: Float, transpose: Int, partsFilter: String?): String?
 
     /**
      * Render a MusicXML asset file to SVG.
      * @param pageWidth SVG width in user-units (pass 0f for the default 820).
      * @param transpose Semitones to transpose (0 = no change).
+     * @param partsFilter Optional comma-separated 1-based part indices (e.g. "1,3,5"). Pass null for all parts.
      */
-    fun renderAsset(context: Context, assetPath: String, pageWidth: Float = 0f, transpose: Int = 0): String? {
+    fun renderAsset(context: Context, assetPath: String, pageWidth: Float = 0f, transpose: Int = 0, partsFilter: String? = null): String? {
         val extension = assetPath.substringAfterLast('.', "")
         val bytes = context.assets.open(assetPath).use { it.readBytes() }
-        return renderBytes(bytes, extension.ifEmpty { null }, pageWidth, transpose)
+        return renderBytes(bytes, extension.ifEmpty { null }, pageWidth, transpose, partsFilter)
     }
 
     /**
      * Render MusicXML bytes to SVG (convenience for pre-loaded data).
+     * @param partsFilter Optional comma-separated 1-based part indices (e.g. "1,3,5"). Pass null for all parts.
      */
-    fun renderData(data: ByteArray, ext: String, pageWidth: Float = 0f, transpose: Int = 0): String? {
-        return renderBytes(data, ext.ifEmpty { null }, pageWidth, transpose)
+    fun renderData(data: ByteArray, ext: String, pageWidth: Float = 0f, transpose: Int = 0, partsFilter: String? = null): String? {
+        return renderBytes(data, ext.ifEmpty { null }, pageWidth, transpose, partsFilter)
     }
 
     // ── Note Timeline ───────────────────────────────────────────────────
@@ -104,24 +108,27 @@ object ScoreLib {
      * Contains measure positions, system positions, and timemap.
      * @param pageWidth SVG width in user-units (pass 0f for the default 820).
      * @param transpose Semitones to transpose (0 = no change). Must match render transpose.
+     * @param partsFilter Same as used for SVG rendering (e.g. "1,3"). Pass null for all staves.
      */
-    external fun playbackMap(data: ByteArray, extension: String?, pageWidth: Float, transpose: Int): String?
+    external fun playbackMap(data: ByteArray, extension: String?, pageWidth: Float, transpose: Int, partsFilter: String?): String?
 
     /**
      * Generate a playback map from a MusicXML asset file.
      * @param transpose Semitones to transpose (0 = no change). Must match render transpose.
+     * @param partsFilter Same as used for SVG rendering. Pass null for all staves.
      */
-    fun playbackMapFromAsset(context: Context, assetPath: String, pageWidth: Float = 0f, transpose: Int = 0): String? {
+    fun playbackMapFromAsset(context: Context, assetPath: String, pageWidth: Float = 0f, transpose: Int = 0, partsFilter: String? = null): String? {
         val extension = assetPath.substringAfterLast('.', "")
         val bytes = context.assets.open(assetPath).use { it.readBytes() }
-        return playbackMap(bytes, extension.ifEmpty { null }, pageWidth, transpose)
+        return playbackMap(bytes, extension.ifEmpty { null }, pageWidth, transpose, partsFilter)
     }
 
     /**
      * Generate a playback map from pre-loaded MusicXML bytes.
+     * @param partsFilter Same as used for SVG rendering. Pass null for all staves.
      */
-    fun playbackMapFromData(data: ByteArray, ext: String, pageWidth: Float = 0f, transpose: Int = 0): String? {
-        return playbackMap(data, ext.ifEmpty { null }, pageWidth, transpose)
+    fun playbackMapFromData(data: ByteArray, ext: String, pageWidth: Float = 0f, transpose: Int = 0, partsFilter: String? = null): String? {
+        return playbackMap(data, ext.ifEmpty { null }, pageWidth, transpose, partsFilter)
     }
 
     /**

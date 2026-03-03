@@ -161,6 +161,10 @@ struct SheetMusicView: View {
             .onChange(of: midiSettings.transpose) { _ in
                 loadScore(width: geometry.size.width)
             }
+            .onChange(of: midiSettings.scoreRenderingMode) { _ in loadScore(width: geometry.size.width) }
+            .onChange(of: midiSettings.staffStavesOption) { _ in loadScore(width: geometry.size.width) }
+            .onChange(of: midiSettings.staffStavesList) { _ in loadScore(width: geometry.size.width) }
+            .onChange(of: midiSettings.jianpuStaffNumber) { _ in loadScore(width: geometry.size.width) }
             .onChange(of: geometry.size.width) { newWidth in
                 // Re-render when width changes (e.g. device rotation)
                 if abs(newWidth - lastRenderedWidth) > 10 {
@@ -219,6 +223,23 @@ struct SheetMusicView: View {
         lastOptionsJson = optionsJson
         let transposeVal = Int32(midiSettings.transpose)
 
+        let partsFilter: String?
+        if midiSettings.scoreRenderingMode == "staff" {
+            if midiSettings.staffStavesOption == "all" {
+                partsFilter = nil
+            } else {
+                let list = midiSettings.staffStavesList.split(separator: ",")
+                    .compactMap { seg -> Int? in
+                        let s = seg.filter { $0.isNumber }
+                        return s.isEmpty ? nil : Int(s)
+                    }
+                let sorted = Array(Set(list)).sorted()
+                partsFilter = sorted.isEmpty ? nil : sorted.map(String.init).joined(separator: ",")
+            }
+        } else {
+            partsFilter = midiSettings.jianpuStaffNumber.isEmpty ? nil : midiSettings.jianpuStaffNumber
+        }
+
         // Capture resolved file data on the main thread before going to background.
         guard let (resolvedData, ext) = resolveCurrentFileData() else {
             isLoading = false
@@ -239,10 +260,10 @@ struct SheetMusicView: View {
             }
 
             // Render SVG from bytes (works for external, bundled, and .mbk files)
-            let svg = ScoreLib.renderData(data, extension: ext, pageWidth: pageWidth, transpose: transposeVal)
+            let svg = ScoreLib.renderData(data, extension: ext, pageWidth: pageWidth, transpose: transposeVal, partsFilter: partsFilter)
 
-            // Generate playback map
-            let pmap = ScoreLib.playbackMap(data, extension: ext, pageWidth: pageWidth, transpose: transposeVal)
+            // Generate playback map (same partsFilter as SVG so cursor height/position match)
+            let pmap = ScoreLib.playbackMap(data, extension: ext, pageWidth: pageWidth, transpose: transposeVal, partsFilter: partsFilter)
 
             // Generate note timeline for real-time feedback (voice 1, part 0)
             let timelineJson = ScoreLib.noteTimeline(data, extension: ext, transpose: transposeVal)

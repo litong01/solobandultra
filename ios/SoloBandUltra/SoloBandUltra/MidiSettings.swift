@@ -49,6 +49,12 @@ class MidiSettings: ObservableObject {
     // ── Transpose (semitones) ──
     @Published var transpose: Int = 0
 
+    // ── Score rendering: staff vs jianpu; staff "all" or custom list (e.g. 1,3,4,6); jianpu single part number ──
+    @Published var scoreRenderingMode: String = "staff"
+    @Published var staffStavesOption: String = "all"
+    @Published var staffStavesList: String = ""
+    @Published var jianpuStaffNumber: String = "1"
+
     // ── Music source selection ──
     /// The default music file shown on app launch (landing page).
     static let defaultLandingFile = "asa-branca.musicxml"
@@ -74,10 +80,14 @@ class MidiSettings: ObservableObject {
         static let playbackSpeed    = "playbackSpeed"
         static let muteMusic        = "muteMusic"
         static let repeatCount      = "repeatCount"
-        static let showCursor       = "showCursor"
-        static let transpose        = "transpose"
-        static let selectedSourceId = "selectedSourceId"
-        static let selectedFileUrl  = "selectedFileUrl"
+        static let showCursor          = "showCursor"
+        static let transpose           = "transpose"
+        static let scoreRenderingMode  = "scoreRenderingMode"
+        static let staffStavesOption   = "staffStavesOption"
+        static let staffStavesList     = "staffStavesList"
+        static let jianpuStaffNumber   = "jianpuStaffNumber"
+        static let selectedSourceId    = "selectedSourceId"
+        static let selectedFileUrl     = "selectedFileUrl"
     }
 
     func saveToDisk() {
@@ -92,8 +102,12 @@ class MidiSettings: ObservableObject {
         d.set(playbackSpeed,    forKey: Key.playbackSpeed)
         d.set(muteMusic,        forKey: Key.muteMusic)
         d.set(repeatCount,      forKey: Key.repeatCount)
-        d.set(showCursor,       forKey: Key.showCursor)
-        d.set(transpose,        forKey: Key.transpose)
+        d.set(showCursor,          forKey: Key.showCursor)
+        d.set(transpose,           forKey: Key.transpose)
+        d.set(scoreRenderingMode,  forKey: Key.scoreRenderingMode)
+        d.set(staffStavesOption,   forKey: Key.staffStavesOption)
+        d.set(staffStavesList,    forKey: Key.staffStavesList)
+        d.set(jianpuStaffNumber,   forKey: Key.jianpuStaffNumber)
         // External files don't survive restart — fall back to bundled default.
         let srcToSave = selectedSourceId == "external" ? "bundled" : selectedSourceId
         let urlToSave = selectedSourceId == "external" ? MidiSettings.defaultLandingFileUrl : selectedFileUrl
@@ -115,8 +129,12 @@ class MidiSettings: ObservableObject {
         playbackSpeed    = d.double(forKey: Key.playbackSpeed)
         muteMusic        = d.bool(forKey: Key.muteMusic)
         repeatCount      = d.integer(forKey: Key.repeatCount)
-        showCursor       = d.bool(forKey: Key.showCursor)
-        transpose        = d.integer(forKey: Key.transpose)
+        showCursor          = d.bool(forKey: Key.showCursor)
+        transpose           = d.integer(forKey: Key.transpose)
+        if let s = d.string(forKey: Key.scoreRenderingMode)  { scoreRenderingMode  = s }
+        if let s = d.string(forKey: Key.staffStavesOption)    { staffStavesOption   = s }
+        if let s = d.string(forKey: Key.staffStavesList)      { staffStavesList     = s }
+        if let s = d.string(forKey: Key.jianpuStaffNumber)    { jianpuStaffNumber   = s }
         if let src = d.string(forKey: Key.selectedSourceId) { selectedSourceId = src }
         if let url = d.string(forKey: Key.selectedFileUrl)  { selectedFileUrl  = url }
     }

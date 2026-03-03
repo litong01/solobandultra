@@ -149,7 +149,7 @@ pub struct TimeSignature {
 /// Clef definition.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Clef {
-    /// Staff number this clef belongs to (1-based; defaults to 1)
+    /// Specific part number this clef belongs to (1-based; defaults to 1)
     pub number: i32,
     /// Clef sign: "G" (treble), "F" (bass), "C" (alto/tenor)
     pub sign: String,
@@ -196,7 +196,7 @@ pub struct Note {
     pub tie_start: bool,
     /// Whether this note stops a tie (continuation from a previous note)
     pub tie_stop: bool,
-    /// Staff number (1-based; for multi-staff parts like piano)
+    /// Specific part number (1-based; for multi-staff parts like piano)
     pub staff: Option<i32>,
     /// Default X position in tenths (for layout)
     pub default_x: Option<f64>,

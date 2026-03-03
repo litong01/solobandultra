@@ -239,7 +239,7 @@ fn transposed_svg_renders_successfully() {
     let mut score = parse_file(sheetmusic_dir().join("asa-branca.musicxml")).unwrap();
     transpose_score(&mut score, 5);
 
-    let svg = render_score_to_svg(&score, None);
+    let svg = render_score_to_svg(&score, None, None);
     assert!(svg.starts_with("<svg"), "Transposed score should produce valid SVG");
     assert!(svg.contains("<ellipse"), "Transposed SVG should contain noteheads");
 

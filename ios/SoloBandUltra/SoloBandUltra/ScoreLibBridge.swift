@@ -8,8 +8,12 @@ enum ScoreLib {
     /// Render a MusicXML file at the given path to SVG.
     /// - Parameter pageWidth: SVG width in user-units. Pass 0 for the default (820).
     /// - Parameter transpose: Semitones to transpose (0 = no change).
-    static func renderFile(at path: String, pageWidth: Double = 0, transpose: Int32 = 0) -> String? {
-        guard let cResult = scorelib_render_file(path, pageWidth, transpose) else {
+    /// - Parameter partsFilter: Optional comma-separated 1-based part indices (e.g. "1,3,5"). Pass nil for all parts.
+    static func renderFile(at path: String, pageWidth: Double = 0, transpose: Int32 = 0, partsFilter: String? = nil) -> String? {
+        let result: UnsafeMutablePointer<CChar>? = partsFilter.map { filter in
+            filter.withCString { scorelib_render_file(path, pageWidth, transpose, $0) }
+        } ?? scorelib_render_file(path, pageWidth, transpose, nil)
+        guard let cResult = result else {
             return nil
         }
         let svg = String(cString: cResult)
@@ -20,17 +24,34 @@ enum ScoreLib {
     /// Render MusicXML data (bytes) to SVG.
     /// - Parameter pageWidth: SVG width in user-units. Pass 0 for the default (820).
     /// - Parameter transpose: Semitones to transpose (0 = no change).
-    static func renderData(_ data: Data, extension ext: String? = nil, pageWidth: Double = 0, transpose: Int32 = 0) -> String? {
-        let result: UnsafeMutablePointer<CChar>? = data.withUnsafeBytes { buffer in
-            guard let baseAddress = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
-                return nil
+    /// - Parameter partsFilter: Optional comma-separated 1-based part indices (e.g. "1,3,5"). Pass nil for all parts.
+    static func renderData(_ data: Data, extension ext: String? = nil, pageWidth: Double = 0, transpose: Int32 = 0, partsFilter: String? = nil) -> String? {
+        func doRender(extPtr: UnsafePointer<CChar>?, partsPtr: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>? {
+            data.withUnsafeBytes { buffer in
+                guard let baseAddress = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+                    return nil
+                }
+                return scorelib_render_bytes(baseAddress, buffer.count, extPtr, pageWidth, transpose, partsPtr)
             }
+        }
+        let result: UnsafeMutablePointer<CChar>?
+        if let filter = partsFilter {
+            result = filter.withCString { partsPtr in
+                if let ext = ext {
+                    return ext.withCString { extPtr in
+                        doRender(extPtr: extPtr, partsPtr: partsPtr)
+                    }
+                } else {
+                    return doRender(extPtr: nil, partsPtr: partsPtr)
+                }
+            }
+        } else {
             if let ext = ext {
-                return ext.withCString { extPtr in
-                    scorelib_render_bytes(baseAddress, buffer.count, extPtr, pageWidth, transpose)
+                result = ext.withCString { extPtr in
+                    doRender(extPtr: extPtr, partsPtr: nil)
                 }
             } else {
-                return scorelib_render_bytes(baseAddress, buffer.count, nil, pageWidth, transpose)
+                result = doRender(extPtr: nil, partsPtr: nil)
             }
         }
 
@@ -75,18 +96,26 @@ enum ScoreLib {
     /// The playback map contains measure visual positions, system positions,
     /// and the unrolled timemap — everything needed for cursor synchronization.
     /// - Parameter transpose: Semitones to transpose (0 = no change). Must match render transpose.
-    static func playbackMap(_ data: Data, extension ext: String? = nil, pageWidth: Double = 0, transpose: Int32 = 0) -> String? {
+    /// - Parameter partsFilter: Same as used for SVG rendering (e.g. "1,3"). Pass nil for all staves.
+    static func playbackMap(_ data: Data, extension ext: String? = nil, pageWidth: Double = 0, transpose: Int32 = 0, partsFilter: String? = nil) -> String? {
+        func call(_ base: UnsafeRawPointer, _ count: Int, _ extPtr: UnsafePointer<CChar>?, _ filterPtr: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>? {
+            scorelib_playback_map(base.assumingMemoryBound(to: UInt8.self), count, extPtr, pageWidth, transpose, filterPtr)
+        }
         let result: UnsafeMutablePointer<CChar>? = data.withUnsafeBytes { buffer in
-            guard let baseAddress = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
-                return nil
+            guard let base = buffer.baseAddress else { return nil }
+            let n = buffer.count
+            if let ext = ext, let filter = partsFilter {
+                return ext.withCString { extPtr in
+                    filter.withCString { filterPtr in call(base, n, extPtr, filterPtr) }
+                }
             }
             if let ext = ext {
-                return ext.withCString { extPtr in
-                    scorelib_playback_map(baseAddress, buffer.count, extPtr, pageWidth, transpose)
-                }
-            } else {
-                return scorelib_playback_map(baseAddress, buffer.count, nil, pageWidth, transpose)
+                return ext.withCString { extPtr in call(base, n, extPtr, nil) }
             }
+            if let filter = partsFilter {
+                return filter.withCString { filterPtr in call(base, n, nil, filterPtr) }
+            }
+            return call(base, n, nil, nil)
         }
 
         guard let cResult = result else {

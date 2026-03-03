@@ -39,6 +39,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -197,6 +198,20 @@ fun SheetMusicScreen(
     var repeatCount by rememberSaveable { mutableIntStateOf(prefs.getInt("repeatCount", 1)) }
     var transpose by rememberSaveable { mutableIntStateOf(prefs.getInt("transpose", 0)) }
     var showCursor by rememberSaveable { mutableStateOf(prefs.getBoolean("showCursor", true)) }
+
+    // Score rendering: staff vs jianpu; staff can be "all" or custom list (e.g. 1,3,4,6); jianpu single number.
+    var scoreRenderingMode by rememberSaveable {
+        mutableStateOf(prefs.getString("scoreRenderingMode", "staff") ?: "staff")
+    }
+    var staffStavesOption by rememberSaveable {
+        mutableStateOf(prefs.getString("staffStavesOption", "all") ?: "all")
+    }
+    var staffStavesList by rememberSaveable {
+        mutableStateOf(prefs.getString("staffStavesList", "") ?: "")
+    }
+    var jianpuStaffNumber by rememberSaveable {
+        mutableStateOf(prefs.getString("jianpuStaffNumber", "1") ?: "1")
+    }
 
     // Music source selection — external files don't survive restart, so fall back to bundled.
     val savedSourceId = prefs.getString("selectedSourceId", "bundled") ?: "bundled"
@@ -509,9 +524,22 @@ fun SheetMusicScreen(
 
         val extBytes = if (isExternal) externalFileData else null
 
+        val partsFilter = when {
+            scoreRenderingMode == "staff" && staffStavesOption == "all" -> null
+            scoreRenderingMode == "staff" && staffStavesOption == "custom" -> {
+                val list = staffStavesList.split(',').mapNotNull { seg ->
+                    seg.filter { it.isDigit() }.takeIf { it.isNotEmpty() }?.toIntOrNull()
+                }.distinct().sorted()
+                if (list.isEmpty()) null else list.joinToString(",")
+            }
+            scoreRenderingMode == "jianpu" -> jianpuStaffNumber.takeIf { it.isNotBlank() }
+            else -> null
+        }
+
         scope.launch {
             val currentOptionsJson = optionsJson
             val currentTranspose = transpose
+            val currentPartsFilter = partsFilter
             var renderFailureReason: String? = null
             val result = withContext(Dispatchers.IO) {
                 try {
@@ -521,14 +549,14 @@ fun SheetMusicScreen(
                     val dataBytes  = mbkBytes ?: extBytes
                     if (dataBytes != null) {
                         val ext = filePath.substringAfterLast('.', "")
-                        val svg = ScoreLib.renderData(dataBytes, ext, pageWidth, currentTranspose)
-                        val pmap = ScoreLib.playbackMapFromData(dataBytes, ext, pageWidth, currentTranspose)
+                        val svg = ScoreLib.renderData(dataBytes, ext, pageWidth, currentTranspose, currentPartsFilter)
+                        val pmap = ScoreLib.playbackMapFromData(dataBytes, ext, pageWidth, currentTranspose, currentPartsFilter)
                         val timeline = ScoreLib.noteTimelineFromData(dataBytes, ext, currentTranspose)
                         val audio = ScoreLib.renderAudioFromData(dataBytes, ext, currentOptionsJson)
                         listOf(svg, pmap, timeline, audio)
                     } else {
-                        val svg = ScoreLib.renderAsset(context, filePath, pageWidth, currentTranspose)
-                        val pmap = ScoreLib.playbackMapFromAsset(context, filePath, pageWidth, currentTranspose)
+                        val svg = ScoreLib.renderAsset(context, filePath, pageWidth, currentTranspose, currentPartsFilter)
+                        val pmap = ScoreLib.playbackMapFromAsset(context, filePath, pageWidth, currentTranspose, currentPartsFilter)
                         val ext = filePath.substringAfterLast('.', "")
                         val assetBytes = context.assets.open(filePath).use { it.readBytes() }
                         val timeline = ScoreLib.noteTimelineFromData(assetBytes, ext, currentTranspose)
@@ -579,8 +607,8 @@ fun SheetMusicScreen(
         }
     }
 
-    // Re-render when screen width, selected file, transpose, or bundles change
-    LaunchedEffect(screenWidthDp, selectedFileUrl, transpose, externalFileVersion, activeBundles) {
+    // Re-render when screen width, selected file, transpose, score rendering, or bundles change
+    LaunchedEffect(screenWidthDp, selectedFileUrl, transpose, scoreRenderingMode, staffStavesOption, staffStavesList, jianpuStaffNumber, externalFileVersion, activeBundles) {
         val filePath = when {
             selectedFileUrl.startsWith("external://") -> selectedFileUrl.removePrefix("external://")
             selectedFileUrl.startsWith("mbk://")      -> selectedFileUrl.substringAfterLast('/')
@@ -1010,7 +1038,11 @@ fun SheetMusicScreen(
                 initialRepeatCount = repeatCount,
                 initialTranspose = transpose,
                 initialShowCursor = showCursor,
-                onDone = { src, file, mel, pia, bas, str, drm, met, fbk, spd, mute, rep, trans, cursor ->
+                initialScoreRenderingMode = scoreRenderingMode,
+                initialStaffStavesOption = staffStavesOption,
+                initialStaffStavesList = staffStavesList,
+                initialJianpuStaffNumber = jianpuStaffNumber,
+                onDone = { src, file, mel, pia, bas, str, drm, met, fbk, spd, mute, rep, trans, cursor, rendMode, staffOpt, staffList, jianpuNum ->
                     selectedSourceId = src
                     selectedFileUrl = file
                     includeMelody = mel
@@ -1025,6 +1057,10 @@ fun SheetMusicScreen(
                     repeatCount = rep
                     transpose = trans
                     showCursor = cursor
+                    scoreRenderingMode = rendMode
+                    staffStavesOption = staffOpt
+                    staffStavesList = staffList
+                    jianpuStaffNumber = jianpuNum
                     showSettings = false
                     // Persist so settings survive full app restart
                     prefs.edit()
@@ -1040,6 +1076,10 @@ fun SheetMusicScreen(
                         .putInt("repeatCount", rep)
                         .putInt("transpose", trans)
                         .putBoolean("showCursor", cursor)
+                        .putString("scoreRenderingMode", rendMode)
+                        .putString("staffStavesOption", staffOpt)
+                        .putString("staffStavesList", staffList)
+                        .putString("jianpuStaffNumber", jianpuNum)
                         // External files don't survive restart — save bundled default instead
                         .putString("selectedSourceId", if (src == "external") "bundled" else src)
                         .putString("selectedFileUrl", if (src == "external") "file://sheetmusic/$DEFAULT_LANDING_FILE" else file)
@@ -1404,7 +1444,11 @@ private fun SettingsSheetContent(
     initialRepeatCount: Int,
     initialTranspose: Int,
     initialShowCursor: Boolean,
-    onDone: (String, String, Boolean, Boolean, Boolean, Boolean, Boolean, Boolean, Boolean, Double, Boolean, Int, Int, Boolean) -> Unit
+    initialScoreRenderingMode: String,
+    initialStaffStavesOption: String,
+    initialStaffStavesList: String,
+    initialJianpuStaffNumber: String,
+    onDone: (String, String, Boolean, Boolean, Boolean, Boolean, Boolean, Boolean, Boolean, Double, Boolean, Int, Int, Boolean, String, String, String, String) -> Unit
 ) {
     // Local working copies (only applied when Apply is tapped)
     var selectedSourceId by remember { mutableStateOf(initialSelectedSourceId) }
@@ -1421,6 +1465,10 @@ private fun SettingsSheetContent(
     var repeatCount by remember { mutableIntStateOf(initialRepeatCount) }
     var transpose by remember { mutableIntStateOf(initialTranspose) }
     var showCursor by remember { mutableStateOf(initialShowCursor) }
+    var scoreRenderingMode by remember { mutableStateOf(initialScoreRenderingMode) }
+    var staffStavesOption by remember { mutableStateOf(initialStaffStavesOption) }
+    var staffStavesList by remember { mutableStateOf(initialStaffStavesList) }
+    var jianpuStaffNumber by remember { mutableStateOf(initialJianpuStaffNumber) }
     var showLockedDialog by remember { mutableStateOf(false) }
 
     if (showLockedDialog) {
@@ -1457,7 +1505,8 @@ private fun SettingsSheetContent(
                     selectedSourceId, selectedFileUrl,
                     includeMelody, includePiano, includeBass, includeStrings,
                     includeDrums, includeMetronome, includeFeedback, playbackSpeed,
-                    muteMusic, repeatCount, transpose, showCursor
+                    muteMusic, repeatCount, transpose, showCursor,
+                    scoreRenderingMode, staffStavesOption, staffStavesList, jianpuStaffNumber
                 )
             }) {
                 Text("Apply", style = MaterialTheme.typography.bodySmall)
@@ -1813,6 +1862,118 @@ private fun SettingsSheetContent(
                         contentDescription = "Increase",
                         modifier = Modifier.size(18.dp)
                     )
+                }
+            }
+        }
+
+        // ── 5. Score Rendering ────────────────────────────────────────
+        SettingsCard("Score Rendering") {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalAlignment = Alignment.Start
+            ) {
+                // Row 1: Staff + its options (All | Specific staves) and narrow entry when custom
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Start,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    RadioButton(
+                        selected = scoreRenderingMode == "staff",
+                        onClick = { scoreRenderingMode = "staff" }
+                    )
+                    Text(
+                        "Staff",
+                        style = settingsLabelStyle(),
+                        modifier = Modifier.clickable { scoreRenderingMode = "staff" }
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    RadioButton(
+                        selected = staffStavesOption == "all",
+                        onClick = {
+                            scoreRenderingMode = "staff"
+                            staffStavesOption = "all"
+                            staffStavesList = ""
+                        },
+                        modifier = Modifier.scale(0.72f)
+                    )
+                    Text(
+                        "All",
+                        style = settingsLabelStyle().copy(fontSize = 11.sp),
+                        modifier = Modifier.clickable {
+                            scoreRenderingMode = "staff"
+                            staffStavesOption = "all"
+                            staffStavesList = ""
+                        }
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    RadioButton(
+                        selected = staffStavesOption == "custom",
+                        onClick = {
+                            scoreRenderingMode = "staff"
+                            staffStavesOption = "custom"
+                        },
+                        modifier = Modifier.scale(0.72f)
+                    )
+                    Text(
+                        "Specific parts",
+                        style = settingsLabelStyle().copy(fontSize = 11.sp),
+                        modifier = Modifier.clickable {
+                            scoreRenderingMode = "staff"
+                            staffStavesOption = "custom"
+                        }
+                    )
+                    if (scoreRenderingMode == "staff" && staffStavesOption == "custom") {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        OutlinedTextField(
+                            value = staffStavesList,
+                            onValueChange = { new ->
+                                staffStavesList = new.filter { c -> c.isDigit() || c == ',' }
+                            },
+                            placeholder = { Text("1,3,4,6", style = settingsLabelStyle()) },
+                            modifier = Modifier.width(100.dp),
+                            singleLine = true
+                        )
+                    }
+                }
+
+                // Row 2: Jianpu + Specific part label + narrow entry
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Start,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    RadioButton(
+                        selected = scoreRenderingMode == "jianpu",
+                        onClick = { scoreRenderingMode = "jianpu" }
+                    )
+                    Text(
+                        "Jianpu",
+                        style = settingsLabelStyle(),
+                        modifier = Modifier.clickable { scoreRenderingMode = "jianpu" }
+                    )
+                    if (scoreRenderingMode == "jianpu") {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "Specific part",
+                            style = settingsLabelStyle()
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        OutlinedTextField(
+                            value = jianpuStaffNumber,
+                            onValueChange = { new ->
+                                val firstSegment = new.split(',').firstOrNull() ?: new
+                                jianpuStaffNumber = firstSegment.filter { it.isDigit() }.take(4)
+                            },
+                            placeholder = { Text("1", style = settingsLabelStyle()) },
+                            modifier = Modifier.width(48.dp),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        )
+                    }
                 }
             }
         }

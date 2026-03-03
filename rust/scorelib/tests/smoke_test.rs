@@ -367,7 +367,7 @@ fn smoke_timemap_tempo_reverts_after_ds() {
 #[test]
 fn smoke_render_svg() {
     let score = parse_file(smoke_test_path()).unwrap();
-    let svg = render_score_to_svg(&score, None);
+    let svg = render_score_to_svg(&score, None, None);
 
     assert!(svg.starts_with("<svg"), "Should produce valid SVG");
     assert!(svg.contains("</svg>"), "SVG should be closed");
@@ -386,7 +386,7 @@ fn smoke_render_svg() {
 #[test]
 fn smoke_render_svg_phone_width() {
     let score = parse_file(smoke_test_path()).unwrap();
-    let svg = render_score_to_svg(&score, Some(390.0));
+    let svg = render_score_to_svg(&score, Some(390.0), None);
 
     assert!(svg.starts_with("<svg"));
     assert!(svg.contains("viewBox=\"0 0 390"));
@@ -448,7 +448,7 @@ fn smoke_midi_full_accompaniment() {
 #[test]
 fn smoke_playback_map() {
     let score = parse_file(smoke_test_path()).unwrap();
-    let pmap = generate_playback_map(&score, None);
+    let pmap = generate_playback_map(&score, None, None);
 
     assert_eq!(pmap.measures.len(), 70, "Should have 70 original measures");
     assert_eq!(pmap.timemap.len(), 76, "Should have 76 unrolled timemap entries");

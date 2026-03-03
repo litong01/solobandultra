@@ -17,7 +17,7 @@ use crate::note_timeline::note_timeline_from_bytes;
 /// Render a MusicXML file at the given path to SVG.
 ///
 /// Called from Kotlin as:
-///   external fun renderFile(path: String, pageWidth: Float, transpose: Int): String?
+///   external fun renderFile(path: String, pageWidth: Float, transpose: Int, partsFilter: String?): String?
 #[no_mangle]
 pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderFile(
     mut env: JNIEnv,
@@ -25,6 +25,7 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderFile(
     path: JString,
     page_width: jfloat,
     transpose: jint,
+    parts_filter: JString,
 ) -> jstring {
     let path_str: String = match env.get_string(&path) {
         Ok(s) => s.into(),
@@ -32,10 +33,18 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderFile(
     };
 
     let pw = if page_width > 0.0 { Some(page_width as f64) } else { None };
+    let part_indices = if parts_filter.is_null() {
+        None
+    } else {
+        env.get_string(&parts_filter).ok().and_then(|s| {
+            let s: String = s.into();
+            crate::parse_parts_filter(Some(s.as_str()))
+        })
+    };
+    let parts_ref = part_indices.as_deref();
 
-    // catch_unwind around the core computation to prevent panics crossing JNI.
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        render_file_to_svg(&path_str, pw, transpose)
+        render_file_to_svg(&path_str, pw, transpose, parts_ref)
     }));
 
     match result {
@@ -50,7 +59,7 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderFile(
 /// Render MusicXML bytes to SVG.
 ///
 /// Called from Kotlin as:
-///   external fun renderBytes(data: ByteArray, extension: String?, pageWidth: Float, transpose: Int): String?
+///   external fun renderBytes(data: ByteArray, extension: String?, pageWidth: Float, transpose: Int, partsFilter: String?): String?
 #[no_mangle]
 pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderBytes(
     mut env: JNIEnv,
@@ -59,6 +68,7 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderBytes(
     extension: JString,
     page_width: jfloat,
     transpose: jint,
+    parts_filter: JString,
 ) -> jstring {
     let bytes = match env.convert_byte_array(&data) {
         Ok(b) => b,
@@ -72,9 +82,18 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderBytes(
     };
 
     let pw = if page_width > 0.0 { Some(page_width as f64) } else { None };
+    let part_indices = if parts_filter.is_null() {
+        None
+    } else {
+        env.get_string(&parts_filter).ok().and_then(|s| {
+            let s: String = s.into();
+            crate::parse_parts_filter(Some(s.as_str()))
+        })
+    };
+    let parts_ref = part_indices.as_deref();
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        render_bytes_to_svg(&bytes, ext.as_deref(), pw, transpose)
+        render_bytes_to_svg(&bytes, ext.as_deref(), pw, transpose, parts_ref)
     }));
 
     match result {
@@ -89,7 +108,8 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderBytes(
 /// Generate a playback map JSON from MusicXML bytes.
 ///
 /// Called from Kotlin as:
-///   external fun playbackMap(data: ByteArray, extension: String?, pageWidth: Float, transpose: Int): String?
+///   external fun playbackMap(data: ByteArray, extension: String?, pageWidth: Float, transpose: Int, partsFilter: String?): String?
+/// Pass the same partsFilter as used for SVG rendering so cursor matches.
 #[no_mangle]
 pub extern "system" fn Java_com_solobandultra_app_ScoreLib_playbackMap(
     mut env: JNIEnv,
@@ -98,6 +118,7 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_playbackMap(
     extension: JString,
     page_width: jfloat,
     transpose: jint,
+    parts_filter: JString,
 ) -> jstring {
     let bytes = match env.convert_byte_array(&data) {
         Ok(b) => b,
@@ -110,10 +131,22 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_playbackMap(
         env.get_string(&extension).ok().map(|s| s.into())
     };
 
+    let staff_indices = if parts_filter.is_null() {
+        None
+    } else {
+        env.get_string(&parts_filter)
+            .ok()
+            .and_then(|s| {
+                let s: String = s.into();
+                crate::parse_parts_filter(Some(s.as_str()))
+            })
+    };
+    let staff_ref = staff_indices.as_deref();
+
     let pw = if page_width > 0.0 { Some(page_width as f64) } else { None };
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        playback_map_from_bytes(&bytes, ext.as_deref(), pw, transpose)
+        playback_map_from_bytes(&bytes, ext.as_deref(), pw, transpose, staff_ref)
     }));
 
     match result {
