@@ -9,10 +9,12 @@ enum ScoreLib {
     /// - Parameter pageWidth: SVG width in user-units. Pass 0 for the default (820).
     /// - Parameter transpose: Semitones to transpose (0 = no change).
     /// - Parameter partsFilter: Optional comma-separated 1-based part indices (e.g. "1,3,5"). Pass nil for all parts.
-    static func renderFile(at path: String, pageWidth: Double = 0, transpose: Int32 = 0, partsFilter: String? = nil) -> String? {
+    /// - Parameter useJianpu: true = Jianpu (numbered) notation, false = staff notation.
+    static func renderFile(at path: String, pageWidth: Double = 0, transpose: Int32 = 0, partsFilter: String? = nil, useJianpu: Bool = false) -> String? {
+        let jianpuInt: Int32 = useJianpu ? 1 : 0
         let result: UnsafeMutablePointer<CChar>? = partsFilter.map { filter in
-            filter.withCString { scorelib_render_file(path, pageWidth, transpose, $0) }
-        } ?? scorelib_render_file(path, pageWidth, transpose, nil)
+            filter.withCString { scorelib_render_file(path, pageWidth, transpose, $0, jianpuInt) }
+        } ?? scorelib_render_file(path, pageWidth, transpose, nil, jianpuInt)
         guard let cResult = result else {
             return nil
         }
@@ -25,13 +27,15 @@ enum ScoreLib {
     /// - Parameter pageWidth: SVG width in user-units. Pass 0 for the default (820).
     /// - Parameter transpose: Semitones to transpose (0 = no change).
     /// - Parameter partsFilter: Optional comma-separated 1-based part indices (e.g. "1,3,5"). Pass nil for all parts.
-    static func renderData(_ data: Data, extension ext: String? = nil, pageWidth: Double = 0, transpose: Int32 = 0, partsFilter: String? = nil) -> String? {
+    /// - Parameter useJianpu: true = Jianpu (numbered) notation, false = staff notation.
+    static func renderData(_ data: Data, extension ext: String? = nil, pageWidth: Double = 0, transpose: Int32 = 0, partsFilter: String? = nil, useJianpu: Bool = false) -> String? {
+        let jianpuInt: Int32 = useJianpu ? 1 : 0
         func doRender(extPtr: UnsafePointer<CChar>?, partsPtr: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>? {
             data.withUnsafeBytes { buffer in
                 guard let baseAddress = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
                     return nil
                 }
-                return scorelib_render_bytes(baseAddress, buffer.count, extPtr, pageWidth, transpose, partsPtr)
+                return scorelib_render_bytes(baseAddress, buffer.count, extPtr, pageWidth, transpose, partsPtr, jianpuInt)
             }
         }
         let result: UnsafeMutablePointer<CChar>?

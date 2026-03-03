@@ -540,6 +540,7 @@ fun SheetMusicScreen(
             val currentOptionsJson = optionsJson
             val currentTranspose = transpose
             val currentPartsFilter = partsFilter
+            val currentUseJianpu = scoreRenderingMode == "jianpu"
             var renderFailureReason: String? = null
             val result = withContext(Dispatchers.IO) {
                 try {
@@ -549,13 +550,13 @@ fun SheetMusicScreen(
                     val dataBytes  = mbkBytes ?: extBytes
                     if (dataBytes != null) {
                         val ext = filePath.substringAfterLast('.', "")
-                        val svg = ScoreLib.renderData(dataBytes, ext, pageWidth, currentTranspose, currentPartsFilter)
+                        val svg = ScoreLib.renderData(dataBytes, ext, pageWidth, currentTranspose, currentPartsFilter, currentUseJianpu)
                         val pmap = ScoreLib.playbackMapFromData(dataBytes, ext, pageWidth, currentTranspose, currentPartsFilter)
                         val timeline = ScoreLib.noteTimelineFromData(dataBytes, ext, currentTranspose)
                         val audio = ScoreLib.renderAudioFromData(dataBytes, ext, currentOptionsJson)
                         listOf(svg, pmap, timeline, audio)
                     } else {
-                        val svg = ScoreLib.renderAsset(context, filePath, pageWidth, currentTranspose, currentPartsFilter)
+                        val svg = ScoreLib.renderAsset(context, filePath, pageWidth, currentTranspose, currentPartsFilter, currentUseJianpu)
                         val pmap = ScoreLib.playbackMapFromAsset(context, filePath, pageWidth, currentTranspose, currentPartsFilter)
                         val ext = filePath.substringAfterLast('.', "")
                         val assetBytes = context.assets.open(filePath).use { it.readBytes() }

@@ -221,15 +221,17 @@ pub fn score_to_json(score: &Score) -> Result<String, String> {
 /// `transpose` shifts all pitches by the given number of semitones (0 = no change).
 ///
 /// `staff_indices_1based` limits which staves are drawn by global staff index (1 = first staff, 2 = second, etc.). Pass `None` for all.
+/// `use_jianpu` when true renders in Jianpu (numbered notation); exactly one staff is used.
 pub fn render_file_to_svg<P: AsRef<std::path::Path>>(
     path: P,
     page_width: Option<f64>,
     transpose: i32,
     staff_indices_1based: Option<&[usize]>,
+    use_jianpu: bool,
 ) -> Result<String, String> {
     let mut score = parse_file(path)?;
     transpose_score(&mut score, transpose);
-    Ok(render_score_to_svg(&score, page_width, staff_indices_1based))
+    Ok(render_score_to_svg(&score, page_width, staff_indices_1based, use_jianpu))
 }
 
 /// Parse MusicXML bytes and render to SVG.
@@ -240,16 +242,18 @@ pub fn render_file_to_svg<P: AsRef<std::path::Path>>(
 /// `transpose` shifts all pitches by the given number of semitones (0 = no change).
 ///
 /// `staff_indices_1based` limits which staves are drawn by global staff index (1 = first staff, 2 = second, etc.). Pass `None` for all.
+/// `use_jianpu` when true renders in Jianpu (numbered notation); exactly one staff is used.
 pub fn render_bytes_to_svg(
     data: &[u8],
     extension: Option<&str>,
     page_width: Option<f64>,
     transpose: i32,
     staff_indices_1based: Option<&[usize]>,
+    use_jianpu: bool,
 ) -> Result<String, String> {
     let mut score = parse_bytes(data, extension)?;
     transpose_score(&mut score, transpose);
-    Ok(render_score_to_svg(&score, page_width, staff_indices_1based))
+    Ok(render_score_to_svg(&score, page_width, staff_indices_1based, use_jianpu))
 }
 
 /// Generate MIDI bytes from a parsed score.
@@ -379,6 +383,7 @@ fn string_to_c_string(s: String) -> CString {
 /// `page_width` sets the SVG width in user units. Pass 0.0 to use the default.
 ///
 /// `parts_filter` optional comma-separated 1-based part indices (e.g. "1,3,5"). Pass null for all parts.
+/// `use_jianpu` 1 = render in Jianpu (numbered notation), 0 = staff notation.
 ///
 /// # Safety
 /// `path` must be a valid null-terminated UTF-8 C string. `parts_filter` may be null.
@@ -388,6 +393,7 @@ pub unsafe extern "C" fn scorelib_render_file(
     page_width: f64,
     transpose: i32,
     parts_filter: *const c_char,
+    use_jianpu: i32,
 ) -> *mut c_char {
     if path.is_null() {
         return std::ptr::null_mut();
@@ -405,9 +411,10 @@ pub unsafe extern "C" fn scorelib_render_file(
         unsafe { CStr::from_ptr(parts_filter) }.to_str().ok().and_then(|s| parse_parts_filter(Some(s)))
     };
     let parts_ref = part_indices.as_deref();
+    let jianpu = use_jianpu != 0;
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        render_file_to_svg(path_str, pw, transpose, parts_ref)
+        render_file_to_svg(path_str, pw, transpose, parts_ref, jianpu)
     }));
 
     match result {
@@ -422,6 +429,7 @@ pub unsafe extern "C" fn scorelib_render_file(
 /// `page_width` sets the SVG width in user units. Pass 0.0 to use the default.
 ///
 /// `parts_filter` optional comma-separated 1-based part indices (e.g. "1,3,5"). Pass null for all parts.
+/// `use_jianpu` 1 = render in Jianpu (numbered notation), 0 = staff notation.
 ///
 /// # Safety
 /// `data` must point to `len` valid bytes. `extension` and `parts_filter` may be null.
@@ -433,6 +441,7 @@ pub unsafe extern "C" fn scorelib_render_bytes(
     page_width: f64,
     transpose: i32,
     parts_filter: *const c_char,
+    use_jianpu: i32,
 ) -> *mut c_char {
     if data.is_null() || len == 0 {
         return std::ptr::null_mut();
@@ -451,9 +460,10 @@ pub unsafe extern "C" fn scorelib_render_bytes(
         unsafe { CStr::from_ptr(parts_filter) }.to_str().ok().and_then(|s| parse_parts_filter(Some(s)))
     };
     let parts_ref = part_indices.as_deref();
+    let jianpu = use_jianpu != 0;
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        render_bytes_to_svg(bytes, ext, pw, transpose, parts_ref)
+        render_bytes_to_svg(bytes, ext, pw, transpose, parts_ref, jianpu)
     }));
 
     match result {

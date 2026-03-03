@@ -8,7 +8,7 @@
 //! behavior and would crash the ART VM).
 
 use jni::objects::{JByteArray, JClass, JString};
-use jni::sys::{jfloat, jint, jstring};
+use jni::sys::{jboolean, jfloat, jint, jstring};
 use jni::JNIEnv;
 
 use crate::{render_bytes_to_svg, render_file_to_svg, playback_map_from_bytes, generate_midi_from_bytes, render_audio_from_bytes, parse_midi_options_from_json_str, add_feedback_overlay_to_svg, MidiOptions};
@@ -17,7 +17,7 @@ use crate::note_timeline::note_timeline_from_bytes;
 /// Render a MusicXML file at the given path to SVG.
 ///
 /// Called from Kotlin as:
-///   external fun renderFile(path: String, pageWidth: Float, transpose: Int, partsFilter: String?): String?
+///   external fun renderFile(path: String, pageWidth: Float, transpose: Int, partsFilter: String?, useJianpu: Boolean): String?
 #[no_mangle]
 pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderFile(
     mut env: JNIEnv,
@@ -26,6 +26,7 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderFile(
     page_width: jfloat,
     transpose: jint,
     parts_filter: JString,
+    use_jianpu: jboolean,
 ) -> jstring {
     let path_str: String = match env.get_string(&path) {
         Ok(s) => s.into(),
@@ -42,9 +43,10 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderFile(
         })
     };
     let parts_ref = part_indices.as_deref();
+    let jianpu = use_jianpu != 0;
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        render_file_to_svg(&path_str, pw, transpose, parts_ref)
+        render_file_to_svg(&path_str, pw, transpose, parts_ref, jianpu)
     }));
 
     match result {
@@ -59,7 +61,7 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderFile(
 /// Render MusicXML bytes to SVG.
 ///
 /// Called from Kotlin as:
-///   external fun renderBytes(data: ByteArray, extension: String?, pageWidth: Float, transpose: Int, partsFilter: String?): String?
+///   external fun renderBytes(data: ByteArray, extension: String?, pageWidth: Float, transpose: Int, partsFilter: String?, useJianpu: Boolean): String?
 #[no_mangle]
 pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderBytes(
     mut env: JNIEnv,
@@ -69,6 +71,7 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderBytes(
     page_width: jfloat,
     transpose: jint,
     parts_filter: JString,
+    use_jianpu: jboolean,
 ) -> jstring {
     let bytes = match env.convert_byte_array(&data) {
         Ok(b) => b,
@@ -91,9 +94,10 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderBytes(
         })
     };
     let parts_ref = part_indices.as_deref();
+    let jianpu = use_jianpu != 0;
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        render_bytes_to_svg(&bytes, ext.as_deref(), pw, transpose, parts_ref)
+        render_bytes_to_svg(&bytes, ext.as_deref(), pw, transpose, parts_ref, jianpu)
     }));
 
     match result {

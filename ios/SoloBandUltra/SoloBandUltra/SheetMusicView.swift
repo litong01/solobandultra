@@ -260,7 +260,8 @@ struct SheetMusicView: View {
             }
 
             // Render SVG from bytes (works for external, bundled, and .mbk files)
-            let svg = ScoreLib.renderData(data, extension: ext, pageWidth: pageWidth, transpose: transposeVal, partsFilter: partsFilter)
+            let useJianpu = midiSettings.scoreRenderingMode == "jianpu"
+            let svg = ScoreLib.renderData(data, extension: ext, pageWidth: pageWidth, transpose: transposeVal, partsFilter: partsFilter, useJianpu: useJianpu)
 
             // Generate playback map (same partsFilter as SVG so cursor height/position match)
             let pmap = ScoreLib.playbackMap(data, extension: ext, pageWidth: pageWidth, transpose: transposeVal, partsFilter: partsFilter)

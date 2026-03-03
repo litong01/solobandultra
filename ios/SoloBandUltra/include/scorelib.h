@@ -9,10 +9,11 @@
  * `page_width` sets the SVG width in user units. Pass 0.0 for the default (820).
  * `transpose` shifts all pitches by this many semitones (0 = no change).
  * `parts_filter` optional comma-separated 1-based part indices (e.g. "1,3,5"). Pass NULL for all parts.
+ * `use_jianpu` 1 = Jianpu (numbered) notation, 0 = staff notation.
  * Returns a null-terminated SVG string, or NULL on error.
  * The caller must free the returned string with scorelib_free_string().
  */
-char* scorelib_render_file(const char* path, double page_width, int32_t transpose, const char* parts_filter);
+char* scorelib_render_file(const char* path, double page_width, int32_t transpose, const char* parts_filter, int32_t use_jianpu);
 
 /**
  * Parse MusicXML data from a byte buffer and render to SVG.
@@ -20,10 +21,11 @@ char* scorelib_render_file(const char* path, double page_width, int32_t transpos
  * `page_width` sets the SVG width in user units. Pass 0.0 for the default (820).
  * `transpose` shifts all pitches by this many semitones (0 = no change).
  * `parts_filter` optional comma-separated 1-based part indices (e.g. "1,3,5"). Pass NULL for all parts.
+ * `use_jianpu` 1 = Jianpu (numbered) notation, 0 = staff notation.
  * Returns a null-terminated SVG string, or NULL on error.
  * The caller must free the returned string with scorelib_free_string().
  */
-char* scorelib_render_bytes(const uint8_t* data, size_t len, const char* extension, double page_width, int32_t transpose, const char* parts_filter);
+char* scorelib_render_bytes(const uint8_t* data, size_t len, const char* extension, double page_width, int32_t transpose, const char* parts_filter, int32_t use_jianpu);
 
 /**
  * Generate a playback map JSON string from MusicXML data.

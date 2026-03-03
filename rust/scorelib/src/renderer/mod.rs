@@ -14,6 +14,7 @@ mod ties;
 mod notes;
 mod staff;
 mod layout;
+mod jianpu;
 
 use crate::model::*;
 use constants::*;
@@ -56,10 +57,14 @@ fn octave_shift_amount(size: i32) -> i32 {
 /// `staff_indices_1based` limits which staves are drawn by global staff index (1-based).
 /// Staff 1 = first staff in the score, 2 = second staff (e.g. bass clef of piano), etc.
 /// Pass `None` or empty to render all staves. If none of the requested indices exist, staff 1 is rendered.
+///
+/// When `use_jianpu` is true, notation is rendered in Jianpu (numbered notation): digits 1–7,
+/// key-based movable do, same repeats/directions as staff. Exactly one staff is used (first from list).
 pub fn render_score_to_svg(
     score: &Score,
     page_width: Option<f64>,
     staff_indices_1based: Option<&[usize]>,
+    use_jianpu: bool,
 ) -> String {
     let page_width = match page_width {
         Some(w) if w > 0.0 => w,
@@ -81,38 +86,52 @@ pub fn render_score_to_svg(
         })
         .collect();
 
-    let parts_with_staves: Vec<(usize, Vec<usize>)> = match staff_indices_1based {
-        None | Some([]) => score
-            .parts
-            .iter()
-            .enumerate()
-            .map(|(pidx, part)| (pidx, (1..=detect_staves(part)).collect()))
-            .collect(),
-        Some(list) => {
-            let selected: Vec<(usize, usize)> = list
+    let parts_with_staves: Vec<(usize, Vec<usize>)> = if use_jianpu {
+        // Jianpu: exactly one staff (take first from list or default to staff 1).
+        let one_based = staff_indices_1based
+            .and_then(|l| l.first().copied())
+            .unwrap_or(1);
+        let gi = one_based.saturating_sub(1);
+        if let Some(&(pidx, staff_num)) = global_staves.get(gi) {
+            vec![(pidx, vec![staff_num])]
+        } else if let Some(&first) = global_staves.first() {
+            vec![(first.0, vec![first.1])]
+        } else {
+            return empty_svg("No staves in score");
+        }
+    } else {
+        match staff_indices_1based {
+            None | Some([]) => score
+                .parts
                 .iter()
-                .filter_map(|&one_based| one_based.checked_sub(1))
-                .filter_map(|gi| global_staves.get(gi).copied())
-                .collect();
-            if selected.is_empty() {
-                if let Some(&first) = global_staves.first() {
-                    vec![(first.0, vec![first.1])]
+                .enumerate()
+                .map(|(pidx, part)| (pidx, (1..=detect_staves(part)).collect()))
+                .collect(),
+            Some(list) => {
+                let selected: Vec<(usize, usize)> = list
+                    .iter()
+                    .filter_map(|&one_based| one_based.checked_sub(1))
+                    .filter_map(|gi| global_staves.get(gi).copied())
+                    .collect();
+                if selected.is_empty() {
+                    if let Some(&first) = global_staves.first() {
+                        vec![(first.0, vec![first.1])]
+                    } else {
+                        return empty_svg("No staves in score");
+                    }
                 } else {
-                    return empty_svg("No staves in score");
+                    let mut by_part: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
+                    for (pidx, staff_num) in selected {
+                        by_part.entry(pidx).or_default().push(staff_num);
+                    }
+                    for staves in by_part.values_mut() {
+                        staves.sort_unstable();
+                        staves.dedup();
+                    }
+                    let mut result: Vec<(usize, Vec<usize>)> = by_part.into_iter().collect();
+                    result.sort_by_key(|&(p, _)| p);
+                    result
                 }
-            } else {
-                // Group by part_idx, collect staff numbers per part (sorted, deduped).
-                let mut by_part: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
-                for (pidx, staff_num) in selected {
-                    by_part.entry(pidx).or_default().push(staff_num);
-                }
-                for staves in by_part.values_mut() {
-                    staves.sort_unstable();
-                    staves.dedup();
-                }
-                let mut result: Vec<(usize, Vec<usize>)> = by_part.into_iter().collect();
-                result.sort_by_key(|&(p, _)| p);
-                result
             }
         }
     };
@@ -252,7 +271,7 @@ pub fn render_score_to_svg(
             PAGE_MARGIN_LEFT
         };
 
-        // ── Staff lines, clefs, key/time signatures per part ──
+        // ── Staff lines, clefs, key/time signatures per part (or Jianpu time only) ──
         for part_info in &system.parts {
             let ps = &part_states[part_info.part_idx];
 
@@ -261,32 +280,40 @@ pub fn render_score_to_svg(
                     + part_info.y_offset
                     + (display_idx as f64) * (STAFF_HEIGHT + GRAND_STAFF_GAP);
 
-                render_staff_lines(&mut svg, sys_prefix_x, system.x_end, staff_y);
-
-                if system.show_clef {
-                    if let Some(ref clef) = ps.clefs[staff_num] {
-                        render_clef(&mut svg, sys_prefix_x + 5.0, staff_y, clef);
+                if use_jianpu {
+                    if system.show_time && display_idx == 0 {
+                        if let Some(ref time) = ps.time {
+                            render_time_signature(&mut svg, sys_prefix_x + 10.0, staff_y, time);
+                        }
                     }
-                }
+                } else {
+                    render_staff_lines(&mut svg, sys_prefix_x, system.x_end, staff_y);
 
-                let key_x = sys_prefix_x + CLEF_SPACE;
-                if let Some(ref key) = ps.key {
-                    render_key_signature(
-                        &mut svg, key_x, staff_y, key,
-                        ps.clefs[staff_num].as_ref(),
-                    );
-                }
+                    if system.show_clef {
+                        if let Some(ref clef) = ps.clefs[staff_num] {
+                            render_clef(&mut svg, sys_prefix_x + 5.0, staff_y, clef);
+                        }
+                    }
 
-                if system.show_time {
-                    if let Some(ref time) = ps.time {
-                        let time_x = key_x + key_sig_width(ps.key.as_ref());
-                        render_time_signature(&mut svg, time_x, staff_y, time);
+                    let key_x = sys_prefix_x + CLEF_SPACE;
+                    if let Some(ref key) = ps.key {
+                        render_key_signature(
+                            &mut svg, key_x, staff_y, key,
+                            ps.clefs[staff_num].as_ref(),
+                        );
+                    }
+
+                    if system.show_time {
+                        if let Some(ref time) = ps.time {
+                            let time_x = key_x + key_sig_width(ps.key.as_ref());
+                            render_time_signature(&mut svg, time_x, staff_y, time);
+                        }
                     }
                 }
             }
 
-            // Brace for multi-staff parts
-            if part_info.num_staves > 1 {
+            // Brace for multi-staff parts (staff mode only)
+            if !use_jianpu && part_info.num_staves > 1 {
                 let top_y = system_y + part_info.y_offset;
                 let bottom_y = top_y
                     + (part_info.num_staves as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP)
@@ -525,47 +552,49 @@ pub fn render_score_to_svg(
                         + part_info.y_offset
                         + (display_idx as f64) * (STAFF_HEIGHT + GRAND_STAFF_GAP);
 
-                    // ── Inline key/time signature changes ──
-                    let mut inline_x = mx + 10.0;
-                    for barline in &measure.barlines {
-                        if barline.location == "left" {
-                            let is_repeat = barline.repeat.is_some();
-                            let is_heavy = barline.bar_style.as_deref() == Some("heavy-light")
-                                || barline.bar_style.as_deref() == Some("light-heavy");
-                            if is_repeat || is_heavy {
-                                inline_x = inline_x.max(mx + 14.0);
-                            }
-                        }
-                    }
-                    if ml.has_key_change {
-                        if let Some(prev_fifths) = ml.prev_key_fifths {
-                            let new_fifths = ps.key.as_ref().map_or(0, |k| k.fifths);
-                            let num_naturals = cancellation_natural_count(prev_fifths, new_fifths) as usize;
-                            if num_naturals > 0 {
-                                let positions = if prev_fifths > 0 {
-                                    sharp_positions(ps.clefs[staff_num].as_ref())
-                                } else {
-                                    flat_positions(ps.clefs[staff_num].as_ref())
-                                };
-                                for i in 0..num_naturals.min(positions.len()) {
-                                    let ny = staff_y + positions[i] as f64 * 5.0;
-                                    render_natural_sign(&mut svg, inline_x, ny);
-                                    inline_x += KEY_SIG_NATURAL_SPACE;
+                    // ── Inline key/time signature changes (staff mode only) ──
+                    if !use_jianpu {
+                        let mut inline_x = mx + 10.0;
+                        for barline in &measure.barlines {
+                            if barline.location == "left" {
+                                let is_repeat = barline.repeat.is_some();
+                                let is_heavy = barline.bar_style.as_deref() == Some("heavy-light")
+                                    || barline.bar_style.as_deref() == Some("light-heavy");
+                                if is_repeat || is_heavy {
+                                    inline_x = inline_x.max(mx + 14.0);
                                 }
-                                inline_x += 2.0;
                             }
                         }
-                        if let Some(ref key) = ps.key {
-                            render_key_signature(
-                                &mut svg, inline_x, staff_y, key,
-                                ps.clefs[staff_num].as_ref(),
-                            );
-                            inline_x += key_sig_width(Some(key)) + 4.0;
+                        if ml.has_key_change {
+                            if let Some(prev_fifths) = ml.prev_key_fifths {
+                                let new_fifths = ps.key.as_ref().map_or(0, |k| k.fifths);
+                                let num_naturals = cancellation_natural_count(prev_fifths, new_fifths) as usize;
+                                if num_naturals > 0 {
+                                    let positions = if prev_fifths > 0 {
+                                        sharp_positions(ps.clefs[staff_num].as_ref())
+                                    } else {
+                                        flat_positions(ps.clefs[staff_num].as_ref())
+                                    };
+                                    for i in 0..num_naturals.min(positions.len()) {
+                                        let ny = staff_y + positions[i] as f64 * 5.0;
+                                        render_natural_sign(&mut svg, inline_x, ny);
+                                        inline_x += KEY_SIG_NATURAL_SPACE;
+                                    }
+                                    inline_x += 2.0;
+                                }
+                            }
+                            if let Some(ref key) = ps.key {
+                                render_key_signature(
+                                    &mut svg, inline_x, staff_y, key,
+                                    ps.clefs[staff_num].as_ref(),
+                                );
+                                inline_x += key_sig_width(Some(key)) + 4.0;
+                            }
                         }
-                    }
-                    if ml.has_time_change {
-                        if let Some(ref time) = ps.time {
-                            render_time_signature(&mut svg, inline_x, staff_y, time);
+                        if ml.has_time_change {
+                            if let Some(ref time) = ps.time {
+                                render_time_signature(&mut svg, inline_x, staff_y, time);
+                            }
                         }
                     }
 
@@ -612,25 +641,34 @@ pub fn render_score_to_svg(
                         render_harmonies(&mut svg, measure, mx, mw, staff_y);
                     }
 
-                    // Notes and rests for this staff — always filter so only notes on this staff are drawn.
                     let staff_filter = Some(staff_num as i32);
+                    if use_jianpu {
+                        let key_fifths = ps.key.as_ref().map_or(0, |k| k.fifths);
+                        jianpu::render_jianpu_measure(
+                            &mut svg,
+                            measure,
+                            staff_y,
+                            staff_num as i32,
+                            key_fifths,
+                            ps.divisions,
+                            &ml.beat_x_map,
+                        );
+                    } else {
+                        // Notes and rests for this staff — always filter so only notes on this staff are drawn.
+                        let effective_transpose = ps.transpose_octave + ps.octave_shift;
 
-                    let effective_transpose = ps.transpose_octave + ps.octave_shift;
+                        render_notes(
+                            &mut svg,
+                            measure,
+                            staff_y,
+                            ps.clefs[staff_num].as_ref(),
+                            ps.divisions,
+                            effective_transpose,
+                            staff_filter,
+                            &ml.beat_x_map,
+                            mx, mw,
+                        );
 
-                    render_notes(
-                        &mut svg,
-                        measure,
-                        staff_y,
-                        ps.clefs[staff_num].as_ref(),
-                        ps.divisions,
-                        effective_transpose,
-                        staff_filter,
-                        &ml.beat_x_map,
-                        mx, mw,
-                    );
-
-                    // Slurs
-                    {
                         let staff_slurs = system_open_slurs
                             .entry((pidx, staff_num))
                             .or_insert_with(std::collections::HashMap::new);
@@ -645,10 +683,7 @@ pub fn render_score_to_svg(
                             &ml.beat_x_map,
                             staff_slurs,
                         );
-                    }
 
-                    // Ties
-                    {
                         let staff_ties = system_open_ties
                             .entry((pidx, staff_num))
                             .or_insert_with(std::collections::HashMap::new);
