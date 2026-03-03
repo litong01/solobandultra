@@ -644,14 +644,20 @@ pub fn render_score_to_svg(
                     let staff_filter = Some(staff_num as i32);
                     if use_jianpu {
                         let key_fifths = ps.key.as_ref().map_or(0, |k| k.fifths);
+                        let key_mode = ps.key.as_ref().and_then(|k| k.mode.as_deref());
+                        let draw_key_label = ml.measure_idx == 0;
                         jianpu::render_jianpu_measure(
                             &mut svg,
                             measure,
                             staff_y,
                             staff_num as i32,
                             key_fifths,
+                            key_mode,
                             ps.divisions,
                             &ml.beat_x_map,
+                            mx,
+                            mw,
+                            draw_key_label,
                         );
                     } else {
                         // Notes and rests for this staff — always filter so only notes on this staff are drawn.

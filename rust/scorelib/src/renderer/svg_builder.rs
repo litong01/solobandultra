@@ -67,14 +67,27 @@ impl SvgBuilder {
         ));
     }
 
-    pub(super) fn text(&mut self, x: f64, y: f64, content: &str, size: f64, weight: &str, fill: &str, anchor: &str) {
+    pub(super) fn text(
+        &mut self,
+        x: f64,
+        y: f64,
+        content: &str,
+        size: f64,
+        weight: &str,
+        fill: &str,
+        anchor: &str,
+        dominant_baseline: Option<&str>,
+    ) {
         let escaped = content
             .replace('&', "&amp;")
             .replace('<', "&lt;")
             .replace('>', "&gt;");
+        let baseline_attr = dominant_baseline
+            .map(|b| format!(r#" dominant-baseline="{}""#, b))
+            .unwrap_or_default();
         self.elements.push(format!(
-            r#"<text x="{:.1}" y="{:.1}" font-size="{:.0}" font-weight="{}" fill="{}" text-anchor="{}">{}</text>"#,
-            x, y, size, weight, fill, anchor, escaped
+            r#"<text x="{:.1}" y="{:.1}" font-size="{:.0}" font-weight="{}" fill="{}" text-anchor="{}"{}>{}</text>"#,
+            x, y, size, weight, fill, anchor, baseline_attr, escaped
         ));
     }
 

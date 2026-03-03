@@ -1,24 +1,30 @@
 markdown
 ---
-description: Specific commands for building and testing this project via Docker
+description: Use build-rust.sh for all Rust build/test; cargo is not available on the host
 globs: "**/*"
 alwaysApply: true
 ---
 
 # Build & Test Pipeline
 
+**Important:** Cargo/Rust are not installed on the host. All Rust builds and tests must run via the Docker-based script `./build-rust.sh`. Do **not** run `cargo build`, `cargo test`, or any other `cargo` command directly.
+
 ## 1. Build Phase
-- **Command:** `./build-rust.sh`
-- **When to run:** Run this whenever I ask to "build," "compile," or after making structural changes to Dockerfiles or dependencies.
-- **Goal:** Ensure the Docker image is successfully recreated.
+- **Command:** `./build-rust.sh` (or `./build-rust.sh ios` / `./build-rust.sh android` for a single target)
+- **When to run:** When the user asks to "build" or "compile," or after changes to Rust code, Dockerfiles, or dependencies.
+- **Goal:** Ensure the Docker image is built and the Rust library compiles for the requested targets.
 
 ## 2. Test Phase
 - **Command:** `./build-rust.sh test`
-- **When to run:** Run this whenever I ask to "test," "verify," or "check" the logic.
-- **Dependency:** You must ensure a successful **Build Phase** has occurred at least once before running this.
+- **When to run:** Whenever you need to run Rust tests — e.g. the user asks to "test," "verify," "run tests," or after changing code that should be validated by tests.
+- **Dependency:** The Docker image must exist (run `./build-rust.sh` or `./build-rust.sh test` at least once; `test` ensures the image then runs tests).
+
+## 3. Coverage (optional)
+- **Command:** `./build-rust.sh coverage`
+- **When to run:** Only when the user explicitly asks for test coverage or a coverage report.
 
 ## Agent Instructions
-**Never** attempt to run tests using local language runners (e.g., `npm`, `pytest`, `cargo`).
-- **Do not combine:** Do not run both commands unless I specifically ask to "build and test."
-- **Failure Handling:** If the Build Phase fails, do not attempt the Test Phase. Report the build logs first.
-- **Terminal:** Execute these directly in the integrated terminal.
+- **Always use the script:** For any Rust build or test, use `./build-rust.sh` or `./build-rust.sh test`. Never invoke `cargo` directly (it is not available on the host).
+- **Do not combine:** Do not run both build and test unless the user specifically asks to "build and test."
+- **Failure handling:** If the build fails, do not run the test phase. Report the build logs first.
+- **Terminal:** Run these commands in the project root in the integrated terminal.

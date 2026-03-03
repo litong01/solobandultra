@@ -196,7 +196,7 @@ pub(super) fn render_clef(svg: &mut SvgBuilder, x: f64, staff_y: f64, clef: &Cle
             svg.treble_clef(x + 10.0, cy);
             if clef.octave_change == Some(-1) {
                 svg.text(x + 10.0, staff_y + STAFF_HEIGHT + 16.0,
-                         "8", 9.0, "normal", STAFF_COLOR, "middle");
+                         "8", 9.0, "normal", STAFF_COLOR, "middle", None);
             }
         }
         "F" => {
@@ -343,7 +343,7 @@ pub(super) fn render_tempo_marking(svg: &mut SvgBuilder, x: f64, staff_y: f64, d
     }
 
     let text = format!(" = {}", bpm as i32);
-    svg.text(note_end_x, ty + 4.0, &text, 12.0, "bold", NOTE_COLOR, "start");
+    svg.text(note_end_x, ty + 4.0, &text, 12.0, "bold", NOTE_COLOR, "start", None);
 }
 
 pub(super) fn render_segno(svg: &mut SvgBuilder, x: f64, staff_y: f64) {
@@ -565,7 +565,7 @@ pub(super) fn render_barlines(
                 let text = ending.text.as_deref()
                     .unwrap_or(&ending.number);
                 svg.text(bx + 5.0, staff_y - 10.0,
-                         &format!("{}.", text), 10.0, "normal", BARLINE_COLOR, "start");
+                         &format!("{}.", text), 10.0, "normal", BARLINE_COLOR, "start", None);
                 svg.line(bx, staff_y - 5.0, bx, staff_y - 15.0, BARLINE_COLOR, BARLINE_WIDTH);
                 svg.line(bx, staff_y - 15.0, bx + mw, staff_y - 15.0, BARLINE_COLOR, BARLINE_WIDTH);
             }
