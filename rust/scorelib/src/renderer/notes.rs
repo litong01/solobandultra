@@ -5,6 +5,7 @@ use super::constants::*;
 use super::glyphs::*;
 use super::svg_builder::{SvgBuilder, vexflow_outline_to_svg, vf_outline_to_svg};
 use super::beat_map::{pitch_to_staff_y, is_filled_note, note_x_positions_from_beat_map};
+use super::tuplet::find_tuplet_groups;
 
 // ── Grace note constants ─────────────────────────────────────────────
 const GRACE_SCALE: f64 = 0.66;
@@ -160,6 +161,20 @@ pub(super) fn render_notes(
 
     for group in &beam_groups {
         render_beam_group(svg, measure, &note_positions, staff_y, clef, transpose_octave, group);
+    }
+
+    let tuplet_groups = find_tuplet_groups(measure, staff_filter);
+    for (group, actual_notes) in &tuplet_groups {
+        render_tuplet_group(
+            svg,
+            measure,
+            &note_positions,
+            staff_y,
+            clef,
+            transpose_octave,
+            group,
+            *actual_notes,
+        );
     }
 }
 
@@ -387,6 +402,77 @@ fn render_ledger_lines(svg: &mut SvgBuilder, x: f64, note_y: f64, staff_y: f64) 
 }
 
 // ── Beam rendering ──────────────────────────────────────────────────
+
+fn render_tuplet_group(
+    svg: &mut SvgBuilder,
+    measure: &Measure,
+    note_positions: &[f64],
+    staff_y: f64,
+    clef: Option<&Clef>,
+    transpose_octave: i32,
+    group: &[usize],
+    actual_notes: i32,
+) {
+    if group.is_empty() {
+        return;
+    }
+    let first_idx = group[0];
+    let last_idx = *group.last().unwrap();
+    let first_note = &measure.notes[first_idx];
+    let x_first = note_positions[first_idx];
+    let x_last = note_positions[last_idx];
+    let center_x = (x_first + x_last) / 2.0;
+
+    let mut min_y = staff_y + 50.0;
+    let mut max_y = staff_y;
+    for &idx in group {
+        if let Some(ref pitch) = measure.notes[idx].pitch {
+            let note_y = staff_y + pitch_to_staff_y(pitch, clef, transpose_octave);
+            if note_y < min_y {
+                min_y = note_y;
+            }
+            if note_y > max_y {
+                max_y = note_y;
+            }
+        }
+    }
+    let middle_line = staff_y + 20.0;
+    let stem_up = first_note.stem.as_deref() == Some("down")
+        || (first_note.stem.is_none() && (min_y + max_y) / 2.0 >= middle_line);
+
+    const TUPLET_FONT_SIZE: f64 = 12.0;
+    const TUPLET_OFFSET: f64 = 14.0;
+    const TUPLET_BRACKET_PAD: f64 = 3.0;  // horizontal extension past first/last note
+    const TUPLET_BRACKET_HOOK: f64 = 4.0; // short vertical hook at each end
+    let num_str = actual_notes.to_string();
+    let y = if stem_up {
+        (min_y + max_y) / 2.0 - TUPLET_OFFSET
+    } else {
+        (min_y + max_y) / 2.0 + TUPLET_OFFSET
+    };
+    // Bracket (tie) line spanning the group, with the number on it
+    let x_left = x_first - TUPLET_BRACKET_PAD;
+    let x_right = x_last + TUPLET_BRACKET_PAD;
+    svg.line(x_left, y, x_right, y, NOTE_COLOR, 1.0);
+    if stem_up {
+        svg.line(x_left, y, x_left, y + TUPLET_BRACKET_HOOK, NOTE_COLOR, 1.0);
+        svg.line(x_right, y, x_right, y + TUPLET_BRACKET_HOOK, NOTE_COLOR, 1.0);
+    } else {
+        svg.line(x_left, y, x_left, y - TUPLET_BRACKET_HOOK, NOTE_COLOR, 1.0);
+        svg.line(x_right, y, x_right, y - TUPLET_BRACKET_HOOK, NOTE_COLOR, 1.0);
+    }
+    let num_y = if stem_up { y + 2.0 } else { y - 2.0 };
+    svg.text(
+        center_x,
+        num_y,
+        &num_str,
+        TUPLET_FONT_SIZE,
+        "normal",
+        NOTE_COLOR,
+        "middle",
+        Some("middle"),
+    );
+}
 
 fn find_beam_groups(measure: &Measure, staff_filter: Option<i32>) -> Vec<Vec<usize>> {
     let mut groups: Vec<Vec<usize>> = Vec::new();

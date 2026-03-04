@@ -167,6 +167,15 @@ pub struct Transpose {
     pub octave_change: Option<i32>,
 }
 
+/// Time-modification (e.g. triplet: actual_notes=3, normal_notes=2).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimeModification {
+    /// Number of notes in the group (e.g. 3 for triplet)
+    pub actual_notes: i32,
+    /// Number of normal notes this group occupies (e.g. 2 for triplet)
+    pub normal_notes: i32,
+}
+
 /// A single note or rest.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Note {
@@ -196,6 +205,12 @@ pub struct Note {
     pub tie_start: bool,
     /// Whether this note stops a tie (continuation from a previous note)
     pub tie_stop: bool,
+    /// Time-modification (e.g. triplet: 3 notes in the space of 2)
+    pub time_modification: Option<TimeModification>,
+    /// Whether this note starts a tuplet bracket (notations/tuplet type="start")
+    pub tuplet_start: bool,
+    /// Whether this note ends a tuplet bracket (notations/tuplet type="stop")
+    pub tuplet_stop: bool,
     /// Specific part number (1-based; for multi-staff parts like piano)
     pub staff: Option<i32>,
     /// Default X position in tenths (for layout)

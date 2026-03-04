@@ -18,6 +18,7 @@ mod beat_map;
 mod lyrics;
 mod slurs;
 mod ties;
+mod tuplet;
 mod notes;
 mod staff;
 mod layout;

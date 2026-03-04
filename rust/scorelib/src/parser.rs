@@ -541,6 +541,9 @@ fn parse_note(node: &Node) -> Note {
         tie_start: false,
         tie_stop: false,
         staff: None,
+        time_modification: None,
+        tuplet_start: false,
+        tuplet_stop: false,
         default_x: node
             .attribute("default-x")
             .and_then(|v| v.parse().ok()),
@@ -597,15 +600,37 @@ fn parse_note(node: &Node) -> Note {
                     _ => {}
                 }
             }
+            "time-modification" => {
+                let actual = child.children().find(|c| c.tag_name().name() == "actual-notes");
+                let normal = child.children().find(|c| c.tag_name().name() == "normal-notes");
+                if let (Some(a), Some(n)) = (actual, normal) {
+                    let actual_notes = parse_i32(&a).unwrap_or(3);
+                    let normal_notes = parse_i32(&n).unwrap_or(2);
+                    note.time_modification = Some(crate::model::TimeModification {
+                        actual_notes,
+                        normal_notes,
+                    });
+                }
+            }
             "notations" => {
                 for nc in child.children().filter(|n| n.is_element()) {
-                    if nc.tag_name().name() == "slur" {
-                        let slur_type = nc.attribute("type").unwrap_or("").to_string();
-                        let number = nc.attribute("number")
-                            .and_then(|n| n.parse().ok())
-                            .unwrap_or(1);
-                        let placement = nc.attribute("placement").map(String::from);
-                        note.slurs.push(SlurEvent { slur_type, number, placement });
+                    match nc.tag_name().name() {
+                        "slur" => {
+                            let slur_type = nc.attribute("type").unwrap_or("").to_string();
+                            let number = nc.attribute("number")
+                                .and_then(|n| n.parse().ok())
+                                .unwrap_or(1);
+                            let placement = nc.attribute("placement").map(String::from);
+                            note.slurs.push(SlurEvent { slur_type, number, placement });
+                        }
+                        "tuplet" => {
+                            match nc.attribute("type").as_deref() {
+                                Some("start") => note.tuplet_start = true,
+                                Some("stop") => note.tuplet_stop = true,
+                                _ => {}
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }

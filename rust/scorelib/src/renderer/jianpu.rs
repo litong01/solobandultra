@@ -11,6 +11,7 @@
 use crate::model::Pitch;
 use super::constants::*;
 use super::svg_builder::SvgBuilder;
+use super::tuplet::find_tuplet_groups;
 
 /// Default font size for Jianpu digits. Exposed so the lyrics path can shift by half note width when needed.
 pub(super) const JIANPU_FONT_SIZE: f64 = 22.0;
@@ -281,6 +282,8 @@ pub(super) fn render_jianpu_measure(
     let jianpu_center_y = staff_y + STAFF_HEIGHT / 2.0;
     let div = divisions.max(1) as f64;
 
+    let tuplet_groups = find_tuplet_groups(measure, Some(staff_filter));
+
     if draw_key_label {
         let label = key_label_text(key_fifths, key_mode);
         let label_x = measure_x;
@@ -389,6 +392,39 @@ pub(super) fn render_jianpu_measure(
                 svg.jianpu_note_text_centered(nx, y, &ascii_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
             }
         }
+
+        // If this group is the start of a tuplet, draw bracket (tie) at the top with the number on it.
+        let first_in_group = group_indices.iter().min().copied().unwrap_or(i);
+        if let Some((tuplet_indices, actual_notes)) = tuplet_groups.iter().find(|(indices, _)| !indices.is_empty() && indices[0] == first_in_group) {
+            let last_idx = *tuplet_indices.last().unwrap_or(&first_in_group);
+            if last_idx < note_positions.len() {
+                let x_first = note_positions[first_in_group];
+                let x_last = note_positions[last_idx];
+                let center_x = (x_first + x_last) / 2.0;
+                const JIANPU_TUPLET_FONT: f64 = 11.0;
+                const JIANPU_TUPLET_ABOVE: f64 = 26.0;  // bracket above the digits/octave dots
+                const JIANPU_TUPLET_BRACKET_PAD: f64 = 4.0;
+                const JIANPU_TUPLET_BRACKET_HOOK: f64 = 5.0;
+                let bracket_y = jianpu_center_y - JIANPU_TUPLET_ABOVE;
+                let x_left = x_first - JIANPU_TUPLET_BRACKET_PAD;
+                let x_right = x_last + JIANPU_TUPLET_BRACKET_PAD;
+                svg.line(x_left, bracket_y, x_right, bracket_y, NOTE_COLOR, 1.0);
+                svg.line(x_left, bracket_y, x_left, bracket_y + JIANPU_TUPLET_BRACKET_HOOK, NOTE_COLOR, 1.0);
+                svg.line(x_right, bracket_y, x_right, bracket_y + JIANPU_TUPLET_BRACKET_HOOK, NOTE_COLOR, 1.0);
+                let num_str = actual_notes.to_string();
+                svg.text(
+                    center_x,
+                    bracket_y - 2.0,
+                    &num_str,
+                    JIANPU_TUPLET_FONT,
+                    "normal",
+                    NOTE_COLOR,
+                    "middle",
+                    Some("middle"),
+                );
+            }
+        }
+
         i = group_end;
     }
 }
