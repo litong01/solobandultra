@@ -108,3 +108,134 @@ pub(super) fn find_tuplet_groups(
     }
     groups
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{Measure, Note, TimeModification};
+
+    fn note_with_tuplet(actual: i32, normal: i32, tuplet_start: bool, tuplet_stop: bool) -> Note {
+        Note {
+            pitch: Some(crate::model::Pitch {
+                step: "C".to_string(),
+                octave: 4,
+                alter: None,
+            }),
+            duration: 1,
+            voice: Some(1),
+            note_type: Some("eighth".to_string()),
+            stem: None,
+            beams: vec![],
+            rest: false,
+            measure_rest: false,
+            chord: false,
+            dot: false,
+            accidental: None,
+            tie_start: false,
+            tie_stop: false,
+            time_modification: Some(TimeModification {
+                actual_notes: actual,
+                normal_notes: normal,
+            }),
+            tuplet_start,
+            tuplet_stop,
+            staff: None,
+            default_x: None,
+            default_y: None,
+            lyrics: vec![],
+            grace: false,
+            grace_slash: false,
+            slurs: vec![],
+        }
+    }
+
+    fn rest_note() -> Note {
+        Note {
+            pitch: None,
+            duration: 1,
+            voice: Some(1),
+            note_type: Some("eighth".to_string()),
+            stem: None,
+            beams: vec![],
+            rest: true,
+            measure_rest: false,
+            chord: false,
+            dot: false,
+            accidental: None,
+            tie_start: false,
+            tie_stop: false,
+            time_modification: None,
+            tuplet_start: false,
+            tuplet_stop: false,
+            staff: None,
+            default_x: None,
+            default_y: None,
+            lyrics: vec![],
+            grace: false,
+            grace_slash: false,
+            slurs: vec![],
+        }
+    }
+
+    #[test]
+    fn find_tuplet_groups_triplet_with_bracket() {
+        let measure = Measure {
+            number: 1,
+            implicit: false,
+            width: None,
+            attributes: None,
+            notes: vec![
+                note_with_tuplet(3, 2, true, false),
+                note_with_tuplet(3, 2, false, false),
+                note_with_tuplet(3, 2, false, true),
+            ],
+            harmonies: vec![],
+            barlines: vec![],
+            directions: vec![],
+            new_system: false,
+            new_page: false,
+        };
+        let groups = find_tuplet_groups(&measure, None);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].0, vec![0, 1, 2]);
+        assert_eq!(groups[0].1, 3);
+    }
+
+    #[test]
+    fn find_tuplet_groups_no_tuplets() {
+        let measure = Measure {
+            number: 1,
+            implicit: false,
+            width: None,
+            attributes: None,
+            notes: vec![rest_note(), rest_note()],
+            harmonies: vec![],
+            barlines: vec![],
+            directions: vec![],
+            new_system: false,
+            new_page: false,
+        };
+        let groups = find_tuplet_groups(&measure, None);
+        assert!(groups.is_empty());
+    }
+
+    #[test]
+    fn find_tuplet_groups_skips_rests_and_grace() {
+        let mut n = note_with_tuplet(3, 2, true, false);
+        n.grace = true;
+        let measure = Measure {
+            number: 1,
+            implicit: false,
+            width: None,
+            attributes: None,
+            notes: vec![rest_note(), n],
+            harmonies: vec![],
+            barlines: vec![],
+            directions: vec![],
+            new_system: false,
+            new_page: false,
+        };
+        let groups = find_tuplet_groups(&measure, None);
+        assert!(groups.is_empty());
+    }
+}

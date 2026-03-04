@@ -108,3 +108,42 @@ fn read_container_xml(archive: &mut ZipArchive<Cursor<&[u8]>>) -> Result<String,
         names
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn extract_mxl_invalid_data_returns_err() {
+        let result = extract_musicxml_from_mxl(b"not a zip file");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_lowercase().contains("archive") || err.to_lowercase().contains("zip"));
+    }
+
+    #[test]
+    fn extract_mxl_valid_archive_returns_xml() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../sheetmusic/童年.mxl");
+        if !path.exists() {
+            eprintln!("Skipping extract_mxl_valid_archive_returns_xml: {:?} not found", path);
+            return;
+        }
+        let data = std::fs::read(&path).unwrap();
+        let xml = extract_musicxml_from_mxl(&data).unwrap();
+        assert!(xml.contains("score-partwise") || xml.contains("score-timewise"));
+    }
+
+    #[test]
+    fn parse_mxl_valid_returns_score() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../sheetmusic/童年.mxl");
+        if !path.exists() {
+            eprintln!("Skipping parse_mxl_valid_returns_score: {:?} not found", path);
+            return;
+        }
+        let data = std::fs::read(&path).unwrap();
+        let score = parse_mxl(&data).unwrap();
+        assert!(!score.parts.is_empty());
+        assert!(score.measure_count() > 0);
+    }
+}

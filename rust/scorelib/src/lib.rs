@@ -819,3 +819,85 @@ unsafe fn parse_midi_options_json(json_ptr: *const c_char) -> MidiOptions {
         Err(_) => MidiOptions::default(),
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// Tests
+// ═══════════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_parts_filter_valid() {
+        assert_eq!(parse_parts_filter(Some("1")), Some(vec![1]));
+        assert_eq!(parse_parts_filter(Some("1,3,5")), Some(vec![1, 3, 5]));
+        assert_eq!(parse_parts_filter(Some(" 2 , 4 ")), Some(vec![2, 4]));
+    }
+
+    #[test]
+    fn parse_parts_filter_empty_or_invalid() {
+        assert_eq!(parse_parts_filter(None), None);
+        assert_eq!(parse_parts_filter(Some("")), None);
+        assert_eq!(parse_parts_filter(Some("   ")), None);
+        assert_eq!(parse_parts_filter(Some("1,abc,3")), None);
+    }
+
+    #[test]
+    fn parse_midi_options_defaults() {
+        let opts = parse_midi_options_from_json_str("{}");
+        assert!(opts.include_melody);
+        assert!(!opts.include_piano);
+        assert_eq!(opts.transpose, 0);
+    }
+
+    #[test]
+    fn parse_midi_options_from_json_include_flags() {
+        let opts = parse_midi_options_from_json_str(
+            r#"{"include_melody":false,"include_piano":true,"include_bass":true}"#,
+        );
+        assert!(!opts.include_melody);
+        assert!(opts.include_piano);
+        assert!(opts.include_bass);
+    }
+
+    #[test]
+    fn parse_midi_options_transpose() {
+        let opts = parse_midi_options_from_json_str(r#"{"transpose":2}"#);
+        assert_eq!(opts.transpose, 2);
+        let opts = parse_midi_options_from_json_str(r#"{"transpose": -3}"#);
+        assert_eq!(opts.transpose, -3);
+    }
+
+    #[test]
+    fn parse_midi_options_energy() {
+        let opts = parse_midi_options_from_json_str(r#"{"energy":"soft"}"#);
+        assert!(matches!(opts.energy, Energy::Soft));
+        let opts = parse_midi_options_from_json_str(r#"{"energy": "strong"}"#);
+        assert!(matches!(opts.energy, Energy::Strong));
+    }
+
+    #[test]
+    fn parse_bytes_xml_extension() {
+        let minimal = r#"<?xml version="1.0"?><score-partwise version="3.1"><part-list><score-part id="P1"><part-name>Part</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time></attributes><note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note></measure></part></score-partwise>"#;
+        let result = parse_bytes(minimal.as_bytes(), Some("xml"));
+        assert!(result.is_ok());
+        let score = result.unwrap();
+        assert_eq!(score.measure_count(), 1);
+    }
+
+    #[test]
+    fn parse_bytes_auto_detect_xml() {
+        let minimal = r#"<?xml version="1.0"?><score-partwise version="3.1"><part-list><score-part id="P1"><part-name>P</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time></attributes><note><rest/><duration>1</duration><type>quarter</type></note></measure></part></score-partwise>"#;
+        let result = parse_bytes(minimal.as_bytes(), None);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn score_to_json_roundtrip() {
+        let score = Score::new();
+        let json = score_to_json(&score).unwrap();
+        // serde_json pretty-prints "parts": [] (with space); compact uses "parts":[]
+        assert!(json.contains("\"parts\": []") || json.contains("\"parts\":[]"));
+    }
+}

@@ -206,4 +206,26 @@ mod tests {
         // Total size = 44 header + PCM data
         assert_eq!(wav.len(), 44 + pcm.len());
     }
+
+    #[test]
+    fn test_build_wav_stereo() {
+        // 1000 samples stereo = 4000 bytes PCM
+        let pcm = vec![0u8; 1000 * 2 * 2];
+        let wav = build_wav(44100, 2, 16, &pcm).unwrap();
+        assert_eq!(&wav[0..4], b"RIFF");
+        assert_eq!(&wav[8..12], b"WAVE");
+        assert_eq!(wav.len(), 44 + 4000);
+    }
+
+    #[test]
+    fn test_render_audio_invalid_midi_returns_err() {
+        let bad_midi = b"not midi at all";
+        // Any valid SF2 would do; use minimal or rely on error from MIDI first.
+        // rustysynth rejects invalid MIDI, so we need at least valid SF2.
+        // Use empty soundfont to get SoundFont load error, or invalid to get MIDI error.
+        let result = render_audio(bad_midi, b"invalid soundfont");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("SoundFont") || err.contains("MIDI"));
+    }
 }

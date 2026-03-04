@@ -442,3 +442,115 @@ impl Pitch {
         midi.clamp(0, 127)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn score_new_and_measure_count() {
+        let score = Score::new();
+        assert!(score.title.is_none());
+        assert!(score.parts.is_empty());
+        assert_eq!(score.measure_count(), 0);
+    }
+
+    #[test]
+    fn score_measure_count_one_part() {
+        let mut score = Score::new();
+        score.parts.push(Part {
+            id: "P1".to_string(),
+            name: "Part".to_string(),
+            abbreviation: None,
+            instrument_name: None,
+            midi_program: None,
+            midi_channel: None,
+            measures: vec![
+                Measure {
+                    number: 1,
+                    implicit: false,
+                    width: None,
+                    attributes: None,
+                    notes: vec![],
+                    harmonies: vec![],
+                    barlines: vec![],
+                    directions: vec![],
+                    new_system: false,
+                    new_page: false,
+                },
+                Measure {
+                    number: 2,
+                    implicit: false,
+                    width: None,
+                    attributes: None,
+                    notes: vec![],
+                    harmonies: vec![],
+                    barlines: vec![],
+                    directions: vec![],
+                    new_system: false,
+                    new_page: false,
+                },
+            ],
+        });
+        assert_eq!(score.measure_count(), 2);
+    }
+
+    #[test]
+    fn score_time_signatures() {
+        let mut score = Score::new();
+        let ts = TimeSignature { beats: 3, beat_type: 4 };
+        score.parts.push(Part {
+            id: "P1".to_string(),
+            name: "P".to_string(),
+            abbreviation: None,
+            instrument_name: None,
+            midi_program: None,
+            midi_channel: None,
+            measures: vec![Measure {
+                number: 1,
+                implicit: false,
+                width: None,
+                attributes: Some(Attributes {
+                    divisions: Some(4),
+                    key: None,
+                    time: Some(ts.clone()),
+                    clefs: vec![],
+                    transpose: None,
+                    staves: None,
+                }),
+                notes: vec![],
+                harmonies: vec![],
+                barlines: vec![],
+                directions: vec![],
+                new_system: false,
+                new_page: false,
+            }],
+        });
+        let sigs = score.time_signatures();
+        assert_eq!(sigs.len(), 1);
+        assert_eq!(sigs[0].beats, 3);
+        assert_eq!(sigs[0].beat_type, 4);
+    }
+
+    #[test]
+    fn pitch_to_midi_c4() {
+        let p = Pitch { step: "C".to_string(), octave: 4, alter: None };
+        assert_eq!(p.to_midi(), 60);
+    }
+
+    #[test]
+    fn pitch_to_midi_with_alter() {
+        let p = Pitch { step: "F".to_string(), octave: 3, alter: Some(1.0) };
+        assert_eq!(p.to_midi(), 54); // F#3
+        let p = Pitch { step: "B".to_string(), octave: 4, alter: Some(-1.0) };
+        assert_eq!(p.to_midi(), 70); // Bb4
+    }
+
+    #[test]
+    fn pitch_to_midi_extreme_octaves_clamped() {
+        let p = Pitch { step: "C".to_string(), octave: -2, alter: None };
+        assert_eq!(p.to_midi(), 0);
+        let p = Pitch { step: "G".to_string(), octave: 9, alter: None };
+        assert_eq!(p.to_midi(), 127);
+    }
+}

@@ -200,3 +200,114 @@ pub unsafe extern "C" fn scorelib_note_timeline(
         _ => std::ptr::null_mut(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{Attributes, Key, Measure, Note, Part, Pitch, Score, TimeSignature};
+
+    fn minimal_score_with_one_note() -> Score {
+        let mut score = Score::new();
+        score.parts.push(Part {
+            id: "P1".to_string(),
+            name: "Melody".to_string(),
+            abbreviation: None,
+            instrument_name: None,
+            midi_program: None,
+            midi_channel: None,
+            measures: vec![Measure {
+                number: 1,
+                implicit: false,
+                width: None,
+                attributes: Some(Attributes {
+                    divisions: Some(4),
+                    key: Some(Key { fifths: 0, mode: Some("major".to_string()) }),
+                    time: Some(TimeSignature { beats: 4, beat_type: 4 }),
+                    clefs: vec![],
+                    transpose: None,
+                    staves: None,
+                }),
+                notes: vec![Note {
+                    pitch: Some(Pitch {
+                        step: "C".to_string(),
+                        octave: 4,
+                        alter: None,
+                    }),
+                    duration: 4,
+                    voice: Some(1),
+                    note_type: Some("quarter".to_string()),
+                    stem: None,
+                    beams: vec![],
+                    rest: false,
+                    measure_rest: false,
+                    chord: false,
+                    dot: false,
+                    accidental: None,
+                    tie_start: false,
+                    tie_stop: false,
+                    time_modification: None,
+                    tuplet_start: false,
+                    tuplet_stop: false,
+                    staff: None,
+                    default_x: None,
+                    default_y: None,
+                    lyrics: vec![],
+                    grace: false,
+                    grace_slash: false,
+                    slurs: vec![],
+                }],
+                harmonies: vec![],
+                barlines: vec![],
+                directions: vec![],
+                new_system: false,
+                new_page: false,
+            }],
+        });
+        score
+    }
+
+    #[test]
+    fn generate_note_timeline_one_note() {
+        let score = minimal_score_with_one_note();
+        let events = generate_note_timeline(&score);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].midi, 60);
+        assert_eq!(events[0].name, "C4");
+        assert_eq!(events[0].measure_idx, 0);
+        assert_eq!(events[0].note_idx, 0);
+        assert!(events[0].start_ms >= 0.0);
+        assert!(events[0].end_ms > events[0].start_ms);
+    }
+
+    #[test]
+    fn generate_note_timeline_empty_score() {
+        let score = Score::new();
+        let events = generate_note_timeline(&score);
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn generate_note_timeline_no_parts() {
+        let mut score = Score::new();
+        score.parts.push(Part {
+            id: "P1".to_string(),
+            name: "P".to_string(),
+            abbreviation: None,
+            instrument_name: None,
+            midi_program: None,
+            midi_channel: None,
+            measures: vec![],
+        });
+        let events = generate_note_timeline(&score);
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn note_timeline_to_json_valid() {
+        let score = minimal_score_with_one_note();
+        let events = generate_note_timeline(&score);
+        let json = note_timeline_to_json(&events);
+        assert!(json.contains("\"midi\":60"));
+        assert!(json.contains("\"name\":\"C4\""));
+    }
+}
