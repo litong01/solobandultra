@@ -71,7 +71,7 @@ fn render_chopin_trois_valses_svg() {
 fn render_produces_valid_svg_dimensions() {
     let path = sheetmusic_dir().join("asa-branca.musicxml");
     let score = parse_file(&path).unwrap();
-    let svg = render_score_to_svg(&score, None, None, false);
+    let svg = render_score_to_svg(&score, None, None, false, 0);
 
     // Check viewBox is present
     assert!(svg.contains("viewBox="), "SVG should have viewBox");
@@ -87,8 +87,8 @@ fn render_narrow_phone_width() {
     let path = sheetmusic_dir().join("asa-branca.musicxml");
     let score = parse_file(&path).unwrap();
 
-    let svg_wide = render_score_to_svg(&score, None, None, false);
-    let svg_narrow = render_score_to_svg(&score, phone_width, None, false);
+    let svg_wide = render_score_to_svg(&score, None, None, false, 0);
+    let svg_narrow = render_score_to_svg(&score, phone_width, None, false, 0);
 
     // Narrow SVG should be taller (more systems) since fewer measures fit per line
     assert!(svg_narrow.contains("viewBox=\"0 0 390"));

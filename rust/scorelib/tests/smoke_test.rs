@@ -367,7 +367,7 @@ fn smoke_timemap_tempo_reverts_after_ds() {
 #[test]
 fn smoke_render_svg() {
     let score = parse_file(smoke_test_path()).unwrap();
-    let svg = render_score_to_svg(&score, None, None, false);
+    let svg = render_score_to_svg(&score, None, None, false, 0);
 
     assert!(svg.starts_with("<svg"), "Should produce valid SVG");
     assert!(svg.contains("</svg>"), "SVG should be closed");
@@ -386,7 +386,7 @@ fn smoke_render_svg() {
 #[test]
 fn smoke_render_svg_phone_width() {
     let score = parse_file(smoke_test_path()).unwrap();
-    let svg = render_score_to_svg(&score, Some(390.0), None, false);
+    let svg = render_score_to_svg(&score, Some(390.0), None, false, 0);
 
     assert!(svg.starts_with("<svg"));
     assert!(svg.contains("viewBox=\"0 0 390"));

@@ -47,6 +47,37 @@ fn key_root_semitone(fifths: i32) -> i32 {
     (7 * fifths).rem_euclid(12)
 }
 
+/// Map a semitone (0–11) to key-signature fifths. Used to get concert key for scale-degree mapping.
+fn semitone_to_fifths(semi: i32) -> i32 {
+    match semi.rem_euclid(12) {
+        0 => 0,   // C
+        1 => -5,  // Db
+        2 => 2,   // D
+        3 => -3,  // Eb
+        4 => 4,   // E
+        5 => -1,  // F
+        6 => -6,  // Gb
+        7 => 1,   // G
+        8 => -4,  // Ab
+        9 => 3,   // A
+        10 => -2, // Bb
+        11 => 5,  // B
+        _ => 0,
+    }
+}
+
+/// Concert key fifths for scale-degree mapping. When the score is transposed, we map notes to
+/// scale degrees in the *concert* key so the displayed digit matches what the player plays
+/// (e.g. transpose +1: note shows 4 so they play 4, no mental conversion).
+pub(super) fn concert_key_fifths_for_degree(display_key_fifths: i32, transpose_semitones: i32) -> i32 {
+    if transpose_semitones == 0 {
+        return display_key_fifths;
+    }
+    let display_root = key_root_semitone(display_key_fifths);
+    let concert_root = (display_root - transpose_semitones).rem_euclid(12);
+    semitone_to_fifths(concert_root)
+}
+
 /// Scale intervals for each mode (semitone steps from tonic). Same as sample.rs.
 fn mode_intervals(mode: Option<&str>) -> [u8; 7] {
     match mode.map(|s| s.to_lowercase()).as_deref() {
@@ -80,7 +111,10 @@ fn find_scale_degree(note_pc: u8, scale: &[u8; 7]) -> (usize, i8) {
         let diff_mod = diff_mod as i8;
         let offset = if diff_mod <= 6 { diff_mod } else { diff_mod - 12 };
 
-        if offset.abs() < best_offset.abs() {
+        if offset.abs() < best_offset.abs()
+            || (offset.abs() == best_offset.abs() && offset < 0 && d > best_degree)
+        {
+            // Prefer higher degree with flat (e.g. 4_ over 3^) when tied, so digit reflects transposed note.
             best_offset = offset;
             best_degree = d;
         }
@@ -325,6 +359,7 @@ pub(super) fn render_jianpu_measure(
     staff_y: f64,
     staff_filter: i32,
     key_fifths: i32,
+    key_fifths_for_degree: i32,
     key_mode: Option<&str>,
     divisions: i32,
     note_positions: &[f64],
@@ -396,7 +431,7 @@ pub(super) fn render_jianpu_measure(
             for (idx, &k) in group_indices.iter().enumerate() {
                 let grace_note = &measure.notes[k];
                 if let Some(ref pitch) = grace_note.pitch {
-                    let (digit, octave_dots, accidental) = pitch_to_jianpu(pitch, key_fifths, key_mode);
+                    let (digit, octave_dots, accidental) = pitch_to_jianpu(pitch, key_fifths_for_degree, key_mode);
                     let y = if group_len <= 1 {
                         jianpu_center_y
                     } else {
@@ -435,7 +470,7 @@ pub(super) fn render_jianpu_measure(
                 let ascii_str = note_to_jianpu_ascii(0, 0, None, underlines, dot, dashes);
                 svg.jianpu_note_text_centered(nx, y, &ascii_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
             } else if let Some(ref pitch) = n.pitch {
-                let (digit, octave_dots, accidental) = pitch_to_jianpu(pitch, key_fifths, key_mode);
+                let (digit, octave_dots, accidental) = pitch_to_jianpu(pitch, key_fifths_for_degree, key_mode);
                 let duration_quarters = n.duration as f64 / div;
                 let (underlines, suffix_dot, suffix_dashes) = duration_to_jianpu(duration_quarters, n.dot);
                 let ascii_str = note_to_jianpu_ascii(

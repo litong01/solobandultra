@@ -231,7 +231,7 @@ pub fn render_file_to_svg<P: AsRef<std::path::Path>>(
 ) -> Result<String, String> {
     let mut score = parse_file(path)?;
     transpose_score(&mut score, transpose);
-    Ok(render_score_to_svg(&score, page_width, staff_indices_1based, use_jianpu))
+    Ok(render_score_to_svg(&score, page_width, staff_indices_1based, use_jianpu, transpose))
 }
 
 /// Parse MusicXML bytes and render to SVG.
@@ -253,7 +253,7 @@ pub fn render_bytes_to_svg(
 ) -> Result<String, String> {
     let mut score = parse_bytes(data, extension)?;
     transpose_score(&mut score, transpose);
-    Ok(render_score_to_svg(&score, page_width, staff_indices_1based, use_jianpu))
+    Ok(render_score_to_svg(&score, page_width, staff_indices_1based, use_jianpu, transpose))
 }
 
 /// Generate MIDI bytes from a parsed score.

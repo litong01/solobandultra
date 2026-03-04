@@ -68,11 +68,16 @@ fn octave_shift_amount(size: i32) -> i32 {
 ///
 /// When `use_jianpu` is true, notation is rendered in Jianpu (numbered notation): digits 1–7,
 /// key-based movable do, same repeats/directions as staff. Exactly one staff is used (first from list).
+///
+/// `transpose_semitones` is the amount the score was transposed before this call (e.g. from
+/// `transpose_score`). When non-zero and `use_jianpu` is true, scale degrees are computed in the
+/// concert key so the displayed digit matches what the player plays (no mental conversion).
 pub fn render_score_to_svg(
     score: &Score,
     page_width: Option<f64>,
     staff_indices_1based: Option<&[usize]>,
     use_jianpu: bool,
+    transpose_semitones: i32,
 ) -> String {
     let page_width = match page_width {
         Some(w) if w > 0.0 => w,
@@ -653,6 +658,7 @@ pub fn render_score_to_svg(
                     );
                     if use_jianpu {
                         let key_fifths = ps.key.as_ref().map_or(0, |k| k.fifths);
+                        let key_fifths_for_degree = jianpu::concert_key_fifths_for_degree(key_fifths, transpose_semitones);
                         let key_mode = ps.key.as_ref().and_then(|k| k.mode.as_deref());
                         // Key and time sit right at the measure bar (not as "notes") so the cursor never lands on them.
                         let bar_offset = 2.0; // minimal gap from the bar line
@@ -675,6 +681,7 @@ pub fn render_score_to_svg(
                             staff_y,
                             staff_num as i32,
                             key_fifths,
+                            key_fifths_for_degree,
                             key_mode,
                             ps.divisions,
                             &note_xs,

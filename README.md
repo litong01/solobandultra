@@ -73,7 +73,7 @@ use scorelib::{parse_file, render_score_to_svg};
 let score = parse_file("sheetmusic/asa-branca.musicxml").unwrap();
 println!("Title: {:?}", score.title);
 
-let svg = render_score_to_svg(&score);
+let svg = render_score_to_svg(&score, None, None, false, 0);
 std::fs::write("output.svg", &svg).unwrap();
 ```
 
