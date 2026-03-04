@@ -365,13 +365,13 @@ jobs:
           draft: false
           prerelease: false
 
-      - name: Upload to Google Drive
-        uses: adityak74/google-drive-upload-git-action@v0.3
-        with:
-          credentials: ${{ secrets.GDRIVE_CREDENTIALS }}
-          filename: ./artifacts/SoloBandUltra-Android-release.apk
-          useCompleteSourceFilenameAsName: false
-          mirrorDirectoryStructure: false
-          folderId: ${{ secrets.GDRIVE_FOLDER_ID }}
-          overwrite: true
+      ###- name: Upload to Google Drive
+      ###  uses: adityak74/google-drive-upload-git-action@v0.3
+      ###  with:
+      ###    credentials: ${{ secrets.GDRIVE_CREDENTIALS }}
+      ###    filename: ./artifacts/SoloBandUltra-Android-release.apk
+      ###    useCompleteSourceFilenameAsName: false
+      ###    mirrorDirectoryStructure: false
+      ###    folderId: ${{ secrets.GDRIVE_FOLDER_ID }}
+      ###    overwrite: true
   
