@@ -408,7 +408,19 @@ pub(super) fn compute_layout_with_staff_filter(
             };
             let min_trailing = if use_jianpu { Some(4.0) } else { None };
             let max_trailing_frac = if use_jianpu { Some(0.28) } else { None };
-            let beat_x_map = compute_beat_x_map(&all_beat_times, x, w, left_inset, right_inset, &lyric_evts, total_quarters, min_trailing, max_trailing_frac);
+            let min_note_spacing_jianpu = if use_jianpu { Some(18.0) } else { None };
+            let beat_x_map = compute_beat_x_map(
+                &all_beat_times,
+                x,
+                w,
+                left_inset,
+                right_inset,
+                &lyric_evts,
+                total_quarters,
+                min_trailing,
+                max_trailing_frac,
+                min_note_spacing_jianpu,
+            );
 
             measures.push(MeasureLayout {
                 measure_idx: mi,

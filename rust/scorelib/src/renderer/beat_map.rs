@@ -55,6 +55,8 @@ const MIN_NOTE_SPACING: f64 = 12.0;
 /// When `min_trailing_gap` is `Some(v)`, the space after the last note uses
 /// at least `v` (e.g. jianpu uses a smaller value to avoid excess end space).
 /// When `max_trailing_fraction` is `Some(f)`, cap the trailing gap at `f` of usable width (jianpu only; staff passes None).
+/// When `min_note_spacing_override` is `Some(v)` (jianpu), inter-note gaps are clamped to at least `v` after scaling
+/// so short-note runs (e.g. 16ths) don't sit too close to the following note.
 pub(super) fn compute_beat_x_map(
     all_beat_times: &[Vec<f64>],
     mx: f64,
@@ -65,6 +67,7 @@ pub(super) fn compute_beat_x_map(
     total_quarters: f64,
     min_trailing_gap: Option<f64>,
     max_trailing_fraction: Option<f64>,
+    min_note_spacing_override: Option<f64>,
 ) -> Vec<(f64, f64)> {
     let usable_width = mw - left_pad - right_pad;
 
@@ -92,6 +95,8 @@ pub(super) fn compute_beat_x_map(
 
     let mut gaps: Vec<f64> = Vec::with_capacity(n);
 
+    let min_gap = min_note_spacing_override.unwrap_or(MIN_NOTE_SPACING);
+
     for i in 1..n {
         // Proportional distance based on duration fraction
         let prop_dist = ((unique_beats[i] - unique_beats[i - 1]) / total_q) * usable_width;
@@ -104,7 +109,7 @@ pub(super) fn compute_beat_x_map(
             (None, None) => 0.0,
         };
 
-        gaps.push(prop_dist.max(lyrics_dist).max(MIN_NOTE_SPACING));
+        gaps.push(prop_dist.max(lyrics_dist).max(min_gap));
     }
 
     // Trailing gap: space after the last note to the measure's right edge.
@@ -112,7 +117,7 @@ pub(super) fn compute_beat_x_map(
     let last_beat = unique_beats.last().copied().unwrap_or(0.0);
     let trailing_prop = ((total_q - last_beat) / total_q) * usable_width;
     let trailing_min = min_trailing_gap.unwrap_or(MIN_NOTE_SPACING);
-    let trailing = match max_trailing_fraction {
+    let mut trailing = match max_trailing_fraction {
         Some(f) => trailing_prop.max(trailing_min).min(usable_width * f),
         None => trailing_prop.max(trailing_min),
     };
@@ -122,12 +127,35 @@ pub(super) fn compute_beat_x_map(
     let total_gaps: f64 = gaps.iter().sum();
     let scale = if total_gaps > 0.0 { usable_width / total_gaps } else { 1.0 };
 
+    // Apply scale to gaps
+    for g in &mut gaps {
+        *g *= scale;
+    }
+
+    // For jianpu: preserve minimum spacing between notes so short-note runs (16ths) don't sit on top of the next note.
+    if let Some(min_jianpu) = min_note_spacing_override {
+        let num_inter = n; // n gaps: n-1 between notes + 1 trailing
+        let inter_gaps = &mut gaps[0..num_inter - 1];
+        for g in inter_gaps.iter_mut() {
+            if *g < min_jianpu {
+                *g = min_jianpu;
+            }
+        }
+        let inter_sum: f64 = gaps[0..num_inter - 1].iter().sum();
+        let new_total = inter_sum + gaps[num_inter - 1];
+        if new_total > usable_width {
+            let excess = new_total - usable_width;
+            trailing = (gaps[num_inter - 1] - excess).max(trailing_min * 0.5);
+            gaps[num_inter - 1] = trailing;
+        }
+    }
+
     // Place notes at cumulative gap positions
     let mut result = Vec::with_capacity(n);
     let mut x = mx + left_pad;
     for i in 0..n {
         result.push((unique_beats[i], x));
-        x += gaps[i] * scale;
+        x += gaps[i];
     }
 
     result
