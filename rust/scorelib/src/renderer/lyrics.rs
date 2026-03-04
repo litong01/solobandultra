@@ -230,7 +230,7 @@ pub(super) fn render_lyrics(
             if note.staff.unwrap_or(1) != sf { continue; }
         }
         if i >= note_positions.len() { break; }
-        let nx = note_positions[i];
+        let center_x = note_positions[i];
 
         for lyric in &note.lyrics {
             let verse_offset = (lyric.number - 1) as f64 * LYRICS_LINE_HEIGHT;
@@ -241,19 +241,21 @@ pub(super) fn render_lyrics(
                 _ => lyric.text.clone(),
             };
 
-            // Choose Lora or 楷体, and the matching font size, based on content.
             let family = font_for_text(&lyric.text);
             let font_size = if has_cjk(&lyric.text) { LYRICS_FONT_SIZE_CJK } else { LYRICS_FONT_SIZE };
+            let width_estimate = estimate_text_width(&display_text, font_size);
+            let x_start = center_x - width_estimate / 2.0;
 
             svg.styled_text(
-                nx, ly,
+                x_start, ly,
                 &display_text,
                 font_size,
                 "bold",
                 LYRICS_COLOR,
-                "middle",
+                "start",
                 Some(family),
                 None,
+                Some("middle"),
             );
         }
     }

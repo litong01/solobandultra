@@ -9,36 +9,28 @@
 //! - # and b (and ##, bb) before the number for accidentals.
 
 use crate::model::Pitch;
-use super::beat_map::note_x_positions_from_beat_map;
 use super::constants::*;
 use super::svg_builder::SvgBuilder;
 
 /// Default font size for Jianpu digits.
 const JIANPU_FONT_SIZE: f64 = 22.0;
+/// Character width as fraction of font size for centering (note head only).
+const JIANPU_CHAR_WIDTH_RATIO: f64 = 0.50;
+
+/// Width used for centering: only the note head (digit + accidental + octave), not duration underlines/suffix.
+/// So "5/", "2'.", "#4//" are all centered like 1–3 chars; lyrics then align with the digit.
+fn jianpu_center_width(_digit: u8, octave_dots: i32, accidental: Option<&str>, font_size: f64) -> f64 {
+    let acc_len = accidental.map(|a| a.chars().count()).unwrap_or(0);
+    let oct_len = octave_dots.unsigned_abs() as usize;
+    let head_chars = 1usize.saturating_add(acc_len).saturating_add(oct_len).max(1);
+    head_chars as f64 * font_size * JIANPU_CHAR_WIDTH_RATIO
+}
 /// Vertical distance from digit baseline to the first octave dot (above or below).
 const JIANPU_DOT_OFFSET: f64 = 20.0;
 /// Vertical step between multiple octave dots (so they don’t overlap the number or each other).
 const JIANPU_DOT_STEP: f64 = 10.0;
-/// Radius of octave dots.
-const JIANPU_DOT_R: f64 = 2.0;
-/// Vertical offset from digit baseline to the first duration underline (clear of the number).
-const JIANPU_UNDERLINE_OFFSET: f64 = 14.0;
-/// Spacing between multiple underlines.
-const JIANPU_UNDERLINE_GAP: f64 = 4.0;
-/// Width of one digit cell for underlines (approximate).
-const JIANPU_DIGIT_WIDTH: f64 = 14.0;
-/// Horizontal offset for dash after number (half/whole).
-const JIANPU_DASH_OFFSET: f64 = 4.0;
-const JIANPU_DASH_WIDTH: f64 = 8.0;
-/// Accidental: top-left of the number, just above the digit (below octave dots), very close.
-const JIANPU_ACCIDENTAL_SIZE_RATIO: f64 = 0.55;
-const JIANPU_ACCIDENTAL_GAP_LEFT: f64 = -1.0;
-/// Vertical: accidental 1–2 px higher than number top (slightly into/just above number top).
-const JIANPU_ACCIDENTAL_GAP_ABOVE_NUMBER_TOP: f64 = -1.5;
 /// Key label font size (e.g. "1 = C").
 const JIANPU_KEY_LABEL_FONT: f64 = 14.0;
-/// Horizontal padding each side of a note for underline span.
-const JIANPU_UNDERLINE_PAD: f64 = 6.0;
 /// Vertical spacing between stacked chord notes. Must be at least one digit height to avoid overlap
 /// (digit is JIANPU_FONT_SIZE tall; add gap so octave dots don’t touch).
 /// Half-height of one rendered note (digit half + octave dots; up to 2 dots above/below).
@@ -195,6 +187,44 @@ pub(super) fn duration_to_jianpu(
     (underlines, dot, suffix_dashes)
 }
 
+/// Build the single Jianpu ASCII font string for one note/rest (e.g. "5'", "3/", "#4//", "0", "1 -").
+/// Order: accidental → digit → octave marks → duration slashes → suffix dot → suffix dashes.
+fn note_to_jianpu_ascii(
+    digit: u8,
+    octave_dots: i32,
+    accidental: Option<&str>,
+    underlines: u8,
+    suffix_dot: bool,
+    suffix_dashes: u8,
+) -> String {
+    let mut s = String::new();
+    if let Some(acc) = accidental {
+        s.push_str(acc);
+    }
+    s.push(if digit == 0 { '0' } else { (b'0' + digit) as char });
+    for _ in 0..octave_dots {
+        s.push('\'');
+    }
+    for _ in 0..(-octave_dots).max(0) {
+        s.push(',');
+    }
+    match underlines {
+        1 => s.push('/'),
+        2 => s.push_str("//"),
+        3 => s.push_str("///"),
+        _ => {}
+    }
+    if suffix_dot {
+        s.push('.');
+    }
+    match suffix_dashes {
+        1 => s.push_str(" -"),
+        2 => s.push_str(" - - -"),
+        _ => {}
+    }
+    s
+}
+
 /// Key label text e.g. "1 = C", "1 = Am". Same as sample key_label_text.
 fn key_label_text(key_fifths: i32, key_mode: Option<&str>) -> String {
     fn pitch_class_to_name(pc: i32) -> &'static str {
@@ -214,185 +244,9 @@ fn key_label_text(key_fifths: i32, key_mode: Option<&str>) -> String {
     format!("1 = {}{}", pitch_class_to_name(tonic), mode_suffix)
 }
 
-/// Underline span for beam-like grouping (same as sample UnderlineSpan).
-#[derive(Clone, Debug)]
-struct UnderlineSpan {
-    level: u8,
-    x_start: f64,
-    x_end: f64,
-}
-
-/// Compute underline spans per voice for notes on the given staff. Same logic as sample compute_underline_spans.
-fn compute_underline_spans(
-    notes: &[crate::model::Note],
-    positions: &[f64],
-    divisions: i32,
-    staff_filter: i32,
-) -> Vec<UnderlineSpan> {
-    use std::collections::HashMap;
-    let div = divisions.max(1) as f64;
-    let mut by_voice: HashMap<i32, Vec<(usize, &crate::model::Note)>> = HashMap::new();
-
-    for (i, note) in notes.iter().enumerate() {
-        if note.staff.unwrap_or(1) != staff_filter {
-            continue;
-        }
-        if note.rest || note.grace {
-            continue;
-        }
-        let voice = note.voice.unwrap_or(1);
-        by_voice.entry(voice).or_default().push((i, note));
-    }
-
-    let mut spans = Vec::new();
-    for (_voice, list) in by_voice {
-        let max_level = list
-            .iter()
-            .map(|(_, n)| {
-                let q = n.duration as f64 / div * 4.0;
-                duration_to_underline_count(q)
-            })
-            .max()
-            .unwrap_or(0);
-
-        for level in 1..=max_level {
-            let mut current_start: Option<usize> = None;
-            let mut last_idx: Option<usize> = None;
-
-            for &(idx, note) in &list {
-                let q = note.duration as f64 / div * 4.0;
-                let count = duration_to_underline_count(q);
-                if count >= level {
-                    if current_start.is_none() {
-                        current_start = Some(idx);
-                    }
-                    last_idx = Some(idx);
-                } else {
-                    if let (Some(s), Some(e)) = (current_start, last_idx) {
-                        if s < positions.len() && e < positions.len() {
-                            spans.push(UnderlineSpan {
-                                level,
-                                x_start: positions[s] - JIANPU_UNDERLINE_PAD,
-                                x_end: positions[e] + JIANPU_UNDERLINE_PAD,
-                            });
-                        }
-                    }
-                    current_start = None;
-                    last_idx = None;
-                }
-            }
-            if let (Some(s), Some(e)) = (current_start, last_idx) {
-                if s < positions.len() && e < positions.len() {
-                    spans.push(UnderlineSpan {
-                        level,
-                        x_start: positions[s] - JIANPU_UNDERLINE_PAD,
-                        x_end: positions[e] + JIANPU_UNDERLINE_PAD,
-                    });
-                }
-            }
-        }
-    }
-    spans
-}
-
-fn draw_underline_spans(svg: &mut SvgBuilder, spans: &[UnderlineSpan], staff_y: f64) {
-    for span in spans {
-        let y = staff_y + JIANPU_UNDERLINE_OFFSET + (span.level as f64 - 1.0) * JIANPU_UNDERLINE_GAP;
-        svg.line(
-            span.x_start,
-            y,
-            span.x_end,
-            y,
-            NOTE_COLOR,
-            1.2,
-        );
-    }
-}
-
-/// Draw a single Jianpu note/rest at (x, y). For notes with span-drawn underlines, pass underlines=0.
-/// For rest we draw "0". For notes we draw digit, octave dots, accidental, underlines, suffix dot/dash.
-pub(super) fn render_jianpu_note(
-    svg: &mut SvgBuilder,
-    x: f64,
-    y: f64,
-    digit: u8,
-    octave_dots: i32,
-    accidental: Option<&str>,
-    underlines: u8,
-    suffix_dot: bool,
-    suffix_dashes: u8,
-) {
-    let fill = NOTE_COLOR;
-    let draw_x = x;
-
-    if let Some(acc) = accidental {
-        let acc_size = JIANPU_FONT_SIZE * JIANPU_ACCIDENTAL_SIZE_RATIO;
-        let number_top = y - JIANPU_FONT_SIZE / 2.0;
-        let acc_x = draw_x - JIANPU_DIGIT_WIDTH / 2.0 - JIANPU_ACCIDENTAL_GAP_LEFT;
-        let acc_y = number_top + JIANPU_ACCIDENTAL_GAP_ABOVE_NUMBER_TOP + acc_size / 2.0;
-        svg.text(
-            acc_x,
-            acc_y,
-            acc,
-            acc_size,
-            "normal",
-            fill,
-            "end",
-            Some("middle"),
-        );
-    }
-
-    let s: String = if digit == 0 { "0".into() } else { ((b'0' + digit) as char).to_string() };
-    svg.text(
-        draw_x,
-        y,
-        &s,
-        JIANPU_FONT_SIZE,
-        "normal",
-        fill,
-        "middle",
-        Some("middle"),
-    );
-
-    // Octave dots above/below: centered on the digit (same x as number center). Same as sample.rs svg.circle(x_center, dy, ...).
-    for i in 0..octave_dots {
-        let dy = -JIANPU_DOT_OFFSET - (i as f64 * JIANPU_DOT_STEP);
-        svg.circle(draw_x, y + dy, JIANPU_DOT_R, fill);
-    }
-    for i in 0..(-octave_dots).max(0) {
-        let dy = JIANPU_DOT_OFFSET + (i as f64 * JIANPU_DOT_STEP);
-        svg.circle(draw_x, y + dy, JIANPU_DOT_R, fill);
-    }
-
-    // Duration underlines (first line well below the number to avoid overlap)
-    for i in 0..underlines {
-        let uy = y + JIANPU_UNDERLINE_OFFSET + (i as f64 * JIANPU_UNDERLINE_GAP);
-        svg.line(
-            draw_x - 2.0,
-            uy,
-            draw_x + JIANPU_DIGIT_WIDTH,
-            uy,
-            fill,
-            1.2,
-        );
-    }
-
-    // Suffix dot (dotted note)
-    if suffix_dot {
-        svg.circle(draw_x + JIANPU_DIGIT_WIDTH + 4.0, y - 2.0, 2.0, fill);
-    }
-
-    // Suffix dashes (half/whole)
-    let mut dash_x = draw_x + JIANPU_DIGIT_WIDTH + if suffix_dot { 10.0 } else { JIANPU_DASH_OFFSET };
-    for _ in 0..suffix_dashes {
-        svg.line(dash_x, y, dash_x + JIANPU_DASH_WIDTH, y, fill, 1.5);
-        dash_x += JIANPU_DASH_WIDTH + 2.0;
-    }
-}
-
-/// Render one measure of Jianpu: key label (first measure), underline spans, each note (underlines drawn as spans), then center line.
-/// Uses jianpu_center_y = staff_y + STAFF_HEIGHT/2 so the horizontal reference line and notes are vertically centered
-/// in the staff slot, aligning with the measure divider (vertical bar) which spans staff_y to staff_y+STAFF_HEIGHT.
+/// Render one measure of Jianpu: key label (first measure), then one `<text>` per note/rest (same pattern as lyrics).
+/// Uses the same `note_positions` and same index `i` as lyrics (note_positions[i]) so the first note and first syllable
+/// share the same x and are center-aligned. Iterates note-by-note like staff/lyrics instead of per-measure batches.
 pub(super) fn render_jianpu_measure(
     svg: &mut SvgBuilder,
     measure: &crate::model::Measure,
@@ -401,18 +255,12 @@ pub(super) fn render_jianpu_measure(
     key_fifths: i32,
     key_mode: Option<&str>,
     divisions: i32,
-    beat_x_map: &[(f64, f64)],
+    note_positions: &[f64],
     measure_x: f64,
     _measure_w: f64,
     draw_key_label: bool,
 ) {
     let jianpu_center_y = staff_y + STAFF_HEIGHT / 2.0;
-
-    let note_positions = note_x_positions_from_beat_map(
-        &measure.notes,
-        divisions,
-        beat_x_map,
-    );
     let div = divisions.max(1) as f64;
 
     if draw_key_label {
@@ -431,14 +279,7 @@ pub(super) fn render_jianpu_measure(
         );
     }
 
-    let spans = compute_underline_spans(
-        &measure.notes,
-        &note_positions,
-        divisions,
-        staff_filter,
-    );
-    draw_underline_spans(svg, &spans, jianpu_center_y);
-
+    // Render one <text> per note/rest (same pattern as lyrics: same index i, same note_positions[i]).
     const X_EPS: f64 = 0.5;
     let mut i = 0;
     while i < measure.notes.len() {
@@ -447,13 +288,15 @@ pub(super) fn render_jianpu_measure(
             i += 1;
             continue;
         }
-        let nx = note_positions.get(i).copied().unwrap_or(0.0);
+        if i >= note_positions.len() {
+            break;
+        }
+        let nx = note_positions[i];
 
         let group_indices: Vec<usize> = (0..measure.notes.len())
             .filter(|&k| measure.notes[k].staff.unwrap_or(1) == staff_filter)
             .filter(|&k| {
-                let kx = note_positions.get(k).copied().unwrap_or(0.0);
-                (kx - nx).abs() <= X_EPS
+                k < note_positions.len() && (note_positions[k] - nx).abs() <= X_EPS
             })
             .collect();
 
@@ -466,9 +309,11 @@ pub(super) fn render_jianpu_measure(
         }
 
         if note.rest && group_len == 1 {
-            let duration_quarters = note.duration as f64 / div * 4.0;
+            let duration_quarters = note.duration as f64 / div;
             let (underlines, dot, dashes) = duration_to_jianpu(duration_quarters, note.dot);
-            render_jianpu_note(svg, nx, jianpu_center_y, 0, 0, None, underlines, dot, dashes);
+            let ascii_str = note_to_jianpu_ascii(0, 0, None, underlines, dot, dashes);
+            let w = jianpu_center_width(0, 0, None, JIANPU_FONT_SIZE);
+            svg.jianpu_note_text_centered(nx, jianpu_center_y, &ascii_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
             i = group_end;
             continue;
         }
@@ -484,7 +329,9 @@ pub(super) fn render_jianpu_measure(
                         let offset = idx as f64 - (group_len as f64 - 1.0) / 2.0;
                         jianpu_center_y + offset * jianpu_chord_stack_spacing()
                     };
-                    render_jianpu_note(svg, nx, y, digit, octave_dots, accidental, 1, false, 0);
+                    let ascii_str = note_to_jianpu_ascii(digit, octave_dots, accidental, 1, false, 0);
+                    let w = jianpu_center_width(digit, octave_dots, accidental, JIANPU_FONT_SIZE);
+                    svg.jianpu_note_text_centered(nx, y, &ascii_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
                 }
             }
             i = group_end;
@@ -510,18 +357,21 @@ pub(super) fn render_jianpu_measure(
             };
 
             if n.rest {
-                let duration_quarters = n.duration as f64 / div * 4.0;
+                let duration_quarters = n.duration as f64 / div;
                 let (underlines, dot, dashes) = duration_to_jianpu(duration_quarters, n.dot);
-                render_jianpu_note(svg, nx, y, 0, 0, None, underlines, dot, dashes);
+                let ascii_str = note_to_jianpu_ascii(0, 0, None, underlines, dot, dashes);
+                let w = jianpu_center_width(0, 0, None, JIANPU_FONT_SIZE);
+                svg.jianpu_note_text_centered(nx, y, &ascii_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
             } else if let Some(ref pitch) = n.pitch {
                 let (digit, octave_dots, accidental) = pitch_to_jianpu(pitch, key_fifths, key_mode);
-                let duration_quarters = n.duration as f64 / div * 4.0;
-                let (_u, suffix_dot, suffix_dashes) = duration_to_jianpu(duration_quarters, n.dot);
-                render_jianpu_note(
-                    svg, nx, y,
+                let duration_quarters = n.duration as f64 / div;
+                let (underlines, suffix_dot, suffix_dashes) = duration_to_jianpu(duration_quarters, n.dot);
+                let ascii_str = note_to_jianpu_ascii(
                     digit, octave_dots, accidental,
-                    0, suffix_dot, suffix_dashes,
+                    underlines, suffix_dot, suffix_dashes,
                 );
+                let w = jianpu_center_width(digit, octave_dots, accidental, JIANPU_FONT_SIZE);
+                svg.jianpu_note_text_centered(nx, y, &ascii_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
             }
         }
         i = group_end;

@@ -136,7 +136,7 @@ pub fn render_score_to_svg(
         }
     };
 
-    let layout = compute_layout_with_staff_filter(score, &parts_with_staves, page_width);
+    let layout = compute_layout_with_staff_filter(score, &parts_with_staves, page_width, use_jianpu);
 
     let mut svg = SvgBuilder::new(page_width, layout.total_height);
 
@@ -642,6 +642,10 @@ pub fn render_score_to_svg(
                     }
 
                     let staff_filter = Some(staff_num as i32);
+                    // Same note x positions for both jianpu/notes and lyrics so they stay center-aligned.
+                    let note_xs = note_x_positions_from_beat_map(
+                        &measure.notes, ps.divisions, &ml.beat_x_map,
+                    );
                     if use_jianpu {
                         let key_fifths = ps.key.as_ref().map_or(0, |k| k.fifths);
                         let key_mode = ps.key.as_ref().and_then(|k| k.mode.as_deref());
@@ -654,7 +658,7 @@ pub fn render_score_to_svg(
                             key_fifths,
                             key_mode,
                             ps.divisions,
-                            &ml.beat_x_map,
+                            &note_xs,
                             mx,
                             mw,
                             draw_key_label,
@@ -709,11 +713,7 @@ pub fn render_score_to_svg(
                     // Barlines (per-staff): repeat signs and bar lines on each staff
                     render_barlines(&mut svg, measure, mx, mw, staff_y);
 
-                    // Lyrics: render for this staff so melody-on-treble (staff 1) or
-                    // lyric-on-bass (staff 2) both get lyrics at the same baseline.
-                    let note_xs = note_x_positions_from_beat_map(
-                        &measure.notes, ps.divisions, &ml.beat_x_map,
-                    );
+                    // Lyrics: same note_xs as jianpu/notes so first note and first syllable are center-aligned.
                     render_lyrics(
                         &mut svg, measure, &note_xs,
                         lyrics_base_y, staff_filter,
@@ -821,7 +821,7 @@ pub fn compute_measure_positions(
                 .enumerate()
                 .map(|(i, part)| (i, detect_staves(part)))
                 .collect();
-            compute_layout(score, &parts_staves, page_width)
+            compute_layout(score, &parts_staves, page_width, false)
         }
         Some(list) => {
             let global_staves: Vec<(usize, usize)> = score
@@ -858,7 +858,7 @@ pub fn compute_measure_positions(
                 result.sort_by_key(|&(p, _)| p);
                 result
             };
-            compute_layout_with_staff_filter(score, &parts_with_staves, page_width)
+            compute_layout_with_staff_filter(score, &parts_with_staves, page_width, false)
         }
     };
 

@@ -4,6 +4,9 @@ import android.content.ClipboardManager
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.webkit.JavascriptInterface
+import android.util.Log
+import android.webkit.ConsoleMessage
+import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
@@ -2059,6 +2062,12 @@ private fun SvgWebView(
         factory = { context ->
             WebView(context).apply {
                 webViewClient = WebViewClient()
+                webChromeClient = object : WebChromeClient() {
+                    override fun onConsoleMessage(message: ConsoleMessage?): Boolean {
+                        message?.message()?.let { Log.d("JianpuFont", it) }
+                        return super.onConsoleMessage(message)
+                    }
+                }
                 settings.apply {
                     @Suppress("SetJavaScriptEnabled")
                     javaScriptEnabled = true
@@ -2152,6 +2161,12 @@ private fun buildHtml(svg: String, playbackMapJson: String?, cursorBarVisible: B
                 font-weight: normal;
                 font-style: normal;
             }
+            @font-face {
+                font-family: 'Jianpu';
+                src: url('fonts/JianpuASCII.ttf') format('truetype');
+                font-weight: normal;
+                font-style: normal;
+            }
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body {
                 background: white;
@@ -2191,6 +2206,22 @@ private fun buildHtml(svg: String, playbackMapJson: String?, cursorBarVisible: B
             <div id="cursor"></div>
         </div>
         <script>
+        // Log whether Jianpu font loaded (see Logcat tag "JianpuFont" on Android; Xcode console on iOS)
+        (function checkJianpuFont() {
+            function log(msg) {
+                console.log(msg);
+                if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.fontLog)
+                    window.webkit.messageHandlers.fontLog.postMessage(msg);
+            }
+            if (!document.fonts || typeof document.fonts.check !== 'function') {
+                log('[Jianpu font] Font Loading API not supported');
+                return;
+            }
+            document.fonts.ready.then(function() {
+                var loaded = document.fonts.check("1em 'Jianpu'");
+                log(loaded ? '[Jianpu font] LOADED' : '[Jianpu font] NOT LOADED (check font file in assets/fonts)');
+            }).catch(function(e) { log('[Jianpu font] Error: ' + e); });
+        })();
         ${CURSOR_JAVASCRIPT}
         // Apply cursor bar visibility from the native setting before init
         _cursorBarVisible = $cursorBarVisible;

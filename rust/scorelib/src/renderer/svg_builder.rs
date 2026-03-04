@@ -91,11 +91,12 @@ impl SvgBuilder {
         ));
     }
 
-    /// Render a styled text element with optional font-family and font-style attributes.
+    /// Render a styled text element with optional font-family, font-style, and dominant-baseline.
     pub(super) fn styled_text(
         &mut self, x: f64, y: f64, content: &str,
         size: f64, weight: &str, fill: &str, anchor: &str,
         font_family: Option<&str>, font_style: Option<&str>,
+        dominant_baseline: Option<&str>,
     ) {
         let escaped = content
             .replace('&', "&amp;")
@@ -117,6 +118,9 @@ impl SvgBuilder {
         if let Some(style) = font_style {
             attrs.push_str(&format!(r#" font-style="{}""#, style));
         }
+        if let Some(db) = dominant_baseline {
+            attrs.push_str(&format!(r#" dominant-baseline="{}""#, db));
+        }
         self.elements.push(format!("<text {}>{}</text>", attrs, escaped));
     }
 
@@ -129,6 +133,35 @@ impl SvgBuilder {
         self.elements.push(format!(
             r#"<text x="{:.1}" y="{:.1}" font-family="Times New Roman, serif" font-size="{:.0}" font-weight="normal" fill="{}" text-anchor="start">{}</text>"#,
             x, y, size, fill, escaped
+        ));
+    }
+
+    /// One &lt;text&gt; per Jianpu note/rest. Uses text-anchor="start" and x = center_x - width/2 + x_offset
+    /// so the visual center aligns with lyrics (x_offset from jianpu module shifts note right if needed).
+    pub(super) fn jianpu_note_text_centered(
+        &mut self,
+        center_x: f64,
+        y: f64,
+        content: &str,
+        width_estimate: f64,
+        x_offset: f64,
+        font_family: &str,
+        font_size: f64,
+        fill: &str,
+    ) {
+        let x_start = center_x - width_estimate / 2.0 + x_offset;
+        let escaped = content
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;");
+        let esc_family = font_family
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;");
+        self.elements.push(format!(
+            r#"<text x="{:.1}" y="{:.1}" font-family="'{}'" font-size="{:.0}" fill="{}" text-anchor="start" dominant-baseline="middle" style="font-feature-settings: 'liga' 1, 'calt' 1">{}</text>"#,
+            x_start, y, esc_family, font_size, fill, escaped
         ));
     }
 

@@ -342,8 +342,9 @@ struct SVGWebView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
 
-        // Register message handler for receiving seek events from JavaScript
+        // Register message handlers (playback seek; font load logging)
         config.userContentController.add(context.coordinator, name: "playback")
+        config.userContentController.add(context.coordinator, name: "fontLog")
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.isOpaque = false
@@ -364,6 +365,7 @@ struct SVGWebView: UIViewRepresentable {
         // WebView -> UserContentController -> Coordinator -> PlaybackManager.
         // Without this, the WKWebView and Coordinator are never deallocated.
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "playback")
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "fontLog")
         coordinator.playbackManager.webView = nil
     }
 
@@ -433,6 +435,12 @@ struct SVGWebView: UIViewRepresentable {
                 font-weight: normal;
                 font-style: normal;
             }
+            @font-face {
+                font-family: 'Jianpu';
+                src: url('Fonts/JianpuASCII.ttf') format('truetype');
+                font-weight: normal;
+                font-style: normal;
+            }
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body {
                 background: white;
@@ -472,6 +480,22 @@ struct SVGWebView: UIViewRepresentable {
             <div id="cursor"></div>
         </div>
         <script>
+        // Log whether Jianpu font loaded (see Xcode console / Android Logcat tag "JianpuFont")
+        (function checkJianpuFont() {
+            function log(msg) {
+                console.log(msg);
+                if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.fontLog)
+                    window.webkit.messageHandlers.fontLog.postMessage(msg);
+            }
+            if (!document.fonts || typeof document.fonts.check !== 'function') {
+                log('[Jianpu font] Font Loading API not supported');
+                return;
+            }
+            document.fonts.ready.then(function() {
+                var loaded = document.fonts.check("1em 'Jianpu'");
+                log(loaded ? '[Jianpu font] LOADED' : '[Jianpu font] NOT LOADED (check font file in assets/fonts)');
+            }).catch(function(e) { log('[Jianpu font] Error: ' + e); });
+        })();
         \(Self.cursorJavaScript)
         // Apply cursor bar visibility from the native setting before init
         _cursorBarVisible = \(cursorBarVisible);
@@ -787,6 +811,10 @@ struct SVGWebView: UIViewRepresentable {
 
         func userContentController(_ userContentController: WKUserContentController,
                                    didReceive message: WKScriptMessage) {
+            if message.name == "fontLog", let msg = message.body as? String {
+                print(msg)
+                return
+            }
             guard message.name == "playback",
                   let body = message.body as? [String: Any],
                   let action = body["action"] as? String else {

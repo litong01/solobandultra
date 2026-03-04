@@ -51,6 +51,9 @@ const MIN_NOTE_SPACING: f64 = 12.0;
 /// `total_quarters` is the full duration of the measure in quarter notes
 /// (from the time signature). Notes are spaced proportionally to their
 /// duration, so a half note gets twice the space of a quarter note.
+///
+/// When `min_trailing_gap` is `Some(v)`, the space after the last note uses
+/// at least `v` (e.g. jianpu uses a smaller value to avoid excess end space).
 pub(super) fn compute_beat_x_map(
     all_beat_times: &[Vec<f64>],
     mx: f64,
@@ -59,6 +62,7 @@ pub(super) fn compute_beat_x_map(
     right_pad: f64,
     lyric_events: &[LyricEvent],
     total_quarters: f64,
+    min_trailing_gap: Option<f64>,
 ) -> Vec<(f64, f64)> {
     let usable_width = mw - left_pad - right_pad;
 
@@ -104,7 +108,8 @@ pub(super) fn compute_beat_x_map(
     // Trailing gap: space after the last note to the measure's right edge
     let last_beat = unique_beats.last().copied().unwrap_or(0.0);
     let trailing_prop = ((total_q - last_beat) / total_q) * usable_width;
-    gaps.push(trailing_prop.max(MIN_NOTE_SPACING));
+    let trailing_min = min_trailing_gap.unwrap_or(MIN_NOTE_SPACING);
+    gaps.push(trailing_prop.max(trailing_min));
 
     // Scale all gaps so they sum to exactly usable_width
     let total_gaps: f64 = gaps.iter().sum();

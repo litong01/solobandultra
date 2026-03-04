@@ -79,6 +79,23 @@
 /* End PBXFrameworksBuildPhase section */
 /* PDFKit is a system framework — linked automatically via OTHER_LDFLAGS in build settings */
 
+/* Begin PBXShellScriptBuildPhase section */
+		JJ00000000000000000001A1 /* Deploy Fonts */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Deploy Fonts";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Copy fonts (Lora, LXGW WenKai, JianpuASCII, etc.) from repo assets/fonts/ into the app Fonts folder.\nFONTS_SRC=\"${PROJECT_DIR}/../../assets/fonts\"\nFONTS_DST=\"${PROJECT_DIR}/SoloBandUltra/Fonts\"\nmkdir -p \"$FONTS_DST\"\nif [ -d \"$FONTS_SRC\" ]; then\n  cp \"$FONTS_SRC\"/*.ttf \"$FONTS_DST\"/ 2>/dev/null || true\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXGroup section */
 		AA0000000000000000000D01 = {
 			isa = PBXGroup;
@@ -140,6 +157,7 @@
 			buildPhases = (
 				AA0000000000000000000F01 /* Sources */,
 				AA0000000000000000000F02 /* Frameworks */,
+				JJ00000000000000000001A1 /* Deploy Fonts */,
 				AA0000000000000000000F03 /* Resources */,
 			);
 			buildRules = (

@@ -19,13 +19,13 @@ pub(super) fn render_header(svg: &mut SvgBuilder, score: &Score, page_width: f64
     if let Some(ref title) = score.title {
         let size = score.title_style.as_ref().and_then(|s| s.font_size).unwrap_or(22.0);
         svg.styled_text(center_x, PAGE_MARGIN_TOP + 22.0, title, size, "bold",
-                        HEADER_COLOR, "middle", Some(font_for_text(title)), None);
+                        HEADER_COLOR, "middle", Some(font_for_text(title)), None, None);
     }
 
     if let Some(ref subtitle) = score.subtitle {
         let size = score.subtitle_style.as_ref().and_then(|s| s.font_size).unwrap_or(14.0);
         svg.styled_text(center_x, PAGE_MARGIN_TOP + 40.0, subtitle, size, "normal",
-                        HEADER_COLOR, "middle", Some(font_for_text(subtitle)), None);
+                        HEADER_COLOR, "middle", Some(font_for_text(subtitle)), None, None);
     }
 
     if let Some(ref composer) = score.composer {
@@ -37,7 +37,7 @@ pub(super) fn render_header(svg: &mut SvgBuilder, score: &Score, page_width: f64
         let size = score.composer_style.as_ref().and_then(|s| s.font_size).unwrap_or(11.0);
         svg.styled_text(page_width - PAGE_MARGIN_RIGHT, PAGE_MARGIN_TOP + 55.0,
                         &label, size, "normal", HEADER_COLOR, "end",
-                        Some(font_for_text(&label)), None);
+                        Some(font_for_text(&label)), None, None);
     }
 }
 

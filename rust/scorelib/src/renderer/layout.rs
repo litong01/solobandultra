@@ -125,14 +125,25 @@ fn expand_parts_staves(_score: &Score, parts_staves: &[(usize, usize)]) -> Vec<(
         .collect()
 }
 
-pub(super) fn compute_layout(score: &Score, parts_staves: &[(usize, usize)], page_width: f64) -> ScoreLayout {
-    compute_layout_with_staff_filter(score, &expand_parts_staves(score, parts_staves), page_width)
+pub(super) fn compute_layout(
+    score: &Score,
+    parts_staves: &[(usize, usize)],
+    page_width: f64,
+    use_jianpu: bool,
+) -> ScoreLayout {
+    compute_layout_with_staff_filter(
+        score,
+        &expand_parts_staves(score, parts_staves),
+        page_width,
+        use_jianpu,
+    )
 }
 
 pub(super) fn compute_layout_with_staff_filter(
     score: &Score,
     parts_with_staves: &[(usize, Vec<usize>)],
     page_width: f64,
+    use_jianpu: bool,
 ) -> ScoreLayout {
     let content_width = page_width - PAGE_MARGIN_LEFT - PAGE_MARGIN_RIGHT;
     let mut systems: Vec<SystemLayout> = Vec::new();
@@ -365,6 +376,10 @@ pub(super) fn compute_layout_with_staff_filter(
                     }
                 }
             }
+            // Jianpu: more space at start of each measure; avoid extra space at end (trailing gap handled in beat map)
+            if use_jianpu {
+                left_inset = left_inset.max(if mi == 0 { 44.0 } else { 24.0 });
+            }
 
             let lyric_evts = collect_lyric_events(&score.parts, mi, &divisions_per_part);
             let nominal_quarters = running_times[mi]
@@ -393,7 +408,8 @@ pub(super) fn compute_layout_with_staff_filter(
             } else {
                 nominal_quarters
             };
-            let beat_x_map = compute_beat_x_map(&all_beat_times, x, w, left_inset, right_inset, &lyric_evts, total_quarters);
+            let min_trailing = if use_jianpu { Some(4.0) } else { None };
+            let beat_x_map = compute_beat_x_map(&all_beat_times, x, w, left_inset, right_inset, &lyric_evts, total_quarters, min_trailing);
 
             measures.push(MeasureLayout {
                 measure_idx: mi,

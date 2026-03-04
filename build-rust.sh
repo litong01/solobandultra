@@ -67,9 +67,10 @@ docker_cargo() {
 
 # ─── Font deployment ────────────────────────────────────────────────
 #
-# Fonts live once in assets/fonts/ (source of truth).
-# build-rust.sh deploys them to both platform destinations so the
-# projects always have them — even after a clean Xcode/Android wipe.
+# Fonts (Lora, LXGW WenKai, JianpuASCII, etc.) live once in assets/fonts/
+# (source of truth). This script deploys them to both platform destinations.
+# Android and iOS also copy from assets/fonts/ during their own builds
+# (Gradle copyFonts task, Xcode "Deploy Fonts" run script).
 
 deploy_fonts() {
     if [ ! -d "$FONTS_SRC" ]; then
