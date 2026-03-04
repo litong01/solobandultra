@@ -371,6 +371,7 @@ jobs:
           credentials: ${{ secrets.GDRIVE_CREDENTIALS }}
           filename: ./artifacts/SoloBandUltra-Android-release.apk
           useCompleteSourceFilenameAsName: false
+          mirrorDirectoryStructure: false
           folderId: ${{ secrets.GDRIVE_FOLDER_ID }}
           overwrite: true
   

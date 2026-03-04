@@ -827,6 +827,194 @@ unsafe fn parse_midi_options_json(json_ptr: *const c_char) -> MidiOptions {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::{Harmony, HarmonyRoot};
+
+    /// Minimal valid MusicXML as bytes for parsing tests.
+    const MINIMAL_XML: &str = r#"<?xml version="1.0"?><score-partwise version="3.1"><part-list><score-part id="P1"><part-name>Part</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time></attributes><note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note></measure></part></score-partwise>"#;
+
+    #[test]
+    fn transpose_score_zero_is_noop() {
+        let mut score = parse_bytes(MINIMAL_XML.as_bytes(), Some("xml")).unwrap();
+        let before = score.parts[0].measures[0].notes[0].pitch.as_ref().unwrap().step.clone();
+        transpose_score(&mut score, 0);
+        let after = score.parts[0].measures[0].notes[0].pitch.as_ref().unwrap().step.clone();
+        assert_eq!(before, "C");
+        assert_eq!(after, "C");
+    }
+
+    #[test]
+    fn transpose_score_up_shifts_pitch_and_key() {
+        let mut score = parse_bytes(MINIMAL_XML.as_bytes(), Some("xml")).unwrap();
+        let key_before = score.parts[0].measures[0]
+            .attributes
+            .as_ref()
+            .and_then(|a| a.key.as_ref())
+            .map(|k| k.fifths);
+        let pitch_before = score.parts[0].measures[0].notes[0]
+            .pitch
+            .as_ref()
+            .map(|p| (p.step.clone(), p.octave));
+        transpose_score(&mut score, 2);
+        let key_after = score.parts[0].measures[0]
+            .attributes
+            .as_ref()
+            .and_then(|a| a.key.as_ref())
+            .map(|k| k.fifths);
+        let pitch_after = score.parts[0].measures[0].notes[0]
+            .pitch
+            .as_ref()
+            .map(|p| (p.step.clone(), p.octave));
+        assert_eq!(pitch_before, Some(("C".to_string(), 4)));
+        assert_eq!(pitch_after, Some(("D".to_string(), 4)));
+        assert_ne!(key_before, key_after);
+    }
+
+    #[test]
+    fn transpose_score_with_harmony_transposes_root() {
+        let mut score = parse_bytes(MINIMAL_XML.as_bytes(), Some("xml")).unwrap();
+        score.parts[0].measures[0].harmonies.push(Harmony {
+            root: HarmonyRoot { step: "C".to_string(), alter: None },
+            kind: "major".to_string(),
+            bass: Some(HarmonyRoot { step: "E".to_string(), alter: None }),
+            offset_divisions: 0,
+        });
+        transpose_score(&mut score, -2); // C -> Bb (or A#), E -> D
+        let harm = &score.parts[0].measures[0].harmonies[0];
+        // Root was C (0), now 10 (Bb or A#); bass was E (4), now 2 (D)
+        assert_ne!(harm.root.step, "C");
+        let bass = harm.bass.as_ref().unwrap();
+        assert_eq!(bass.step, "D");
+        assert!(bass.alter.is_none() || bass.alter == Some(0.0));
+    }
+
+    #[test]
+    fn parse_file_nonexistent_returns_err() {
+        let result = parse_file("/nonexistent/path/12345.musicxml");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("Failed to read") || err.contains("read") || err.contains("No such file") || err.contains("path")
+        );
+    }
+
+    #[test]
+    fn parse_bytes_musicxml_extension() {
+        let result = parse_bytes(MINIMAL_XML.as_bytes(), Some("musicxml"));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().measure_count(), 1);
+    }
+
+    #[test]
+    fn parse_bytes_invalid_utf8_xml_returns_err() {
+        let bad = b"\xff\xfe"; // invalid UTF-8
+        let result = parse_bytes(bad, Some("xml"));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("UTF-8"));
+    }
+
+    #[test]
+    fn parse_bytes_mxl_extension_invalid_data_returns_err() {
+        let result = parse_bytes(b"not a zip", Some("mxl"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn render_bytes_to_svg_produces_svg() {
+        let result = render_bytes_to_svg(
+            MINIMAL_XML.as_bytes(),
+            Some("xml"),
+            None,
+            0,
+            None,
+            false,
+        );
+        assert!(result.is_ok());
+        let svg = result.unwrap();
+        assert!(svg.contains("<svg") || svg.contains("svg"));
+    }
+
+    #[test]
+    fn generate_midi_from_score_produces_smf() {
+        let score = parse_bytes(MINIMAL_XML.as_bytes(), Some("xml")).unwrap();
+        let midi = generate_midi_from_score(&score, &MidiOptions::default());
+        assert!(!midi.is_empty());
+        assert!(midi.len() >= 14);
+        assert_eq!(&midi[0..4], b"MThd");
+    }
+
+    #[test]
+    fn generate_midi_from_bytes_produces_midi() {
+        let result = generate_midi_from_bytes(
+            MINIMAL_XML.as_bytes(),
+            Some("xml"),
+            &MidiOptions::default(),
+        );
+        assert!(result.is_ok());
+        let midi = result.unwrap();
+        assert!(!midi.is_empty());
+        assert_eq!(&midi[0..4], b"MThd");
+    }
+
+    #[test]
+    fn add_feedback_overlay_injects_group() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><rect width="100" height="100"/></svg>"#;
+        let overlay = r#"[{"x":50,"y":50,"colors":["green"]}]"#;
+        let result = add_feedback_overlay(svg, overlay);
+        assert!(result.is_ok());
+        let out = result.unwrap();
+        assert!(out.contains("feedback-overlay"));
+    }
+
+    #[test]
+    fn playback_map_from_score_produces_json() {
+        let score = parse_bytes(MINIMAL_XML.as_bytes(), Some("xml")).unwrap();
+        let json = playback_map_from_score(&score, None, None, false);
+        assert!(!json.is_empty());
+        assert!(json.contains("measures") || json.contains("timemap") || json.contains('{'));
+    }
+
+    #[test]
+    fn playback_map_from_bytes_produces_json() {
+        let result = playback_map_from_bytes(
+            MINIMAL_XML.as_bytes(),
+            Some("xml"),
+            None,
+            0,
+            None,
+            false,
+        );
+        assert!(result.is_ok());
+        let json = result.unwrap();
+        assert!(!json.is_empty());
+    }
+
+    #[test]
+    fn score_to_json_with_parsed_score() {
+        let score = parse_bytes(MINIMAL_XML.as_bytes(), Some("xml")).unwrap();
+        let json = score_to_json(&score).unwrap();
+        assert!(json.contains("Part") || json.contains("parts"));
+    }
+
+    #[test]
+    fn render_audio_from_bytes_invalid_soundfont_returns_err() {
+        let result = render_audio_from_bytes(
+            MINIMAL_XML.as_bytes(),
+            Some("xml"),
+            &MidiOptions::default(),
+            b"invalid soundfont bytes",
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_midi_options_include_metronome_and_spaced_json() {
+        let opts = parse_midi_options_from_json_str(r#"{"include_metronome": false}"#);
+        assert!(!opts.include_metronome);
+        let opts = parse_midi_options_from_json_str(r#"{"include_strings": true}"#);
+        assert!(opts.include_strings);
+        let opts = parse_midi_options_from_json_str(r#"{"include_drums": true}"#);
+        assert!(opts.include_drums);
+    }
 
     #[test]
     fn parse_parts_filter_valid() {
