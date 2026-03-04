@@ -263,8 +263,8 @@ struct SheetMusicView: View {
             let useJianpu = midiSettings.scoreRenderingMode == "jianpu"
             let svg = ScoreLib.renderData(data, extension: ext, pageWidth: pageWidth, transpose: transposeVal, partsFilter: partsFilter, useJianpu: useJianpu)
 
-            // Generate playback map (same partsFilter as SVG so cursor height/position match)
-            let pmap = ScoreLib.playbackMap(data, extension: ext, pageWidth: pageWidth, transpose: transposeVal, partsFilter: partsFilter)
+            // Generate playback map (same partsFilter and useJianpu as SVG so cursor matches)
+            let pmap = ScoreLib.playbackMap(data, extension: ext, pageWidth: pageWidth, transpose: transposeVal, partsFilter: partsFilter, useJianpu: useJianpu)
 
             // Generate note timeline for real-time feedback (voice 1, part 0)
             let timelineJson = ScoreLib.noteTimeline(data, extension: ext, transpose: transposeVal)

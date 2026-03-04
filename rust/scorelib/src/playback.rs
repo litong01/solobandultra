@@ -86,16 +86,17 @@ impl From<&TimemapEntry> for TimemapEntryJson {
 /// extracts the measure and system positions — no actual SVG is produced.
 /// When `staff_indices_1based` is set, uses the same filtered layout so
 /// cursor y/height and measure positions match the rendered SVG.
-/// Combined with the unrolled timemap, this gives the WebView everything
-/// it needs to position and animate the playback cursor.
+/// When `use_jianpu` is true, uses jianpu layout so the cursor matches
+/// jianpu rendering and does not land on key or time signature symbols.
 pub fn generate_playback_map(
     score: &Score,
     page_width: Option<f64>,
     staff_indices_1based: Option<&[usize]>,
+    use_jianpu: bool,
 ) -> PlaybackMap {
     // Get measure and system positions from the renderer's layout (same filter as SVG)
     let (measure_positions, system_positions) =
-        compute_measure_positions(score, page_width, staff_indices_1based);
+        compute_measure_positions(score, page_width, staff_indices_1based, use_jianpu);
 
     // Unroll and generate timemap
     let part_idx = 0;

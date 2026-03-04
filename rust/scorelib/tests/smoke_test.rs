@@ -448,7 +448,7 @@ fn smoke_midi_full_accompaniment() {
 #[test]
 fn smoke_playback_map() {
     let score = parse_file(smoke_test_path()).unwrap();
-    let pmap = generate_playback_map(&score, None, None);
+    let pmap = generate_playback_map(&score, None, None, false);
 
     assert_eq!(pmap.measures.len(), 70, "Should have 70 original measures");
     assert_eq!(pmap.timemap.len(), 76, "Should have 76 unrolled timemap entries");

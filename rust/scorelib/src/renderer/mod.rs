@@ -288,11 +288,8 @@ pub fn render_score_to_svg(
                     + (display_idx as f64) * (STAFF_HEIGHT + GRAND_STAFF_GAP);
 
                 if use_jianpu {
-                    if system.show_time && display_idx == 0 {
-                        if let Some(ref time) = ps.time {
-                            render_time_signature(&mut svg, sys_prefix_x + 10.0, staff_y, time);
-                        }
-                    }
+                    // Jianpu: key and time are drawn per measure at the bar (see below), not in the system prefix.
+                    // Only draw the bracket/brace area; no time sig here.
                 } else {
                     render_staff_lines(&mut svg, sys_prefix_x, system.x_end, staff_y);
 
@@ -656,14 +653,17 @@ pub fn render_score_to_svg(
                     if use_jianpu {
                         let key_fifths = ps.key.as_ref().map_or(0, |k| k.fifths);
                         let key_mode = ps.key.as_ref().and_then(|k| k.mode.as_deref());
-                        // Draw key label (measure 0 or mid-score key change) and time sig when changed
-                        let mut inline_x = mx + 6.0;
+                        // Key and time sit right at the measure bar (not as "notes") so the cursor never lands on them.
+                        let bar_offset = 2.0; // minimal gap from the bar line
+                        let mut inline_x = mx + bar_offset;
                         let jianpu_center_y = staff_y + STAFF_HEIGHT / 2.0;
-                        if ml.measure_idx == 0 || ml.has_key_change {
+                        let draw_key = ml.measure_idx == 0 || ml.has_key_change;
+                        let draw_time = (ml.measure_idx == 0 && system.show_time) || ml.has_time_change;
+                        if draw_key {
                             jianpu::render_key_label(&mut svg, inline_x, jianpu_center_y - 20.0, key_fifths, key_mode);
                             inline_x += JIANPU_KEY_LABEL_SPACE;
                         }
-                        if ml.has_time_change {
+                        if draw_time {
                             if let Some(ref time) = ps.time {
                                 render_time_signature(&mut svg, inline_x, staff_y, time);
                             }
@@ -825,6 +825,10 @@ pub const FEEDBACK_DOTS_OFFSET: f64 = 16.0;
 /// filtered layout as `render_score_to_svg`, so cursor y/height and measure
 /// positions match the rendered SVG.
 ///
+/// When `use_jianpu` is true, uses the same jianpu layout as the SVG (single staff,
+/// key/time at bar, correct beat_x_map) so the playback cursor does not land on
+/// key or time signature symbols.
+///
 /// Returns two vectors:
 /// - Measures: `(measure_idx, x, width, system_idx, beat_x_map)` for each measure
 /// - Systems: `(y, height, dots_base_y)` for each system (line of music).
@@ -837,6 +841,7 @@ pub fn compute_measure_positions(
     score: &Score,
     page_width: Option<f64>,
     staff_indices_1based: Option<&[usize]>,
+    use_jianpu: bool,
 ) -> (Vec<(usize, f64, f64, usize, Vec<(f64, f64)>)>, Vec<(f64, f64, f64)>) {
     let page_width = match page_width {
         Some(w) if w > 0.0 => w,
@@ -847,54 +852,67 @@ pub fn compute_measure_positions(
         return (Vec::new(), Vec::new());
     }
 
-    let layout = match staff_indices_1based {
-        None | Some([]) => {
-            let parts_staves: Vec<(usize, usize)> = score
-                .parts
-                .iter()
-                .enumerate()
-                .map(|(i, part)| (i, detect_staves(part)))
-                .collect();
-            compute_layout(score, &parts_staves, page_width, false)
+    let global_staves: Vec<(usize, usize)> = score
+        .parts
+        .iter()
+        .enumerate()
+        .flat_map(|(pidx, part)| {
+            let n = detect_staves(part);
+            (1..=n).map(move |staff_num| (pidx, staff_num))
+        })
+        .collect();
+
+    let parts_with_staves: Vec<(usize, Vec<usize>)> = if use_jianpu {
+        let one_based = staff_indices_1based
+            .and_then(|l| l.first().copied())
+            .unwrap_or(1);
+        let gi = one_based.saturating_sub(1);
+        if let Some(&(pidx, staff_num)) = global_staves.get(gi) {
+            vec![(pidx, vec![staff_num])]
+        } else if let Some(&first) = global_staves.first() {
+            vec![(first.0, vec![first.1])]
+        } else {
+            return (Vec::new(), Vec::new());
         }
-        Some(list) => {
-            let global_staves: Vec<(usize, usize)> = score
+    } else {
+        match staff_indices_1based {
+            None | Some([]) => score
                 .parts
                 .iter()
                 .enumerate()
-                .flat_map(|(pidx, part)| {
-                    let n = detect_staves(part);
-                    (1..=n).map(move |staff_num| (pidx, staff_num))
-                })
-                .collect();
-            let selected: Vec<(usize, usize)> = list
-                .iter()
-                .filter_map(|&one_based| one_based.checked_sub(1))
-                .filter_map(|gi| global_staves.get(gi).copied())
-                .collect();
-            let parts_with_staves: Vec<(usize, Vec<usize>)> = if selected.is_empty() {
-                if let Some(&first) = global_staves.first() {
-                    vec![(first.0, vec![first.1])]
+                .map(|(pidx, part)| (pidx, (1..=detect_staves(part)).collect()))
+                .collect(),
+            Some(list) => {
+                let selected: Vec<(usize, usize)> = list
+                    .iter()
+                    .filter_map(|&one_based| one_based.checked_sub(1))
+                    .filter_map(|gi| global_staves.get(gi).copied())
+                    .collect();
+                if selected.is_empty() {
+                    if let Some(&first) = global_staves.first() {
+                        vec![(first.0, vec![first.1])]
+                    } else {
+                        return (Vec::new(), Vec::new());
+                    }
                 } else {
-                    return (Vec::new(), Vec::new());
+                    let mut by_part: std::collections::HashMap<usize, Vec<usize>> =
+                        std::collections::HashMap::new();
+                    for (pidx, staff_num) in selected {
+                        by_part.entry(pidx).or_default().push(staff_num);
+                    }
+                    for staves in by_part.values_mut() {
+                        staves.sort_unstable();
+                        staves.dedup();
+                    }
+                    let mut result: Vec<(usize, Vec<usize>)> = by_part.into_iter().collect();
+                    result.sort_by_key(|&(p, _)| p);
+                    result
                 }
-            } else {
-                let mut by_part: std::collections::HashMap<usize, Vec<usize>> =
-                    std::collections::HashMap::new();
-                for (pidx, staff_num) in selected {
-                    by_part.entry(pidx).or_default().push(staff_num);
-                }
-                for staves in by_part.values_mut() {
-                    staves.sort_unstable();
-                    staves.dedup();
-                }
-                let mut result: Vec<(usize, Vec<usize>)> = by_part.into_iter().collect();
-                result.sort_by_key(|&(p, _)| p);
-                result
-            };
-            compute_layout_with_staff_filter(score, &parts_with_staves, page_width, false)
+            }
         }
     };
+
+    let layout = compute_layout_with_staff_filter(score, &parts_with_staves, page_width, use_jianpu);
 
     let mut measure_positions = Vec::new();
     let mut system_positions = Vec::new();

@@ -105,26 +105,29 @@ object ScoreLib {
      * @param pageWidth SVG width in user-units (pass 0f for the default 820).
      * @param transpose Semitones to transpose (0 = no change). Must match render transpose.
      * @param partsFilter Same as used for SVG rendering (e.g. "1,3"). Pass null for all staves.
+     * @param useJianpu true when rendering in jianpu so cursor positions match.
      */
-    external fun playbackMap(data: ByteArray, extension: String?, pageWidth: Float, transpose: Int, partsFilter: String?): String?
+    external fun playbackMap(data: ByteArray, extension: String?, pageWidth: Float, transpose: Int, partsFilter: String?, useJianpu: Boolean): String?
 
     /**
      * Generate a playback map from a MusicXML asset file.
      * @param transpose Semitones to transpose (0 = no change). Must match render transpose.
      * @param partsFilter Same as used for SVG rendering. Pass null for all staves.
+     * @param useJianpu true when rendering in jianpu so cursor positions match.
      */
-    fun playbackMapFromAsset(context: Context, assetPath: String, pageWidth: Float = 0f, transpose: Int = 0, partsFilter: String? = null): String? {
+    fun playbackMapFromAsset(context: Context, assetPath: String, pageWidth: Float = 0f, transpose: Int = 0, partsFilter: String? = null, useJianpu: Boolean = false): String? {
         val extension = assetPath.substringAfterLast('.', "")
         val bytes = context.assets.open(assetPath).use { it.readBytes() }
-        return playbackMap(bytes, extension.ifEmpty { null }, pageWidth, transpose, partsFilter)
+        return playbackMap(bytes, extension.ifEmpty { null }, pageWidth, transpose, partsFilter, useJianpu)
     }
 
     /**
      * Generate a playback map from pre-loaded MusicXML bytes.
      * @param partsFilter Same as used for SVG rendering. Pass null for all staves.
+     * @param useJianpu true when rendering in jianpu so cursor positions match.
      */
-    fun playbackMapFromData(data: ByteArray, ext: String, pageWidth: Float = 0f, transpose: Int = 0, partsFilter: String? = null): String? {
-        return playbackMap(data, ext.ifEmpty { null }, pageWidth, transpose, partsFilter)
+    fun playbackMapFromData(data: ByteArray, ext: String, pageWidth: Float = 0f, transpose: Int = 0, partsFilter: String? = null, useJianpu: Boolean = false): String? {
+        return playbackMap(data, ext.ifEmpty { null }, pageWidth, transpose, partsFilter, useJianpu)
     }
 
     /**

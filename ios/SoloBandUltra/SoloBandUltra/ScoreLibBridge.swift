@@ -101,9 +101,11 @@ enum ScoreLib {
     /// and the unrolled timemap — everything needed for cursor synchronization.
     /// - Parameter transpose: Semitones to transpose (0 = no change). Must match render transpose.
     /// - Parameter partsFilter: Same as used for SVG rendering (e.g. "1,3"). Pass nil for all staves.
-    static func playbackMap(_ data: Data, extension ext: String? = nil, pageWidth: Double = 0, transpose: Int32 = 0, partsFilter: String? = nil) -> String? {
+    /// - Parameter useJianpu: true when rendering in jianpu so cursor positions match.
+    static func playbackMap(_ data: Data, extension ext: String? = nil, pageWidth: Double = 0, transpose: Int32 = 0, partsFilter: String? = nil, useJianpu: Bool = false) -> String? {
+        let jianpuInt: Int32 = useJianpu ? 1 : 0
         func call(_ base: UnsafeRawPointer, _ count: Int, _ extPtr: UnsafePointer<CChar>?, _ filterPtr: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>? {
-            scorelib_playback_map(base.assumingMemoryBound(to: UInt8.self), count, extPtr, pageWidth, transpose, filterPtr)
+            scorelib_playback_map(base.assumingMemoryBound(to: UInt8.self), count, extPtr, pageWidth, transpose, filterPtr, jianpuInt)
         }
         let result: UnsafeMutablePointer<CChar>? = data.withUnsafeBytes { buffer in
             guard let base = buffer.baseAddress else { return nil }

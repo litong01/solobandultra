@@ -19,7 +19,7 @@ fn playback_map_asa_branca() {
     let path = sheetmusic_dir().join("asa-branca.musicxml");
     let score = parse_file(&path).expect("Failed to parse asa-branca");
 
-    let pmap = generate_playback_map(&score, None, None);
+    let pmap = generate_playback_map(&score, None, None, false);
 
     // Asa branca has 34 original measures
     assert!(!pmap.measures.is_empty(), "Should have measures");
@@ -72,7 +72,7 @@ fn playback_map_blue_bag_folly() {
     let path = sheetmusic_dir().join("blue-bag-folly.musicxml");
     let score = parse_file(&path).expect("Failed to parse blue-bag-folly");
 
-    let pmap = generate_playback_map(&score, None, None);
+    let pmap = generate_playback_map(&score, None, None, false);
 
     assert_eq!(pmap.measures.len(), 27, "Should have 27 original measures");
     assert_eq!(pmap.timemap.len(), 52, "Should have 52 unrolled timemap entries (D.S. al Fine)");
@@ -96,7 +96,7 @@ fn playback_map_tongnian() {
     let path = sheetmusic_dir().join("童年.mxl");
     let score = parse_file(&path).expect("Failed to parse 童年");
 
-    let pmap = generate_playback_map(&score, None, None);
+    let pmap = generate_playback_map(&score, None, None, false);
 
     assert!(!pmap.measures.is_empty(), "Should have original measures");
     assert!(!pmap.systems.is_empty());
@@ -120,7 +120,7 @@ fn playback_map_chopin() {
     let path = sheetmusic_dir().join("chopin-trois-valses.mxl");
     let score = parse_file(&path).expect("Failed to parse chopin");
 
-    let pmap = generate_playback_map(&score, None, None);
+    let pmap = generate_playback_map(&score, None, None, false);
 
     assert_eq!(pmap.measures.len(), 506, "Chopin should have 506 measures");
     assert!(pmap.systems.len() > 10, "Chopin should have many systems");
@@ -142,8 +142,8 @@ fn playback_map_narrow_width_changes_systems() {
     let score = parse_file(&path).expect("Failed to parse asa-branca");
 
     // Generate at default width and narrow width
-    let pmap_wide = generate_playback_map(&score, Some(820.0), None);
-    let pmap_narrow = generate_playback_map(&score, Some(390.0), None);
+    let pmap_wide = generate_playback_map(&score, Some(820.0), None, false);
+    let pmap_narrow = generate_playback_map(&score, Some(390.0), None, false);
 
     // Narrow width should have more systems (more line breaks)
     assert!(pmap_narrow.systems.len() > pmap_wide.systems.len(),
@@ -165,7 +165,7 @@ fn playback_map_json_roundtrip() {
     let path = sheetmusic_dir().join("asa-branca.musicxml");
     let score = parse_file(&path).expect("Failed to parse asa-branca");
 
-    let pmap = generate_playback_map(&score, None, None);
+    let pmap = generate_playback_map(&score, None, None, false);
     let json = playback_map_to_json(&pmap);
 
     // Verify JSON is valid and contains expected keys
@@ -193,7 +193,7 @@ fn playback_map_json_roundtrip() {
 fn playback_map_measures_have_note_positions() {
     let path = sheetmusic_dir().join("asa-branca.musicxml");
     let score = parse_file(&path).unwrap();
-    let pmap = generate_playback_map(&score, None, None);
+    let pmap = generate_playback_map(&score, None, None, false);
 
     // Every measure should have at least one note_position entry
     for m in &pmap.measures {
@@ -247,7 +247,7 @@ fn playback_map_chopin_note_positions() {
     // Verify note_positions work on a multi-staff piano piece
     let path = sheetmusic_dir().join("chopin-trois-valses.mxl");
     let score = parse_file(&path).unwrap();
-    let pmap = generate_playback_map(&score, None, None);
+    let pmap = generate_playback_map(&score, None, None, false);
 
     for m in &pmap.measures {
         assert!(!m.note_positions.is_empty(),
@@ -277,7 +277,7 @@ fn playback_map_pickup_measure_has_shorter_duration() {
     // asa-branca measure 0 is implicit (anacrusis) and shorter than a full measure
     let path = sheetmusic_dir().join("asa-branca.musicxml");
     let score = parse_file(&path).unwrap();
-    let pmap = generate_playback_map(&score, None, None);
+    let pmap = generate_playback_map(&score, None, None, false);
 
     // First timemap entry (measure 0) should be shorter than a full measure
     let first = &pmap.timemap[0];
@@ -299,7 +299,7 @@ fn playback_map_pickup_measure_has_shorter_duration() {
 fn playback_map_starts_at_time_zero() {
     let path = sheetmusic_dir().join("asa-branca.musicxml");
     let score = parse_file(&path).unwrap();
-    let pmap = generate_playback_map(&score, None, None);
+    let pmap = generate_playback_map(&score, None, None, false);
 
     assert!(
         pmap.timemap[0].timestamp_ms.abs() < 0.01,
@@ -313,7 +313,7 @@ fn playback_map_starts_at_time_zero() {
 fn playback_map_total_duration_reasonable() {
     let path = sheetmusic_dir().join("asa-branca.musicxml");
     let score = parse_file(&path).unwrap();
-    let pmap = generate_playback_map(&score, None, None);
+    let pmap = generate_playback_map(&score, None, None, false);
 
     // Total duration = last entry timestamp + last entry duration
     let last = pmap.timemap.last().unwrap();
@@ -336,7 +336,7 @@ fn playback_map_total_duration_reasonable() {
 fn playback_map_blue_bag_folly_tempo_changes() {
     let path = sheetmusic_dir().join("blue-bag-folly.musicxml");
     let score = parse_file(&path).unwrap();
-    let pmap = generate_playback_map(&score, None, None);
+    let pmap = generate_playback_map(&score, None, None, false);
 
     let tempos: std::collections::HashSet<i32> = pmap.timemap.iter()
         .map(|e| e.tempo_bpm as i32)

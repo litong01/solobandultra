@@ -555,7 +555,7 @@ fn render_bytes_to_svg_with_page_width() {
 #[test]
 fn playback_map_from_bytes_returns_valid_json() {
     let data = std::fs::read("../../sheetmusic/asa-branca.musicxml").unwrap();
-    let json = scorelib::playback_map_from_bytes(&data, Some("musicxml"), None, 0, None)
+    let json = scorelib::playback_map_from_bytes(&data, Some("musicxml"), None, 0, None, false)
         .expect("playback_map_from_bytes should succeed");
 
     let parsed: serde_json::Value = serde_json::from_str(&json).expect("Should be valid JSON");

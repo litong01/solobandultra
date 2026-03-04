@@ -319,12 +319,14 @@ pub fn add_feedback_overlay(svg: &str, overlay_dots_json: &str) -> Result<String
 ///
 /// The playback map contains measure positions, system positions and the
 /// timemap — everything the WebView needs to animate a playback cursor.
+/// Pass `use_jianpu: true` when the score is rendered in jianpu so cursor positions match.
 pub fn playback_map_from_score(
     score: &Score,
     page_width: Option<f64>,
     staff_indices_1based: Option<&[usize]>,
+    use_jianpu: bool,
 ) -> String {
-    let map = generate_playback_map(score, page_width, staff_indices_1based);
+    let map = generate_playback_map(score, page_width, staff_indices_1based, use_jianpu);
     playback::playback_map_to_json(&map)
 }
 
@@ -332,17 +334,18 @@ pub fn playback_map_from_score(
 ///
 /// `transpose` shifts all pitches by the given number of semitones (0 = no change).
 /// This must match the transpose used for SVG rendering so positions are consistent.
-/// Pass the same staff filter as used for SVG so cursor y/height and positions match.
+/// Pass the same staff filter and `use_jianpu` as used for SVG so cursor matches.
 pub fn playback_map_from_bytes(
     data: &[u8],
     extension: Option<&str>,
     page_width: Option<f64>,
     transpose: i32,
     staff_indices_1based: Option<&[usize]>,
+    use_jianpu: bool,
 ) -> Result<String, String> {
     let mut score = parse_bytes(data, extension)?;
     transpose_score(&mut score, transpose);
-    Ok(playback_map_from_score(&score, page_width, staff_indices_1based))
+    Ok(playback_map_from_score(&score, page_width, staff_indices_1based, use_jianpu))
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -564,7 +567,7 @@ pub unsafe extern "C" fn scorelib_free_midi(ptr: *mut u8, len: usize) {
 ///
 /// `page_width` sets the SVG width in user units. Pass 0.0 to use the default.
 /// `parts_filter` must match the filter used for SVG rendering (e.g. "1,3" for staves 1 and 3).
-/// Pass null for all staves so cursor positions match the rendered SVG.
+/// `use_jianpu` 1 = use jianpu layout so cursor matches jianpu SVG; 0 = staff layout.
 ///
 /// # Safety
 /// `data` must point to `len` valid bytes. `extension` and `parts_filter` may be null.
@@ -576,6 +579,7 @@ pub unsafe extern "C" fn scorelib_playback_map(
     page_width: f64,
     transpose: i32,
     parts_filter: *const c_char,
+    use_jianpu: i32,
 ) -> *mut c_char {
     if data.is_null() || len == 0 {
         return std::ptr::null_mut();
@@ -597,9 +601,10 @@ pub unsafe extern "C" fn scorelib_playback_map(
     let staff_ref = staff_indices.as_deref();
 
     let pw = if page_width > 0.0 { Some(page_width) } else { None };
+    let jianpu = use_jianpu != 0;
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        playback_map_from_bytes(bytes, ext, pw, transpose, staff_ref)
+        playback_map_from_bytes(bytes, ext, pw, transpose, staff_ref, jianpu)
     }));
 
     match result {

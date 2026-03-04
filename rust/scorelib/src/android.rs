@@ -112,8 +112,8 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderBytes(
 /// Generate a playback map JSON from MusicXML bytes.
 ///
 /// Called from Kotlin as:
-///   external fun playbackMap(data: ByteArray, extension: String?, pageWidth: Float, transpose: Int, partsFilter: String?): String?
-/// Pass the same partsFilter as used for SVG rendering so cursor matches.
+///   external fun playbackMap(data: ByteArray, extension: String?, pageWidth: Float, transpose: Int, partsFilter: String?, useJianpu: Boolean): String?
+/// Pass the same partsFilter and useJianpu as used for SVG rendering so cursor matches.
 #[no_mangle]
 pub extern "system" fn Java_com_solobandultra_app_ScoreLib_playbackMap(
     mut env: JNIEnv,
@@ -123,6 +123,7 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_playbackMap(
     page_width: jfloat,
     transpose: jint,
     parts_filter: JString,
+    use_jianpu: jboolean,
 ) -> jstring {
     let bytes = match env.convert_byte_array(&data) {
         Ok(b) => b,
@@ -148,9 +149,10 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_playbackMap(
     let staff_ref = staff_indices.as_deref();
 
     let pw = if page_width > 0.0 { Some(page_width as f64) } else { None };
+    let jianpu = use_jianpu != 0;
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        playback_map_from_bytes(&bytes, ext.as_deref(), pw, transpose, staff_ref)
+        playback_map_from_bytes(&bytes, ext.as_deref(), pw, transpose, staff_ref, jianpu)
     }));
 
     match result {

@@ -35,10 +35,11 @@ char* scorelib_render_bytes(const uint8_t* data, size_t len, const char* extensi
  * `page_width` sets the SVG width in user units. Pass 0.0 for the default (820).
  * `transpose` shifts all pitches by this many semitones (0 = no change).
  * `parts_filter` must match the filter used for SVG rendering (e.g. "1,3"). Pass NULL for all.
+ * `use_jianpu` 1 = use jianpu layout so cursor matches jianpu SVG; 0 = staff layout.
  * Returns a null-terminated JSON string, or NULL on error.
  * The caller must free the returned string with scorelib_free_string().
  */
-char* scorelib_playback_map(const uint8_t* data, size_t len, const char* extension, double page_width, int32_t transpose, const char* parts_filter);
+char* scorelib_playback_map(const uint8_t* data, size_t len, const char* extension, double page_width, int32_t transpose, const char* parts_filter, int32_t use_jianpu);
 
 /**
  * Generate MIDI (SMF Type 1) bytes from MusicXML data.

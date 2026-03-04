@@ -117,28 +117,6 @@ pub(super) fn cancellation_natural_count(old_fifths: i32, new_fifths: i32) -> u3
 // Main layout computation
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Build (part_idx, staff_nums) from (part_idx, num_staves). Empty staff_nums means all staves 1..=n.
-fn expand_parts_staves(_score: &Score, parts_staves: &[(usize, usize)]) -> Vec<(usize, Vec<usize>)> {
-    parts_staves
-        .iter()
-        .map(|&(pidx, n)| (pidx, (1..=n).collect()))
-        .collect()
-}
-
-pub(super) fn compute_layout(
-    score: &Score,
-    parts_staves: &[(usize, usize)],
-    page_width: f64,
-    use_jianpu: bool,
-) -> ScoreLayout {
-    compute_layout_with_staff_filter(
-        score,
-        &expand_parts_staves(score, parts_staves),
-        page_width,
-        use_jianpu,
-    )
-}
-
 pub(super) fn compute_layout_with_staff_filter(
     score: &Score,
     parts_with_staves: &[(usize, Vec<usize>)],
@@ -250,8 +228,13 @@ pub(super) fn compute_layout_with_staff_filter(
         .flat_map(|p| p.measures.iter())
         .find_map(|m| m.attributes.as_ref().and_then(|a| a.key.as_ref()));
     // On the first system we reserve INSTRUMENT_PREFIX_WIDTH before the clef
-    // for the instrument name and tempo label.
-    let first_prefix = INSTRUMENT_PREFIX_WIDTH + CLEF_SPACE + key_sig_width(initial_key) + TIME_SIG_SPACE;
+    // for the instrument name and tempo label. For jianpu, key and time are drawn
+    // inside the measure at the bar, so no extra prefix.
+    let first_prefix = if use_jianpu {
+        INSTRUMENT_PREFIX_WIDTH
+    } else {
+        INSTRUMENT_PREFIX_WIDTH + CLEF_SPACE + key_sig_width(initial_key) + TIME_SIG_SPACE
+    };
     let available_first = content_width - first_prefix;
 
     let mut system_groups: Vec<Vec<usize>> = Vec::new();
@@ -261,7 +244,11 @@ pub(super) fn compute_layout_with_staff_filter(
 
     for (mi, &min_w) in measure_min_widths.iter().enumerate() {
         let key_at_mi = running_keys[mi].as_ref();
-        let later_prefix = CLEF_SPACE + key_sig_width(key_at_mi);
+        let later_prefix = if use_jianpu {
+            0.0
+        } else {
+            CLEF_SPACE + key_sig_width(key_at_mi)
+        };
         let available_later = content_width - later_prefix;
         let available = if is_first_system { available_first } else { available_later };
 
@@ -287,9 +274,13 @@ pub(super) fn compute_layout_with_staff_filter(
         let first_mi = group[0];
         let key_at_start = running_keys[first_mi].as_ref();
         let show_time_sig = is_first || has_time_change[first_mi];
-        let prefix_width = CLEF_SPACE
-            + key_sig_width(key_at_start)
-            + if show_time_sig { TIME_SIG_SPACE } else { 0.0 };
+        let prefix_width = if use_jianpu {
+            0.0
+        } else {
+            CLEF_SPACE
+                + key_sig_width(key_at_start)
+                + if show_time_sig { TIME_SIG_SPACE } else { 0.0 }
+        };
 
         let extra_prefix = if is_first { INSTRUMENT_PREFIX_WIDTH } else { 0.0 };
         let x_start = PAGE_MARGIN_LEFT + extra_prefix + prefix_width;
