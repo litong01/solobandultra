@@ -135,6 +135,53 @@ fn render_tie(
     svg.path(&path, TIE_COLOR, "none", 0.0);
 }
 
+/// Collect and render ties for jianpu: uses precomputed note x and y positions
+/// (y from jianpu chord stacking). Ties are drawn above the notes.
+pub(super) fn collect_and_render_ties_for_measure_jianpu(
+    svg: &mut SvgBuilder,
+    measure: &Measure,
+    staff_filter: Option<i32>,
+    note_positions: &[f64],
+    note_y_positions: &[f64],
+    open_ties: &mut std::collections::HashMap<String, TieStart>,
+) {
+    if measure.notes.is_empty() || note_positions.len() != measure.notes.len() || note_y_positions.len() != measure.notes.len() {
+        return;
+    }
+
+    for (i, note) in measure.notes.iter().enumerate() {
+        if let Some(sf) = staff_filter {
+            if note.staff.unwrap_or(1) != sf { continue; }
+        }
+        if note.rest || note.grace { continue; }
+        if !note.tie_start && !note.tie_stop { continue; }
+
+        let pitch = match note.pitch {
+            Some(ref p) => p,
+            None => continue,
+        };
+
+        let nx = note_positions[i];
+        let note_y = note_y_positions[i];
+        let key = pitch_key(pitch);
+
+        if note.tie_stop {
+            if let Some(start) = open_ties.remove(&key) {
+                render_tie(svg, &start, nx, note_y, false);
+            }
+        }
+
+        if note.tie_start {
+            open_ties.insert(key, TieStart {
+                x: nx,
+                y: note_y,
+                stem_up: false, // jianpu: draw tie above
+                staff_y: 0.0,
+            });
+        }
+    }
+}
+
 /// Draw continuation ties for any still-open ties at the end of a system.
 pub(super) fn render_open_tie_continuations(
     svg: &mut SvgBuilder,

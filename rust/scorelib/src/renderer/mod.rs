@@ -682,6 +682,23 @@ pub fn render_score_to_svg(
                             mw,
                             false, // key label already drawn above when needed
                         );
+                        let jianpu_note_ys = jianpu::jianpu_note_y_positions_for_ties(
+                            measure,
+                            staff_num as i32,
+                            &note_xs,
+                            staff_y,
+                        );
+                        let staff_ties = system_open_ties
+                            .entry((pidx, staff_num))
+                            .or_insert_with(std::collections::HashMap::new);
+                        ties::collect_and_render_ties_for_measure_jianpu(
+                            &mut svg,
+                            measure,
+                            Some(staff_num as i32),
+                            &note_xs,
+                            &jianpu_note_ys,
+                            staff_ties,
+                        );
                     } else {
                         // Notes and rests for this staff — always filter so only notes on this staff are drawn.
                         let effective_transpose = ps.transpose_octave + ps.octave_shift;

@@ -263,6 +263,59 @@ pub(super) fn jianpu_note_y_positions(
     vec![center_y; measure.notes.len()]
 }
 
+/// Y position for each note on this staff for tie rendering (accounts for chord stacking).
+pub(super) fn jianpu_note_y_positions_for_ties(
+    measure: &crate::model::Measure,
+    staff_filter: i32,
+    note_positions: &[f64],
+    staff_y: f64,
+) -> Vec<f64> {
+    let center_y = staff_y + STAFF_HEIGHT / 2.0;
+    let mut ys = vec![center_y; measure.notes.len()];
+    const X_EPS: f64 = 0.5;
+    let mut i = 0;
+    while i < measure.notes.len() {
+        let note = &measure.notes[i];
+        if note.staff.unwrap_or(1) != staff_filter {
+            i += 1;
+            continue;
+        }
+        if i >= note_positions.len() {
+            break;
+        }
+        let nx = note_positions[i];
+        let group_indices: Vec<usize> = (0..measure.notes.len())
+            .filter(|&k| measure.notes[k].staff.unwrap_or(1) == staff_filter)
+            .filter(|&k| k < note_positions.len() && (note_positions[k] - nx).abs() <= X_EPS)
+            .collect();
+        let group_end = group_indices.iter().max().copied().unwrap_or(i) + 1;
+        if group_indices.iter().min().copied() != Some(i) {
+            i = group_end;
+            continue;
+        }
+        let mut chord_notes: Vec<(usize, &crate::model::Note)> = group_indices
+            .iter()
+            .map(|&k| (k, &measure.notes[k]))
+            .collect();
+        chord_notes.sort_by_key(|(_, n)| {
+            let rest_last = if n.rest { 1 } else { 0 };
+            let midi = n.pitch.as_ref().map(|p| p.to_midi()).unwrap_or(0);
+            (rest_last, midi)
+        });
+        for (chord_idx, &(k, _)) in chord_notes.iter().enumerate() {
+            let y = if chord_notes.len() <= 1 {
+                center_y
+            } else {
+                let offset = chord_idx as f64 - (chord_notes.len() as f64 - 1.0) / 2.0;
+                center_y + offset * jianpu_chord_stack_spacing()
+            };
+            ys[k] = y;
+        }
+        i = group_end;
+    }
+    ys
+}
+
 /// Render one measure of Jianpu: key label (first measure), then one `<text>` per note/rest (same pattern as lyrics).
 /// Uses the same `note_positions` and same index `i` as lyrics; we center every note head at nx using a single
 /// note-head width (excluding duration suffix), so lyrics centered at nx align with the note.
