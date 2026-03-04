@@ -27,6 +27,8 @@ pub(super) const KEY_SIG_SHARP_SPACE: f64 = 10.0;
 pub(super) const KEY_SIG_FLAT_SPACE: f64 = 8.0;
 pub(super) const KEY_SIG_NATURAL_SPACE: f64 = 8.0;
 pub(super) const TIME_SIG_SPACE: f64 = 24.0;
+/// Horizontal space for jianpu key label (e.g. "1 = C", "1 = Am") at measure start.
+pub(super) const JIANPU_KEY_LABEL_SPACE: f64 = 44.0;
 
 // ── Note dimensions ─────────────────────────────────────────────────
 pub(super) const NOTEHEAD_RX: f64 = 5.5; // notehead ellipse x-radius

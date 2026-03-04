@@ -244,6 +244,18 @@ fn key_label_text(key_fifths: i32, key_mode: Option<&str>) -> String {
     format!("1 = {}{}", pitch_class_to_name(tonic), mode_suffix)
 }
 
+/// Draw the jianpu key label (e.g. "1 = C", "1 = Am") at (x, y). Used for measure 0 and mid-score key changes.
+pub(super) fn render_key_label(
+    svg: &mut SvgBuilder,
+    x: f64,
+    y: f64,
+    key_fifths: i32,
+    key_mode: Option<&str>,
+) {
+    let label = key_label_text(key_fifths, key_mode);
+    svg.text(x, y, &label, JIANPU_KEY_LABEL_FONT, "normal", NOTE_COLOR, "start", None);
+}
+
 /// Render one measure of Jianpu: key label (first measure), then one `<text>` per note/rest (same pattern as lyrics).
 /// Uses the same `note_positions` and same index `i` as lyrics (note_positions[i]) so the first note and first syllable
 /// share the same x and are center-aligned. Iterates note-by-note like staff/lyrics instead of per-measure batches.

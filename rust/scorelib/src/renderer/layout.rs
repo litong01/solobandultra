@@ -376,9 +376,15 @@ pub(super) fn compute_layout_with_staff_filter(
                     }
                 }
             }
-            // Jianpu: more space at start of each measure; avoid extra space at end (trailing gap handled in beat map)
+            // Jianpu: base inset + space for key label and/or time sig when drawn
             if use_jianpu {
-                left_inset = left_inset.max(if mi == 0 { 44.0 } else { 24.0 });
+                left_inset = left_inset.max(36.0);
+                if mi == 0 || ml_has_key_change {
+                    left_inset += JIANPU_KEY_LABEL_SPACE;
+                }
+                if ml_has_time_change {
+                    left_inset += TIME_SIG_SPACE;
+                }
             }
 
             let lyric_evts = collect_lyric_events(&score.parts, mi, &divisions_per_part);

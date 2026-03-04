@@ -649,7 +649,18 @@ pub fn render_score_to_svg(
                     if use_jianpu {
                         let key_fifths = ps.key.as_ref().map_or(0, |k| k.fifths);
                         let key_mode = ps.key.as_ref().and_then(|k| k.mode.as_deref());
-                        let draw_key_label = ml.measure_idx == 0;
+                        // Draw key label (measure 0 or mid-score key change) and time sig when changed
+                        let mut inline_x = mx + 6.0;
+                        let jianpu_center_y = staff_y + STAFF_HEIGHT / 2.0;
+                        if ml.measure_idx == 0 || ml.has_key_change {
+                            jianpu::render_key_label(&mut svg, inline_x, jianpu_center_y - 20.0, key_fifths, key_mode);
+                            inline_x += JIANPU_KEY_LABEL_SPACE;
+                        }
+                        if ml.has_time_change {
+                            if let Some(ref time) = ps.time {
+                                render_time_signature(&mut svg, inline_x, staff_y, time);
+                            }
+                        }
                         jianpu::render_jianpu_measure(
                             &mut svg,
                             measure,
@@ -661,7 +672,7 @@ pub fn render_score_to_svg(
                             &note_xs,
                             mx,
                             mw,
-                            draw_key_label,
+                            false, // key label already drawn above when needed
                         );
                     } else {
                         // Notes and rests for this staff — always filter so only notes on this staff are drawn.
