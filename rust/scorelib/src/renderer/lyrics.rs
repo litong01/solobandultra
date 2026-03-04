@@ -45,6 +45,8 @@ pub(super) const LYRICS_FONT_SIZE_CJK: f64 = 15.0;
 pub(super) const LYRICS_PAD_BELOW: f64 = 16.0;
 pub(super) const LYRICS_LINE_HEIGHT: f64 = 16.0;
 pub(super) const LYRICS_MIN_Y_BELOW_STAFF: f64 = 54.0;
+/// When lyrics are positioned from note (e.g. jianpu), vertical distance below the note to the lyric baseline.
+pub(super) const LYRICS_BELOW_NOTE_OFFSET: f64 = 28.0;
 pub(super) const DIRECTION_WORDS_HEIGHT: f64 = 18.0;
 pub(super) const DIRECTION_WORDS_LINE_HEIGHT: f64 = 15.0;
 
@@ -218,12 +220,15 @@ pub(super) fn measure_lowest_note_y(
     lowest
 }
 
+/// When `note_y_positions` is `Some`, lyrics are placed under each note (same x as note, y = note_y + offset).
+/// Otherwise use `lyrics_base_y` + verse offset (staff/system baseline).
 pub(super) fn render_lyrics(
     svg: &mut SvgBuilder,
     measure: &Measure,
     note_positions: &[f64],
     lyrics_base_y: f64,
     staff_filter: Option<i32>,
+    note_y_positions: Option<&[f64]>,
 ) {
     for (i, note) in measure.notes.iter().enumerate() {
         if let Some(sf) = staff_filter {
@@ -232,9 +237,15 @@ pub(super) fn render_lyrics(
         if i >= note_positions.len() { break; }
         let center_x = note_positions[i];
 
+        let ly = if let Some(ys) = note_y_positions {
+            if i >= ys.len() { lyrics_base_y } else { ys[i] + LYRICS_BELOW_NOTE_OFFSET }
+        } else {
+            lyrics_base_y
+        };
+
         for lyric in &note.lyrics {
             let verse_offset = (lyric.number - 1) as f64 * LYRICS_LINE_HEIGHT;
-            let ly = lyrics_base_y + verse_offset;
+            let lyric_y = ly + verse_offset;
 
             let display_text = match lyric.syllabic.as_deref() {
                 Some("begin") | Some("middle") => format!("{} -", lyric.text),
@@ -243,20 +254,34 @@ pub(super) fn render_lyrics(
 
             let family = font_for_text(&lyric.text);
             let font_size = if has_cjk(&lyric.text) { LYRICS_FONT_SIZE_CJK } else { LYRICS_FONT_SIZE };
-            let width_estimate = estimate_text_width(&display_text, font_size);
-            let x_start = center_x - width_estimate / 2.0;
 
-            svg.styled_text(
-                x_start, ly,
-                &display_text,
-                font_size,
-                "bold",
-                LYRICS_COLOR,
-                "start",
-                Some(family),
-                None,
-                Some("middle"),
-            );
+            if note_y_positions.is_some() {
+                svg.styled_text(
+                    center_x, lyric_y,
+                    &display_text,
+                    font_size,
+                    "bold",
+                    LYRICS_COLOR,
+                    "middle",
+                    Some(family),
+                    None,
+                    Some("middle"),
+                );
+            } else {
+                let width_estimate = estimate_text_width(&display_text, font_size);
+                let x_start = center_x - width_estimate / 2.0;
+                svg.styled_text(
+                    x_start, lyric_y,
+                    &display_text,
+                    font_size,
+                    "bold",
+                    LYRICS_COLOR,
+                    "start",
+                    Some(family),
+                    None,
+                    Some("middle"),
+                );
+            }
         }
     }
 }

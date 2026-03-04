@@ -527,7 +527,7 @@ fn render_bytes_to_svg_mxl() {
 fn render_bytes_to_svg_with_transpose() {
     let data = std::fs::read("../../sheetmusic/asa-branca.musicxml").unwrap();
     let svg_orig = scorelib::render_bytes_to_svg(&data, Some("musicxml"), None, 0, None, false).unwrap();
-    let svg_trans = scorelib::render_bytes_to_svg(&data, Some("musicxml"), None, 3, None).unwrap();
+    let svg_trans = scorelib::render_bytes_to_svg(&data, Some("musicxml"), None, 3, None, false).unwrap();
 
     assert!(svg_orig.starts_with("<svg"));
     assert!(svg_trans.starts_with("<svg"));

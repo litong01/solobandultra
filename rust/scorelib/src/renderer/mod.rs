@@ -724,11 +724,27 @@ pub fn render_score_to_svg(
                     // Barlines (per-staff): repeat signs and bar lines on each staff
                     render_barlines(&mut svg, measure, mx, mw, staff_y);
 
-                    // Lyrics: same note_xs as jianpu/notes so first note and first syllable are center-aligned.
-                    render_lyrics(
-                        &mut svg, measure, &note_xs,
-                        lyrics_base_y, staff_filter,
-                    );
+                    // Lyrics: x = note position. For jianpu, shift left by quarter note width for better alignment.
+                    let note_ys = if use_jianpu {
+                        Some(jianpu::jianpu_note_y_positions(measure, staff_num as i32, staff_y))
+                    } else {
+                        None
+                    };
+                    if use_jianpu {
+                        let quarter_w = jianpu::jianpu_note_head_width(jianpu::JIANPU_FONT_SIZE) / 4.0;
+                        let lyrics_note_xs: Vec<f64> = note_xs.iter().map(|&x| x - quarter_w).collect();
+                        render_lyrics(
+                            &mut svg, measure, &lyrics_note_xs,
+                            lyrics_base_y, staff_filter,
+                            note_ys.as_deref(),
+                        );
+                    } else {
+                        render_lyrics(
+                            &mut svg, measure, &note_xs,
+                            lyrics_base_y, staff_filter,
+                            note_ys.as_deref(),
+                        );
+                    }
                 }
 
                 // Apply deferred octave-shift "stop" AFTER notes are rendered.

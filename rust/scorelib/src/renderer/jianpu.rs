@@ -6,25 +6,21 @@
 //! - Dots above/below = octave (one dot above = one octave higher, etc.).
 //! - Underlines = duration beams (one line = eighth, two = sixteenth, three = 32nd); drawn as continuous spans per voice.
 //! - Dot after number = dotted (add half); dash after = lengthen (half, whole).
-//! - # and b (and ##, bb) before the number for accidentals.
+//! - ^ and _ (and ^^, __) before the number for accidentals (sharp and flat).
 
 use crate::model::Pitch;
 use super::constants::*;
 use super::svg_builder::SvgBuilder;
 
-/// Default font size for Jianpu digits.
-const JIANPU_FONT_SIZE: f64 = 22.0;
-/// Character width as fraction of font size for centering (note head only).
-const JIANPU_CHAR_WIDTH_RATIO: f64 = 0.50;
+/// Default font size for Jianpu digits. Exposed so the lyrics path can shift by half note width when needed.
+pub(super) const JIANPU_FONT_SIZE: f64 = 22.0;
 
-/// Width used for centering: only the note head (digit + accidental + octave), not duration underlines/suffix.
-/// So "5/", "2'.", "#4//" are all centered like 1–3 chars; lyrics then align with the digit.
-fn jianpu_center_width(_digit: u8, octave_dots: i32, accidental: Option<&str>, font_size: f64) -> f64 {
-    let acc_len = accidental.map(|a| a.chars().count()).unwrap_or(0);
-    let oct_len = octave_dots.unsigned_abs() as usize;
-    let head_chars = 1usize.saturating_add(acc_len).saturating_add(oct_len).max(1);
-    head_chars as f64 * font_size * JIANPU_CHAR_WIDTH_RATIO
+/// One fixed width for every note head (0–7), excluding duration suffix (e.g. "." or " -").
+/// In jianpu, all note heads are designed to occupy the same visual width; we use the font size.
+pub(super) fn jianpu_note_head_width(font_size: f64) -> f64 {
+    font_size
 }
+
 /// Vertical distance from digit baseline to the first octave dot (above or below).
 const JIANPU_DOT_OFFSET: f64 = 20.0;
 /// Vertical step between multiple octave dots (so they don’t overlap the number or each other).
@@ -91,14 +87,14 @@ fn find_scale_degree(note_pc: u8, scale: &[u8; 7]) -> (usize, i8) {
     (best_degree, best_offset)
 }
 
-/// Accidental symbol for scale-degree offset. Same as sample accidental_symbol.
+/// Accidental symbol for scale-degree offset. Use ^ and _ (not # and b) so the glyphs stay small.
 fn accidental_symbol(offset: i8) -> &'static str {
     match offset {
         0 => "",
-        1 => "#",
-        -1 => "b",
-        2 => "##",
-        -2 => "bb",
+        1 => "^",
+        -1 => "_",
+        2 => "^^",
+        -2 => "__",
         _ => "?",
     }
 }
@@ -108,17 +104,17 @@ fn semitone_to_degree_acc(semi: i32) -> (u8, Option<&'static str>) {
     let s = semi.rem_euclid(12);
     match s {
         0 => (1, None),
-        1 => (1, Some("#")),
+        1 => (1, Some("^")),
         2 => (2, None),
-        3 => (2, Some("#")),
+        3 => (2, Some("^")),
         4 => (3, None),
         5 => (4, None),
-        6 => (4, Some("#")), // or b5; #4 is common
+        6 => (4, Some("^")), // or b5; ^4 is common
         7 => (5, None),
-        8 => (5, Some("#")),
+        8 => (5, Some("^")),
         9 => (6, None),
-        10 => (6, Some("#")),
-        11 => (7, Some("b")), // leading tone
+        10 => (6, Some("^")),
+        11 => (7, Some("_")), // leading tone
         _ => (1, None),
     }
 }
@@ -256,9 +252,19 @@ pub(super) fn render_key_label(
     svg.text(x, y, &label, JIANPU_KEY_LABEL_FONT, "normal", NOTE_COLOR, "start", None);
 }
 
+/// Y position for each note on this staff (jianpu center line). Used so lyrics are placed under the note.
+pub(super) fn jianpu_note_y_positions(
+    measure: &crate::model::Measure,
+    _staff_filter: i32,
+    staff_y: f64,
+) -> Vec<f64> {
+    let center_y = staff_y + STAFF_HEIGHT / 2.0;
+    vec![center_y; measure.notes.len()]
+}
+
 /// Render one measure of Jianpu: key label (first measure), then one `<text>` per note/rest (same pattern as lyrics).
-/// Uses the same `note_positions` and same index `i` as lyrics (note_positions[i]) so the first note and first syllable
-/// share the same x and are center-aligned. Iterates note-by-note like staff/lyrics instead of per-measure batches.
+/// Uses the same `note_positions` and same index `i` as lyrics; we center every note head at nx using a single
+/// note-head width (excluding duration suffix), so lyrics centered at nx align with the note.
 pub(super) fn render_jianpu_measure(
     svg: &mut SvgBuilder,
     measure: &crate::model::Measure,
@@ -320,11 +326,11 @@ pub(super) fn render_jianpu_measure(
             continue;
         }
 
+        let w = jianpu_note_head_width(JIANPU_FONT_SIZE);
         if note.rest && group_len == 1 {
             let duration_quarters = note.duration as f64 / div;
             let (underlines, dot, dashes) = duration_to_jianpu(duration_quarters, note.dot);
             let ascii_str = note_to_jianpu_ascii(0, 0, None, underlines, dot, dashes);
-            let w = jianpu_center_width(0, 0, None, JIANPU_FONT_SIZE);
             svg.jianpu_note_text_centered(nx, jianpu_center_y, &ascii_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
             i = group_end;
             continue;
@@ -342,7 +348,6 @@ pub(super) fn render_jianpu_measure(
                         jianpu_center_y + offset * jianpu_chord_stack_spacing()
                     };
                     let ascii_str = note_to_jianpu_ascii(digit, octave_dots, accidental, 1, false, 0);
-                    let w = jianpu_center_width(digit, octave_dots, accidental, JIANPU_FONT_SIZE);
                     svg.jianpu_note_text_centered(nx, y, &ascii_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
                 }
             }
@@ -372,7 +377,6 @@ pub(super) fn render_jianpu_measure(
                 let duration_quarters = n.duration as f64 / div;
                 let (underlines, dot, dashes) = duration_to_jianpu(duration_quarters, n.dot);
                 let ascii_str = note_to_jianpu_ascii(0, 0, None, underlines, dot, dashes);
-                let w = jianpu_center_width(0, 0, None, JIANPU_FONT_SIZE);
                 svg.jianpu_note_text_centered(nx, y, &ascii_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
             } else if let Some(ref pitch) = n.pitch {
                 let (digit, octave_dots, accidental) = pitch_to_jianpu(pitch, key_fifths, key_mode);
@@ -382,7 +386,6 @@ pub(super) fn render_jianpu_measure(
                     digit, octave_dots, accidental,
                     underlines, suffix_dot, suffix_dashes,
                 );
-                let w = jianpu_center_width(digit, octave_dots, accidental, JIANPU_FONT_SIZE);
                 svg.jianpu_note_text_centered(nx, y, &ascii_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
             }
         }
