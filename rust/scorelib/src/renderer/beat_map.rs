@@ -54,6 +54,7 @@ const MIN_NOTE_SPACING: f64 = 12.0;
 ///
 /// When `min_trailing_gap` is `Some(v)`, the space after the last note uses
 /// at least `v` (e.g. jianpu uses a smaller value to avoid excess end space).
+/// When `max_trailing_fraction` is `Some(f)`, cap the trailing gap at `f` of usable width (jianpu only; staff passes None).
 pub(super) fn compute_beat_x_map(
     all_beat_times: &[Vec<f64>],
     mx: f64,
@@ -63,6 +64,7 @@ pub(super) fn compute_beat_x_map(
     lyric_events: &[LyricEvent],
     total_quarters: f64,
     min_trailing_gap: Option<f64>,
+    max_trailing_fraction: Option<f64>,
 ) -> Vec<(f64, f64)> {
     let usable_width = mw - left_pad - right_pad;
 
@@ -105,11 +107,16 @@ pub(super) fn compute_beat_x_map(
         gaps.push(prop_dist.max(lyrics_dist).max(MIN_NOTE_SPACING));
     }
 
-    // Trailing gap: space after the last note to the measure's right edge
+    // Trailing gap: space after the last note to the measure's right edge.
+    // When max_trailing_fraction is set (jianpu only), cap to avoid huge empty space when the last note is early.
     let last_beat = unique_beats.last().copied().unwrap_or(0.0);
     let trailing_prop = ((total_q - last_beat) / total_q) * usable_width;
     let trailing_min = min_trailing_gap.unwrap_or(MIN_NOTE_SPACING);
-    gaps.push(trailing_prop.max(trailing_min));
+    let trailing = match max_trailing_fraction {
+        Some(f) => trailing_prop.max(trailing_min).min(usable_width * f),
+        None => trailing_prop.max(trailing_min),
+    };
+    gaps.push(trailing);
 
     // Scale all gaps so they sum to exactly usable_width
     let total_gaps: f64 = gaps.iter().sum();

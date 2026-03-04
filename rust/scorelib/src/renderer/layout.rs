@@ -236,6 +236,7 @@ pub(super) fn compute_layout_with_staff_filter(
             }
             if has_time_change[mi] { w += TIME_SIG_SPACE; }
 
+            // Lyrics minimum width is considered for both staff and jianpu (same code path).
             let lyrics_w = lyrics_min_measure_width(&score.parts, mi, &lyrics_divs, w);
             if lyrics_w > w {
                 w = lyrics_w;
@@ -415,7 +416,8 @@ pub(super) fn compute_layout_with_staff_filter(
                 nominal_quarters
             };
             let min_trailing = if use_jianpu { Some(4.0) } else { None };
-            let beat_x_map = compute_beat_x_map(&all_beat_times, x, w, left_inset, right_inset, &lyric_evts, total_quarters, min_trailing);
+            let max_trailing_frac = if use_jianpu { Some(0.28) } else { None };
+            let beat_x_map = compute_beat_x_map(&all_beat_times, x, w, left_inset, right_inset, &lyric_evts, total_quarters, min_trailing, max_trailing_frac);
 
             measures.push(MeasureLayout {
                 measure_idx: mi,

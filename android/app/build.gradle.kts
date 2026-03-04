@@ -10,25 +10,15 @@ val copySheetMusic = tasks.register<Copy>("copySheetMusic") {
     into(layout.buildDirectory.dir("generated/sheetmusic-assets/sheetmusic"))
 }
 
-// Copy fonts (Lora, LXGW WenKai, JianpuASCII, etc.) from repo assets/fonts/
-// so they appear as assets/fonts/*.ttf at runtime (WebView @font-face).
-val copyFonts = tasks.register<Copy>("copyFonts") {
-    from("../../assets/fonts")
-    include("*.ttf")
-    into(layout.buildDirectory.dir("generated/fonts-assets/fonts"))
-}
-
 android {
     namespace = "com.solobandultra.app"
     compileSdk = 34
 
     sourceSets {
         getByName("main") {
-            assets.srcDirs(
-                "src/main/assets",
-                layout.buildDirectory.dir("generated/sheetmusic-assets"),
-                layout.buildDirectory.dir("generated/fonts-assets")
-            )
+            // Fonts (Lora, JianpuASCII, etc.) live in src/main/assets/fonts/ — populated by build-rust.sh deploy_fonts.
+            // Do not add a second font source here or Lora-Italic.ttf etc. become duplicate resources.
+            assets.srcDirs("src/main/assets", layout.buildDirectory.dir("generated/sheetmusic-assets"))
         }
     }
 
@@ -121,11 +111,11 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
-// Ensure sheet music and fonts are copied before any task that reads assets
+// Ensure sheet music files are copied before any task that reads assets
 // (mergeAssets, lint, etc.).  preBuild is the first task in the Android
 // build lifecycle — everything else depends on it transitively.
 afterEvaluate {
     tasks.named("preBuild") {
-        dependsOn(copySheetMusic, copyFonts)
+        dependsOn(copySheetMusic)
     }
 }

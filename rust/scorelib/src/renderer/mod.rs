@@ -3,6 +3,13 @@
 //! The renderer computes its own layout from the musical content (pitch,
 //! duration, time signature) and produces a self-contained SVG string
 //! that can be displayed in any SVG-capable view.
+//!
+//! **Staff vs jianpu:** When `use_jianpu` is false we render standard staff notation
+//! (notes, clefs, key, slurs, ties, staff lines). When true we render jianpu only
+//! (digits, key label, no staff lines). The two paths are independent: all jianpu-specific
+//! code lives behind `if use_jianpu` or in the `jianpu` module; shared helpers
+//! (layout, beat map, lyrics) take jianpu-only options (e.g. `max_trailing_fraction: None`
+//! for staff). Changes to jianpu must not alter the staff `else` branch or staff-only logic.
 
 mod constants;
 mod glyphs;
