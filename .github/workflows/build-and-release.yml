@@ -369,7 +369,8 @@ jobs:
         uses: adityak74/google-drive-upload-git-action@v0.3
         with:
           credentials: ${{ secrets.GDRIVE_CREDENTIALS }}
-          filename: ./artifacts/SoloBandUltra-Android-release.ap*
+          filename: ./artifacts/SoloBandUltra-Android-release.apk
+          useCompleteSourceFilenameAsName: false
           folderId: ${{ secrets.GDRIVE_FOLDER_ID }}
           overwrite: true
   
