@@ -76,7 +76,7 @@ pub(super) fn collect_and_render_ties_for_measure(
         // (middle of a tie chain: tie_stop + tie_start).
         if note.tie_stop {
             if let Some(start) = open_ties.remove(&key) {
-                render_tie(svg, &start, nx, note_y, stem_up);
+                render_tie(svg, &start, nx, note_y);
             }
         }
 
@@ -97,7 +97,6 @@ fn render_tie(
     start: &TieStart,
     end_x: f64,
     end_y: f64,
-    _end_stem_up: bool,
 ) {
     // Tie curves opposite to the stem direction (same convention as slurs).
     let above = !start.stem_up;
@@ -167,7 +166,7 @@ pub(super) fn collect_and_render_ties_for_measure_jianpu(
 
         if note.tie_stop {
             if let Some(start) = open_ties.remove(&key) {
-                render_tie(svg, &start, nx, note_y, false);
+                render_tie(svg, &start, nx, note_y);
             }
         }
 
@@ -188,8 +187,8 @@ pub(super) fn render_open_tie_continuations(
     open_ties: &std::collections::HashMap<String, TieStart>,
     system_x_end: f64,
 ) {
-    for (_key, start) in open_ties.iter() {
+    for (_, start) in open_ties.iter() {
         let end_y = start.y;
-        render_tie(svg, start, system_x_end, end_y, start.stem_up);
+        render_tie(svg, start, system_x_end, end_y);
     }
 }

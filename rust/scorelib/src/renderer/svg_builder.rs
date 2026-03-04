@@ -172,7 +172,7 @@ impl SvgBuilder {
         ));
     }
 
-    pub(super) fn notehead(&mut self, cx: f64, cy: f64, filled: bool, _is_whole: bool) {
+    pub(super) fn notehead(&mut self, cx: f64, cy: f64, filled: bool) {
         let rx = NOTEHEAD_RX;
         let ry = NOTEHEAD_RY;
         if filled {
@@ -301,8 +301,7 @@ C496.768,229.887,478.256,211.365,455.486,211.365z";
         ));
     }
 
-    pub(super) fn alto_clef(&mut self, _x: f64, y: f64) {
-        let x = _x;
+    pub(super) fn alto_clef(&mut self, x: f64, y: f64) {
         self.rect(x - 2.0, y - 20.0, 3.0, 80.0, NOTE_COLOR, "none", 0.0);
         self.rect(x + 4.0, y - 20.0, 1.5, 80.0, NOTE_COLOR, "none", 0.0);
     }

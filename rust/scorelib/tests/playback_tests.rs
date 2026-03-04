@@ -256,7 +256,7 @@ fn playback_map_chopin_note_positions() {
 
     // Fractions should always be in [0, 1]
     for m in &pmap.measures {
-        for &(frac, _x) in &m.note_positions {
+        for &(frac, _) in &m.note_positions {
             assert!(
                 frac >= 0.0 && frac <= 1.001,
                 "note_position fraction {} out of [0,1] in measure {}",
@@ -362,4 +362,25 @@ fn playback_map_blue_bag_folly_tempo_changes() {
 
     println!("✓ blue-bag-folly tempo changes: {} entries at 120, {} entries at 90",
         dur_at_120.len(), dur_at_90.len());
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Jianpu layout: playback map with use_jianpu uses single-staff layout
+// ═══════════════════════════════════════════════════════════════════════
+
+#[test]
+fn playback_map_jianpu_same_measure_count() {
+    let path = sheetmusic_dir().join("asa-branca.musicxml");
+    let score = parse_file(&path).unwrap();
+
+    let pmap_staff = generate_playback_map(&score, None, None, false);
+    let pmap_jianpu = generate_playback_map(&score, None, None, true);
+
+    // Same number of measures (layout differs but measure count is the same)
+    assert_eq!(pmap_staff.measures.len(), pmap_jianpu.measures.len());
+    assert!(!pmap_jianpu.measures.is_empty());
+    assert!(!pmap_jianpu.systems.is_empty());
+    assert!(!pmap_jianpu.timemap.is_empty());
+    println!("✓ playback map with use_jianpu: {} measures, {} systems",
+        pmap_jianpu.measures.len(), pmap_jianpu.systems.len());
 }

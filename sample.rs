@@ -233,7 +233,7 @@ fn default_metrics() -> Metrics {
 pub fn render_jianpu_svg(
     score: &Score,
     settings: &JianpuSettings,
-    _cache: &mut JianpuLayoutCache,
+    _: &mut JianpuLayoutCache,
 ) -> (String, Vec<LayoutBox>) {
     let part_index = if settings.part_number == 0 || settings.part_number > score.parts.len() {
         0
@@ -321,7 +321,7 @@ fn render_measure_jianpu(
 
     let underline_spans =
         compute_underline_spans(events, &note_positions, &measure.time_signature);
-    let max_underline_levels = max_underline_levels(events, &measure.time_signature);
+    let max_underline_levels = max_underline_levels(events);
 
     draw_underline_spans(svg, &underline_spans, m, y_center);
 
@@ -404,7 +404,7 @@ fn pitch_class_to_name(pc: u8) -> &'static str {
 // Underline / beam logic
 // =======================
 
-fn duration_to_underline_count(duration_beats: f32, _ts: &TimeSignature) -> u8 {
+fn duration_to_underline_count(duration_beats: f32) -> u8 {
     let quarter = 1.0;
     let eighth = quarter / 2.0;
     let sixteenth = quarter / 4.0;
@@ -445,7 +445,7 @@ fn compute_underline_spans(
 
         let max_level = list
             .iter()
-            .map(|(_, ev)| duration_to_underline_count(ev.duration_beats, ts))
+            .map(|(_, ev)| duration_to_underline_count(ev.duration_beats))
             .max()
             .unwrap_or(0);
 
@@ -454,7 +454,7 @@ fn compute_underline_spans(
             let mut last_idx: Option<usize> = None;
 
             for (idx, ev) in &list {
-                let count = duration_to_underline_count(ev.duration_beats, ts);
+                let count = duration_to_underline_count(ev.duration_beats);
                 if count >= level {
                     if current_start.is_none() {
                         current_start = Some(*idx);
@@ -488,11 +488,11 @@ fn compute_underline_spans(
     spans
 }
 
-fn max_underline_levels(events: &[NoteEvent], ts: &TimeSignature) -> u8 {
+fn max_underline_levels(events: &[NoteEvent]) -> u8 {
     events
         .iter()
         .filter(|e| !e.is_rest)
-        .map(|e| duration_to_underline_count(e.duration_beats, ts))
+        .map(|e| duration_to_underline_count(e.duration_beats))
         .max()
         .unwrap_or(0)
 }

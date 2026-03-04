@@ -690,7 +690,7 @@ const HIHAT_CLOSED: u8 = 42;
 ///
 /// Drums play a steady pattern per measure regardless of chord changes, so this
 /// iterates over timemap entries — not chords.
-pub fn generate_drums(_chords: &[Chord], energy: Energy, timemap: &[TimemapEntry]) -> Vec<MidiEvent> {
+pub fn generate_drums(_: &[Chord], energy: Energy, timemap: &[TimemapEntry]) -> Vec<MidiEvent> {
     let em = energy_multipliers(energy);
     let mut events = Vec::new();
 

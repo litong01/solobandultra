@@ -21,7 +21,7 @@ use crate::note_timeline::note_timeline_from_bytes;
 #[no_mangle]
 pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderFile(
     mut env: JNIEnv,
-    _class: JClass,
+    _: JClass,
     path: JString,
     page_width: jfloat,
     transpose: jint,
@@ -65,7 +65,7 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderFile(
 #[no_mangle]
 pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderBytes(
     mut env: JNIEnv,
-    _class: JClass,
+    _: JClass,
     data: JByteArray,
     extension: JString,
     page_width: jfloat,
@@ -117,7 +117,7 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderBytes(
 #[no_mangle]
 pub extern "system" fn Java_com_solobandultra_app_ScoreLib_playbackMap(
     mut env: JNIEnv,
-    _class: JClass,
+    _: JClass,
     data: JByteArray,
     extension: JString,
     page_width: jfloat,
@@ -171,7 +171,7 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_playbackMap(
 #[no_mangle]
 pub extern "system" fn Java_com_solobandultra_app_ScoreLib_generateMidi(
     mut env: JNIEnv,
-    _class: JClass,
+    _: JClass,
     data: JByteArray,
     extension: JString,
     options_json: JString,
@@ -218,7 +218,7 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_generateMidi(
 #[no_mangle]
 pub extern "system" fn Java_com_solobandultra_app_ScoreLib_noteTimeline(
     mut env: JNIEnv,
-    _class: JClass,
+    _: JClass,
     data: JByteArray,
     extension: JString,
     transpose: jint,
@@ -254,7 +254,7 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_noteTimeline(
 #[no_mangle]
 pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderAudio(
     mut env: JNIEnv,
-    _class: JClass,
+    _: JClass,
     data: JByteArray,
     extension: JString,
     options_json: JString,
@@ -307,7 +307,7 @@ pub extern "system" fn Java_com_solobandultra_app_ScoreLib_renderAudio(
 #[no_mangle]
 pub extern "system" fn Java_com_solobandultra_app_ScoreLib_addFeedbackOverlay(
     mut env: JNIEnv,
-    _class: JClass,
+    _: JClass,
     svg: JString,
     overlay_dots_json: JString,
 ) -> jstring {

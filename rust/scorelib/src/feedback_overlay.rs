@@ -95,4 +95,27 @@ mod tests {
         assert!(out.contains(r##"<circle cx="50" cy="94" r="4" fill="#FFC107"/>"##));
         assert!(out.ends_with("</svg>"));
     }
+
+    #[test]
+    fn overlay_empty_dots_still_produces_group() {
+        let svg = r#"<svg viewBox="0 0 100 100"></svg>"#;
+        let out = add_feedback_overlay_to_svg(svg, "[]").unwrap();
+        assert!(out.contains(r#"<g id="feedback-overlay">"#));
+        assert!(out.contains("</g>"));
+        assert!(out.ends_with("</svg>"));
+    }
+
+    #[test]
+    fn overlay_invalid_json_returns_err() {
+        let svg = r#"<svg></svg>"#;
+        let result = add_feedback_overlay_to_svg(svg, "not json");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn overlay_no_closing_svg_returns_err() {
+        // Input must not contain "</svg>" so that rfind fails
+        let result = add_feedback_overlay_to_svg("no closing tag here", "[]");
+        assert!(result.is_err());
+    }
 }

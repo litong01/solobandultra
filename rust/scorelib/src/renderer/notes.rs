@@ -86,7 +86,7 @@ pub(super) fn render_notes(
 
             let filled = is_filled_note(note.note_type.as_deref());
             let is_whole = note.note_type.as_deref() == Some("whole");
-            svg.notehead(nx, note_y, filled, is_whole);
+            svg.notehead(nx, note_y, filled);
 
             if note.dot {
                 svg.circle(nx + NOTEHEAD_RX + 4.0, note_y - 1.5, 1.8, NOTE_COLOR);

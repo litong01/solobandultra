@@ -86,7 +86,7 @@ pub(super) fn collect_and_render_slurs_for_measure(
                         // playback, which confuses users.
                         let same_pitch = (start.y - note_y).abs() < 0.5;
                         if !same_pitch {
-                            render_slur(svg, &start, nx, note_y, stem_up);
+                            render_slur(svg, &start, nx, note_y);
                         }
                     }
                 }
@@ -102,7 +102,6 @@ fn render_slur(
     start: &SlurStart,
     end_x: f64,
     end_y: f64,
-    _end_stem_up: bool,
 ) {
     let above = match start.placement.as_deref() {
         Some("above") => true,
@@ -150,8 +149,8 @@ pub(super) fn render_open_slur_continuations(
     open_slurs: &std::collections::HashMap<i32, SlurStart>,
     system_x_end: f64,
 ) {
-    for (_number, start) in open_slurs.iter() {
+    for (_, start) in open_slurs.iter() {
         let end_y = start.y;
-        render_slur(svg, start, system_x_end, end_y, start.stem_up);
+        render_slur(svg, start, system_x_end, end_y);
     }
 }

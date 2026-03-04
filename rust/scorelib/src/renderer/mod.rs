@@ -656,6 +656,17 @@ pub fn render_score_to_svg(
                     let note_xs = note_x_positions_from_beat_map(
                         &measure.notes, ps.divisions, &ml.beat_x_map,
                     );
+                    // Chord-aware note Y positions for jianpu (used for ties and lyrics).
+                    let jianpu_note_ys: Option<Vec<f64>> = if use_jianpu {
+                        Some(jianpu::jianpu_note_y_positions_for_ties(
+                            measure,
+                            staff_num as i32,
+                            &note_xs,
+                            staff_y,
+                        ))
+                    } else {
+                        None
+                    };
                     if use_jianpu {
                         let key_fifths = ps.key.as_ref().map_or(0, |k| k.fifths);
                         let key_fifths_for_degree = jianpu::concert_key_fifths_for_degree(key_fifths, transpose_semitones);
@@ -686,14 +697,7 @@ pub fn render_score_to_svg(
                             ps.divisions,
                             &note_xs,
                             mx,
-                            mw,
                             false, // key label already drawn above when needed
-                        );
-                        let jianpu_note_ys = jianpu::jianpu_note_y_positions_for_ties(
-                            measure,
-                            staff_num as i32,
-                            &note_xs,
-                            staff_y,
                         );
                         let staff_ties = system_open_ties
                             .entry((pidx, staff_num))
@@ -703,7 +707,7 @@ pub fn render_score_to_svg(
                             measure,
                             Some(staff_num as i32),
                             &note_xs,
-                            &jianpu_note_ys,
+                            jianpu_note_ys.as_deref().unwrap(),
                             staff_ties,
                         );
                     } else {
@@ -756,9 +760,9 @@ pub fn render_score_to_svg(
                     // Barlines (per-staff): repeat signs and bar lines on each staff
                     render_barlines(&mut svg, measure, mx, mw, staff_y);
 
-                    // Lyrics: x = note position. For jianpu, shift left by quarter note width for better alignment.
+                    // Lyrics: x = note position. For jianpu, use chord-aware Y (same as ties) and shift x by quarter note width.
                     let note_ys = if use_jianpu {
-                        Some(jianpu::jianpu_note_y_positions(measure, staff_num as i32, staff_y))
+                        jianpu_note_ys.as_deref()
                     } else {
                         None
                     };
@@ -968,4 +972,160 @@ pub fn compute_measure_positions(
     }
 
     (measure_positions, system_positions)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::Pitch;
+    use crate::renderer::jianpu::{
+        concert_key_fifths_for_degree,
+        duration_to_jianpu,
+        jianpu_note_head_width,
+        pitch_to_jianpu,
+    };
+
+    #[test]
+    fn octave_shift_amount_standard_sizes() {
+        assert_eq!(super::octave_shift_amount(8), 1);
+        assert_eq!(super::octave_shift_amount(15), 2);
+        assert_eq!(super::octave_shift_amount(22), 3);
+    }
+
+    #[test]
+    fn octave_shift_amount_fallback() {
+        assert!(super::octave_shift_amount(0) >= 1);
+        assert_eq!(super::octave_shift_amount(16), 2); // (16+1)/8 = 2
+        assert_eq!(super::octave_shift_amount(-8), 1);
+    }
+
+    #[test]
+    fn jianpu_concert_key_fifths_no_transpose() {
+        assert_eq!(concert_key_fifths_for_degree(0, 0), 0);
+        assert_eq!(concert_key_fifths_for_degree(1, 0), 1);
+        assert_eq!(concert_key_fifths_for_degree(-3, 0), -3);
+    }
+
+    #[test]
+    fn jianpu_concert_key_fifths_with_transpose() {
+        // C major displayed, transpose +2 (D): concert key still C, display key D
+        assert_eq!(concert_key_fifths_for_degree(2, 2), 0);
+        // G major (1), transpose -2: concert A, display G
+        assert_eq!(concert_key_fifths_for_degree(1, -2), 3);
+    }
+
+    fn pitch(step: &str, octave: i32, alter: Option<f64>) -> Pitch {
+        Pitch {
+            step: step.to_string(),
+            octave,
+            alter,
+        }
+    }
+
+    #[test]
+    fn jianpu_pitch_to_degree_c_major() {
+        // C4 in C major -> 1, no accidental
+        let (deg, dots, acc) = pitch_to_jianpu(&pitch("C", 4, None), 0, None);
+        assert_eq!(deg, 1);
+        assert_eq!(dots, 0);
+        assert!(acc.is_none());
+    }
+
+    #[test]
+    fn jianpu_pitch_to_degree_g_major() {
+        // G4 in G major (fifths=1) -> 1
+        let (deg, _, _) = pitch_to_jianpu(&pitch("G", 4, None), 1, None);
+        assert_eq!(deg, 1);
+        // D5 in G major -> 5
+        let (deg5, _, _) = pitch_to_jianpu(&pitch("D", 5, None), 1, None);
+        assert_eq!(deg5, 5);
+    }
+
+    #[test]
+    fn jianpu_pitch_to_degree_accidentals() {
+        // F# in C major -> 4^
+        let (deg, _, acc) = pitch_to_jianpu(&pitch("F", 4, Some(1.0)), 0, None);
+        assert_eq!(deg, 4);
+        assert_eq!(acc, Some("^"));
+        // Bb in C major -> 6^ (A^) per major-only semitone_to_degree_acc
+        let (deg6, _, acc6) = pitch_to_jianpu(&pitch("B", 4, Some(-1.0)), 0, None);
+        assert_eq!(deg6, 6);
+        assert_eq!(acc6, Some("^"));
+    }
+
+    #[test]
+    fn jianpu_pitch_octave_dots() {
+        // Middle C (C4) -> 0 octave offset from reference
+        let (_, dots, _) = pitch_to_jianpu(&pitch("C", 4, None), 0, None);
+        assert_eq!(dots, 0);
+        // C5 one octave above -> 1 dot above
+        let (_, dots5, _) = pitch_to_jianpu(&pitch("C", 5, None), 0, None);
+        assert_eq!(dots5, 1);
+        // C3 one octave below -> 1 dot below
+        let (_, dots3, _) = pitch_to_jianpu(&pitch("C", 3, None), 0, None);
+        assert_eq!(dots3, -1);
+    }
+
+    #[test]
+    fn jianpu_duration_underlines() {
+        // Quarter -> 0 underlines, no dot, 0 dashes
+        let (u, dot, d) = duration_to_jianpu(1.0, false);
+        assert_eq!(u, 0);
+        assert!(!dot);
+        assert_eq!(d, 0);
+        // Eighth -> 1 underline
+        let (u8, _, _) = duration_to_jianpu(0.5, false);
+        assert_eq!(u8, 1);
+        // Sixteenth -> 2 underlines
+        let (u16, _, _) = duration_to_jianpu(0.25, false);
+        assert_eq!(u16, 2);
+        // Dotted quarter
+        let (_, dot_q, _) = duration_to_jianpu(1.5, true);
+        assert!(dot_q);
+    }
+
+    #[test]
+    fn jianpu_duration_suffix_dashes() {
+        // Half note -> 1 dash
+        let (_, _, d) = duration_to_jianpu(2.0, false);
+        assert_eq!(d, 1);
+        // Whole -> 2 dashes
+        let (_, _, d2) = duration_to_jianpu(4.0, false);
+        assert_eq!(d2, 2);
+    }
+
+    #[test]
+    fn jianpu_note_head_width_scales() {
+        assert_eq!(jianpu_note_head_width(22.0), 22.0);
+        assert_eq!(jianpu_note_head_width(14.0), 14.0);
+    }
+
+    #[test]
+    fn render_empty_score_returns_empty_svg_message() {
+        let score = Score::new();
+        let svg = render_score_to_svg(&score, None, None, false, 0);
+        assert!(svg.contains("No parts"));
+        assert!(svg.contains("<svg"));
+    }
+
+    #[test]
+    fn render_jianpu_produces_svg_with_key_label() {
+        // Use smoke-test which has notes and key
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../sheetmusic/smoke-test.musicxml");
+        let score = crate::parse_file(&path).unwrap();
+        let svg = render_score_to_svg(&score, None, None, true, 0);
+        assert!(svg.contains("<svg"));
+        assert!(svg.contains("1 = "), "Jianpu key label should appear");
+    }
+
+    #[test]
+    fn render_staff_selection_only_requested_staff() {
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../sheetmusic/asa-branca.musicxml");
+        let score = crate::parse_file(&path).unwrap();
+        let all_staves = render_score_to_svg(&score, None, None, false, 0);
+        let staff_1_only = render_score_to_svg(&score, None, Some(&[1]), false, 0);
+        assert!(all_staves.contains("<svg"));
+        assert!(staff_1_only.contains("<svg"));
+        assert!(!staff_1_only.is_empty());
+    }
 }

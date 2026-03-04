@@ -184,15 +184,19 @@ pub(super) fn pitch_to_jianpu(
     (degree, octave_dots, accidental_str)
 }
 
+/// Epsilon for duration comparison (avoids floating point noise).
+const DURATION_EPS: f64 = 0.01;
+
 /// Duration in quarter notes to underline count (0–3). Same as sample: eighth=1, sixteenth=2, 32nd=3.
 fn duration_to_underline_count(duration_quarters: f64) -> u8 {
+    let duration = duration_quarters.max(0.0);
     let eighth = 0.5;
     let sixteenth = 0.25;
     let thirty_second = 0.125;
-    if (duration_quarters - eighth).abs() < 0.01 {
+    if (duration - eighth).abs() < DURATION_EPS {
         1
-    } else if duration_quarters <= sixteenth + 0.01 {
-        if duration_quarters <= thirty_second + 0.01 {
+    } else if duration <= sixteenth + DURATION_EPS {
+        if duration <= thirty_second + DURATION_EPS {
             3
         } else {
             2
@@ -287,16 +291,6 @@ pub(super) fn render_key_label(
     svg.text(x, y, &label, JIANPU_KEY_LABEL_FONT, "normal", NOTE_COLOR, "start", None);
 }
 
-/// Y position for each note on this staff (jianpu center line). Used so lyrics are placed under the note.
-pub(super) fn jianpu_note_y_positions(
-    measure: &crate::model::Measure,
-    _staff_filter: i32,
-    staff_y: f64,
-) -> Vec<f64> {
-    let center_y = staff_y + STAFF_HEIGHT / 2.0;
-    vec![center_y; measure.notes.len()]
-}
-
 /// Y position for each note on this staff for tie rendering (accounts for chord stacking).
 pub(super) fn jianpu_note_y_positions_for_ties(
     measure: &crate::model::Measure,
@@ -364,7 +358,6 @@ pub(super) fn render_jianpu_measure(
     divisions: i32,
     note_positions: &[f64],
     measure_x: f64,
-    _measure_w: f64,
     draw_key_label: bool,
 ) {
     let jianpu_center_y = staff_y + STAFF_HEIGHT / 2.0;
@@ -372,6 +365,8 @@ pub(super) fn render_jianpu_measure(
 
     let tuplet_groups = find_tuplet_groups(measure, Some(staff_filter));
 
+    // Key label: when draw_key_label is true, draw "1 = C" etc. at measure start.
+    // The single call site (mod.rs) always passes false and draws key/time at the bar instead.
     if draw_key_label {
         let label = key_label_text(key_fifths, key_mode);
         let label_x = measure_x;
@@ -456,7 +451,7 @@ pub(super) fn render_jianpu_measure(
             (rest_last, midi)
         });
 
-        for (chord_idx, &(_k, n)) in chord_notes.iter().enumerate() {
+        for (chord_idx, &(_, n)) in chord_notes.iter().enumerate() {
             let y = if chord_notes.len() <= 1 {
                 jianpu_center_y
             } else {

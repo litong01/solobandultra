@@ -137,6 +137,84 @@ fn render_blue_bag_folly_svg() {
     println!("  Output: {}", out.display());
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// Jianpu (numbered notation) rendering
+// ═══════════════════════════════════════════════════════════════════════
+
+#[test]
+fn render_jianpu_asa_branca() {
+    let path = sheetmusic_dir().join("asa-branca.musicxml");
+    let svg = render_file_to_svg(&path, None, 0, None, true).expect("Failed to render asa-branca in jianpu");
+
+    assert!(svg.starts_with("<svg"));
+    assert!(svg.contains("</svg>"));
+    assert!(svg.contains("Asa branca"));
+    // Jianpu key label (e.g. "1 = C" or "1 = G")
+    assert!(svg.contains("1 = "), "Jianpu key label should appear");
+    // Jianpu uses text for digits, not ellipses
+    assert!(!svg.contains("<ellipse"), "Jianpu should not use staff noteheads");
+
+    let out = output_dir().join("asa-branca-jianpu.svg");
+    std::fs::write(&out, &svg).ok();
+    println!("✓ Rendered asa-branca in jianpu ({} bytes)", svg.len());
+}
+
+#[test]
+fn render_jianpu_with_transpose() {
+    // Transpose +2 semitones; jianpu scale degrees should reflect concert key so displayed digit matches what you play
+    let path = sheetmusic_dir().join("asa-branca.musicxml");
+    let svg = render_file_to_svg(&path, None, 2, None, true).expect("Failed to render transposed jianpu");
+
+    assert!(svg.starts_with("<svg"));
+    assert!(svg.contains("1 = "), "Key label should appear");
+    assert!(!svg.contains("<ellipse"));
+    println!("✓ Rendered transposed jianpu ({} bytes)", svg.len());
+}
+
+#[test]
+fn render_jianpu_tongnian() {
+    let path = sheetmusic_dir().join("童年.mxl");
+    let svg = render_file_to_svg(&path, None, 0, None, true).expect("Failed to render 童年 in jianpu");
+
+    assert!(svg.starts_with("<svg"));
+    assert!(svg.contains("童年"));
+    assert!(svg.contains("1 = "));
+    println!("✓ Rendered 童年 in jianpu ({} bytes)", svg.len());
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Edge cases: empty score, parts filter
+// ═══════════════════════════════════════════════════════════════════════
+
+#[test]
+fn render_empty_score_returns_message_svg() {
+    use scorelib::Score;
+    let score = Score::new();
+    let svg = render_score_to_svg(&score, None, None, false, 0);
+    assert!(svg.contains("<svg"));
+    assert!(svg.contains("No parts"));
+}
+
+#[test]
+fn render_with_parts_filter() {
+    let path = sheetmusic_dir().join("chopin-trois-valses.mxl");
+    let score = parse_file(&path).unwrap();
+    // Request only first staff
+    let svg = render_score_to_svg(&score, None, Some(&[1]), false, 0);
+    assert!(svg.contains("<svg"));
+    assert!(svg.contains("viewBox="));
+}
+
+/// Smoke-test score contains slurs and ties; rendering should produce path elements for them.
+#[test]
+fn render_smoke_test_includes_slur_and_tie_paths() {
+    let path = sheetmusic_dir().join("smoke-test.musicxml");
+    let score = parse_file(&path).unwrap();
+    let svg = render_score_to_svg(&score, None, None, false, 0);
+    assert!(svg.contains("<svg"));
+    assert!(svg.contains("<path"), "Rendered score with slurs/ties should contain path elements");
+}
+
 fn extract_height(svg: &str) -> f64 {
     // Extract height from: height="1234"
     svg.split("height=\"")
