@@ -15,6 +15,10 @@ use super::tuplet::find_tuplet_groups;
 
 /// Default font size for Jianpu digits. Exposed so the lyrics path can shift by half note width when needed.
 pub(super) const JIANPU_FONT_SIZE: f64 = 22.0;
+/// Font size for grace notes (one size smaller than main; drawn above the principal).
+const JIANPU_GRACE_FONT_SIZE: f64 = 10.0;
+/// Vertical gap between bottom of grace and top of main note (px).
+const JIANPU_GRACE_MAIN_GAP: f64 = 1.0;
 
 /// One fixed width for every note head (0–7), excluding duration suffix (e.g. "." or " -").
 /// In jianpu, all note heads are designed to occupy the same visual width; we use the font size.
@@ -207,19 +211,57 @@ fn duration_to_underline_count(duration_quarters: f64) -> u8 {
 }
 
 /// Duration in quarter notes to Jianpu duration style: underlines (0–3), suffix dot, suffix dashes.
+/// Half = 1 dash (note + dash), half dotted = 2 dashes (note + dash + dash), whole = 3 dashes (note + dash + dash + dash).
+/// When using dashes (half or longer), we render as 1/4 note + dashes only — no dot in the font string.
 pub(super) fn duration_to_jianpu(
     duration_quarters: f64,
     dot: bool,
 ) -> (u8, bool, u8) {
     let underlines = duration_to_underline_count(duration_quarters);
     let suffix_dashes = if duration_quarters >= 3.99 {
-        2
+        3 // whole: one 1/4 note + three dashes
+    } else if dot && duration_quarters >= 1.99 {
+        2 // half dotted: one 1/4 note + two dashes
     } else if duration_quarters >= 1.99 {
-        1
+        1 // half: one 1/4 note + one dash
     } else {
         0
     };
-    (underlines, dot, suffix_dashes)
+    // Half / half dotted / whole render as 1/4 + dashes only; no dot after the digit.
+    let suffix_dot = if suffix_dashes > 0 { false } else { dot };
+    (underlines, suffix_dot, suffix_dashes)
+}
+
+/// Slot count for width estimation and even spacing: whole = 4, half dotted = 3, half = 2,
+/// quarter or any duration smaller than quarter = 1. Used so measure width and note positions
+/// follow a single rule.
+pub(super) fn slot_count_for_duration(duration_quarters: f64) -> f64 {
+    if duration_quarters >= 4.0 - DURATION_EPS {
+        4.0
+    } else if duration_quarters >= 3.0 - DURATION_EPS {
+        3.0 // half dotted
+    } else if duration_quarters >= 2.0 - DURATION_EPS {
+        2.0 // half
+    } else {
+        1.0 // quarter, dotted quarter, eighth, 16th, etc.
+    }
+}
+
+/// Approximate pixel width of the duration suffix (e.g. " -", " - - -", ".") that extends right of the note head.
+/// Used so measure width estimate reserves space and the last note's dash stays inside the measure bar.
+pub(super) fn jianpu_duration_suffix_width(duration_quarters: f64, dot: bool) -> f64 {
+    let (_, suffix_dot, suffix_dashes) = duration_to_jianpu(duration_quarters, dot);
+    let mut w = 0.0;
+    if suffix_dot {
+        w += 4.0; // "."
+    }
+    match suffix_dashes {
+        1 => w += 10.0,  // " -"
+        2 => w += 16.0,  // " - -"
+        3 => w += 22.0,  // " - - -"
+        _ => {}
+    }
+    w
 }
 
 /// Build the single Jianpu ASCII font string for one note/rest (e.g. "5'", "3/", "#4//", "0", "1 -").
@@ -254,7 +296,8 @@ fn note_to_jianpu_ascii(
     }
     match suffix_dashes {
         1 => s.push_str(" -"),
-        2 => s.push_str(" - - -"),
+        2 => s.push_str(" - -"),
+        3 => s.push_str(" - - -"),
         _ => {}
     }
     s
@@ -347,6 +390,8 @@ pub(super) fn jianpu_note_y_positions_for_ties(
 /// Render one measure of Jianpu: key label (first measure), then one `<text>` per note/rest (same pattern as lyrics).
 /// Uses the same `note_positions` and same index `i` as lyrics; we center every note head at nx using a single
 /// note-head width (excluding duration suffix), so lyrics centered at nx align with the note.
+/// When a note has duration dashes (half=1, half-dotted=2, whole=3), the digit is drawn at the note position
+/// and each dash is drawn at its own slot position so even spacing matches the slot grid.
 pub(super) fn render_jianpu_measure(
     svg: &mut SvgBuilder,
     measure: &crate::model::Measure,
@@ -358,10 +403,32 @@ pub(super) fn render_jianpu_measure(
     divisions: i32,
     note_positions: &[f64],
     measure_x: f64,
+    measure_width: f64,
+    left_inset: f64,
+    right_inset: f64,
     draw_key_label: bool,
 ) {
     let jianpu_center_y = staff_y + STAFF_HEIGHT / 2.0;
     let div = divisions.max(1) as f64;
+
+    let left_x = measure_x + left_inset;
+    let usable_width = (measure_width - left_inset - right_inset).max(0.0);
+    let total_slots: f64 = measure
+        .notes
+        .iter()
+        .filter(|n| n.staff.unwrap_or(1) == staff_filter && !n.grace && !n.chord)
+        .map(|n| slot_count_for_duration(n.duration as f64 / div))
+        .sum();
+    let slot_x = |slot_index: f64| -> f64 {
+        if total_slots <= 0.0 {
+            left_x
+        } else {
+            left_x + (slot_index / total_slots) * usable_width
+        }
+    };
+
+    /// Width of one " -" dash for centering it in a slot (matches jianpu_duration_suffix_width for 1 dash).
+    const DASH_WIDTH: f64 = 10.0;
 
     let tuplet_groups = find_tuplet_groups(measure, Some(staff_filter));
 
@@ -385,6 +452,7 @@ pub(super) fn render_jianpu_measure(
 
     // Render one <text> per note/rest (same pattern as lyrics: same index i, same note_positions[i]).
     const X_EPS: f64 = 0.5;
+    let mut current_slot_index: f64 = 0.0;
     let mut i = 0;
     while i < measure.notes.len() {
         let note = &measure.notes[i];
@@ -416,25 +484,36 @@ pub(super) fn render_jianpu_measure(
         if note.rest && group_len == 1 {
             let duration_quarters = note.duration as f64 / div;
             let (underlines, dot, dashes) = duration_to_jianpu(duration_quarters, note.dot);
-            let ascii_str = note_to_jianpu_ascii(0, 0, None, underlines, dot, dashes);
-            svg.jianpu_note_text_centered(nx, jianpu_center_y, &ascii_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
+            let slot_count = slot_count_for_duration(duration_quarters);
+            if dashes > 0 {
+                let digit_str = note_to_jianpu_ascii(0, 0, None, underlines, dot, 0);
+                svg.jianpu_note_text_centered(nx, jianpu_center_y, &digit_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
+                for k in 0..dashes {
+                    let dash_x = slot_x(current_slot_index + 1.0 + k as f64);
+                    svg.jianpu_note_text_centered(dash_x, jianpu_center_y, " -", DASH_WIDTH, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
+                }
+            } else {
+                let ascii_str = note_to_jianpu_ascii(0, 0, None, underlines, dot, dashes);
+                svg.jianpu_note_text_centered(nx, jianpu_center_y, &ascii_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
+            }
+            current_slot_index += slot_count;
             i = group_end;
             continue;
         }
 
         if note.grace {
-            for (idx, &k) in group_indices.iter().enumerate() {
+            // Place grace above the main note so the bottom of the grace nearly touches the top of the main (dominant-baseline=middle).
+            let grace_w = jianpu_note_head_width(JIANPU_GRACE_FONT_SIZE);
+            let main_top = jianpu_center_y - JIANPU_FONT_SIZE / 2.0;
+            let grace_y = main_top - JIANPU_GRACE_FONT_SIZE / 2.0 - JIANPU_GRACE_MAIN_GAP;
+            // Draw each grace at its own x; beat_map already offsets graces left of the principal.
+            for &k in group_indices.iter() {
                 let grace_note = &measure.notes[k];
                 if let Some(ref pitch) = grace_note.pitch {
+                    let gx = note_positions[k];
                     let (digit, octave_dots, accidental) = pitch_to_jianpu(pitch, key_fifths_for_degree, key_mode);
-                    let y = if group_len <= 1 {
-                        jianpu_center_y
-                    } else {
-                        let offset = idx as f64 - (group_len as f64 - 1.0) / 2.0;
-                        jianpu_center_y + offset * jianpu_chord_stack_spacing()
-                    };
                     let ascii_str = note_to_jianpu_ascii(digit, octave_dots, accidental, 1, false, 0);
-                    svg.jianpu_note_text_centered(nx, y, &ascii_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
+                    svg.jianpu_note_text_centered(gx, grace_y, &ascii_str, grace_w, 0.0, "Jianpu", JIANPU_GRACE_FONT_SIZE, NOTE_COLOR);
                 }
             }
             i = group_end;
@@ -462,18 +541,44 @@ pub(super) fn render_jianpu_measure(
             if n.rest {
                 let duration_quarters = n.duration as f64 / div;
                 let (underlines, dot, dashes) = duration_to_jianpu(duration_quarters, n.dot);
-                let ascii_str = note_to_jianpu_ascii(0, 0, None, underlines, dot, dashes);
-                svg.jianpu_note_text_centered(nx, y, &ascii_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
+                if dashes > 0 {
+                    let digit_str = note_to_jianpu_ascii(0, 0, None, underlines, dot, 0);
+                    svg.jianpu_note_text_centered(nx, y, &digit_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
+                } else {
+                    let ascii_str = note_to_jianpu_ascii(0, 0, None, underlines, dot, dashes);
+                    svg.jianpu_note_text_centered(nx, y, &ascii_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
+                }
             } else if let Some(ref pitch) = n.pitch {
                 let (digit, octave_dots, accidental) = pitch_to_jianpu(pitch, key_fifths_for_degree, key_mode);
                 let duration_quarters = n.duration as f64 / div;
                 let (underlines, suffix_dot, suffix_dashes) = duration_to_jianpu(duration_quarters, n.dot);
-                let ascii_str = note_to_jianpu_ascii(
-                    digit, octave_dots, accidental,
-                    underlines, suffix_dot, suffix_dashes,
-                );
-                svg.jianpu_note_text_centered(nx, y, &ascii_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
+                if suffix_dashes > 0 {
+                    let digit_str = note_to_jianpu_ascii(
+                        digit, octave_dots, accidental,
+                        underlines, suffix_dot, 0,
+                    );
+                    svg.jianpu_note_text_centered(nx, y, &digit_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
+                } else {
+                    let ascii_str = note_to_jianpu_ascii(
+                        digit, octave_dots, accidental,
+                        underlines, suffix_dot, suffix_dashes,
+                    );
+                    svg.jianpu_note_text_centered(nx, y, &ascii_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
+                }
             }
+        }
+        // Draw dashes at their own slot positions (once per group; all chord notes share the same duration).
+        if let Some(&(_, ref first_n)) = chord_notes.first() {
+            let duration_quarters = first_n.duration as f64 / div;
+            let (_, _, suffix_dashes) = duration_to_jianpu(duration_quarters, first_n.dot);
+            if suffix_dashes > 0 {
+                let dash_y = jianpu_center_y;
+                for k in 0..suffix_dashes {
+                    let dash_x = slot_x(current_slot_index + 1.0 + k as f64);
+                    svg.jianpu_note_text_centered(dash_x, dash_y, " -", DASH_WIDTH, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
+                }
+            }
+            current_slot_index += slot_count_for_duration(duration_quarters);
         }
 
         // If this group is the start of a tuplet, draw bracket (tie) at the top with the number on it.

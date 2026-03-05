@@ -672,14 +672,15 @@ pub fn render_score_to_svg(
                         let key_fifths_for_degree = jianpu::concert_key_fifths_for_degree(key_fifths, transpose_semitones);
                         let key_mode = ps.key.as_ref().and_then(|k| k.mode.as_deref());
                         // Key and time sit right at the measure bar (not as "notes") so the cursor never lands on them.
-                        let bar_offset = 2.0; // minimal gap from the bar line
+                        let has_left_repeat = measure.barlines.iter().any(|b| b.location == "left" && b.repeat.is_some());
+                        let bar_offset = 2.0 + if has_left_repeat { JIANPU_REPEAT_EXTRA_OFFSET } else { 0.0 };
                         let mut inline_x = mx + bar_offset;
                         let jianpu_center_y = staff_y + STAFF_HEIGHT / 2.0;
                         let draw_key = ml.measure_idx == 0 || ml.has_key_change;
                         let draw_time = (ml.measure_idx == 0 && system.show_time) || ml.has_time_change;
                         if draw_key {
                             jianpu::render_key_label(&mut svg, inline_x, jianpu_center_y - 20.0, key_fifths, key_mode);
-                            inline_x += JIANPU_KEY_LABEL_SPACE;
+                            inline_x += if draw_time { JIANPU_KEY_TO_TIME_GAP } else { JIANPU_KEY_LABEL_SPACE };
                         }
                         if draw_time {
                             if let Some(ref time) = ps.time {
@@ -697,6 +698,9 @@ pub fn render_score_to_svg(
                             ps.divisions,
                             &note_xs,
                             mx,
+                            ml.width,
+                            ml.left_inset,
+                            ml.right_inset,
                             false, // key label already drawn above when needed
                         );
                         let staff_ties = system_open_ties
@@ -983,6 +987,7 @@ mod tests {
         duration_to_jianpu,
         jianpu_note_head_width,
         pitch_to_jianpu,
+        slot_count_for_duration,
     };
 
     #[test]
@@ -1086,12 +1091,27 @@ mod tests {
 
     #[test]
     fn jianpu_duration_suffix_dashes() {
-        // Half note -> 1 dash
+        // Half note -> 1 dash (note + dash)
         let (_, _, d) = duration_to_jianpu(2.0, false);
         assert_eq!(d, 1);
-        // Whole -> 2 dashes
+        // Half dotted -> 2 dashes (note + dash + dash)
+        let (_, _, d_hd) = duration_to_jianpu(3.0, true);
+        assert_eq!(d_hd, 2);
+        // Whole -> 3 dashes (note + dash + dash + dash)
         let (_, _, d2) = duration_to_jianpu(4.0, false);
-        assert_eq!(d2, 2);
+        assert_eq!(d2, 3);
+    }
+
+    #[test]
+    fn jianpu_slot_count_for_width_and_spacing() {
+        // Whole = 4, half dotted = 3, half = 2, quarter or smaller = 1
+        assert_eq!(slot_count_for_duration(4.0), 4.0);
+        assert_eq!(slot_count_for_duration(3.0), 3.0); // half dotted
+        assert_eq!(slot_count_for_duration(2.0), 2.0); // half
+        assert_eq!(slot_count_for_duration(1.5), 1.0); // dotted quarter
+        assert_eq!(slot_count_for_duration(1.0), 1.0); // quarter
+        assert_eq!(slot_count_for_duration(0.5), 1.0); // eighth
+        assert_eq!(slot_count_for_duration(0.25), 1.0); // 16th
     }
 
     #[test]

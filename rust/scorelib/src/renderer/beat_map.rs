@@ -2,6 +2,7 @@
 
 use crate::model::*;
 use super::constants::*;
+use super::jianpu;
 use super::lyrics::{LyricEvent, lyric_pair_min_spacing};
 
 /// Width allocated per grace note (px) — roughly 66% of a normal notehead.
@@ -45,6 +46,67 @@ pub(super) fn compute_note_beat_times(notes: &[Note], divisions: i32) -> Vec<f64
 /// Minimum pixel gap between consecutive note positions.
 const MIN_NOTE_SPACING: f64 = 12.0;
 
+/// Count unique beat-time positions (note starts). Used for jianpu row packing so multiple measures
+/// fit per row; note positions inside each measure still use the slot rule (whole=4, half=2, etc.).
+pub(super) fn count_unique_beat_slots(all_beat_times: &[Vec<f64>]) -> usize {
+    let mut unique: Vec<f64> = Vec::new();
+    for beats in all_beat_times {
+        for &bt in beats {
+            if !unique.iter().any(|&u| (u - bt).abs() < 0.001) {
+                unique.push(bt);
+            }
+        }
+    }
+    unique.len()
+}
+
+/// Sorted unique beat times across all parts (same 0.001 tolerance as beat map). Used when building
+/// slot counts for jianpu so note positions follow the same whole=4, half=2, quarter=1 rule.
+pub(super) fn unique_beat_times_sorted(all_beat_times: &[Vec<f64>]) -> Vec<f64> {
+    let mut unique: Vec<f64> = Vec::new();
+    for beats in all_beat_times {
+        for &bt in beats {
+            if !unique.iter().any(|&u| (u - bt).abs() < 0.001) {
+                unique.push(bt);
+            }
+        }
+    }
+    unique.sort_by(|a, b| a.total_cmp(b));
+    unique
+}
+
+/// Slot count at a given beat for one part (first non-grace note at that beat). Returns 0 if none.
+fn slot_count_at_beat(notes: &[Note], beat_times: &[f64], divisions: i32, beat: f64) -> f64 {
+    let div = divisions.max(1) as f64;
+    for (i, &bt) in beat_times.iter().enumerate() {
+        if (bt - beat).abs() < 0.001 && !notes.get(i).map_or(true, |n| n.grace) {
+            let n = &notes[i];
+            return jianpu::slot_count_for_duration(n.duration as f64 / div);
+        }
+    }
+    0.0
+}
+
+/// Slot counts for each unique beat (same order as unique_beats). Whole=4, half-dotted=3, half=2, quarter or less=1.
+/// When multiple parts have a note at the same beat, takes the max slot count.
+pub(super) fn slot_counts_for_unique_beats(
+    unique_beats: &[f64],
+    all_beat_times: &[Vec<f64>],
+    all_notes: &[&[Note]],
+    divisions: &[i32],
+) -> Vec<f64> {
+    unique_beats
+        .iter()
+        .map(|&bt| {
+            all_beat_times
+                .iter()
+                .zip(all_notes.iter().zip(divisions.iter()))
+                .map(|(beats, (notes, &div))| slot_count_at_beat(notes, beats, div, bt))
+                .fold(0.0_f64, f64::max)
+        })
+        .collect()
+}
+
 /// Build a sorted beat-time → x-position mapping from note beat times across
 /// all parts. This is the core of cross-staff/cross-part vertical alignment.
 ///
@@ -57,6 +119,8 @@ const MIN_NOTE_SPACING: f64 = 12.0;
 /// When `max_trailing_fraction` is `Some(f)`, cap the trailing gap at `f` of usable width (jianpu only; staff passes None).
 /// When `min_note_spacing_override` is `Some(v)` (jianpu), inter-note gaps are clamped to at least `v` after scaling
 /// so short-note runs (e.g. 16ths) don't sit too close to the following note.
+/// When `evenly_spread` is true (jianpu), note x positions follow the same slot rule: whole=4, half=2, quarter=1.
+/// If `slot_counts` is Some, positions are proportional to cumulative slot count; otherwise to beat time.
 pub(super) fn compute_beat_x_map(
     all_beat_times: &[Vec<f64>],
     mx: f64,
@@ -68,6 +132,8 @@ pub(super) fn compute_beat_x_map(
     min_trailing_gap: Option<f64>,
     max_trailing_fraction: Option<f64>,
     min_note_spacing_override: Option<f64>,
+    evenly_spread: bool,
+    slot_counts: Option<&[f64]>,
 ) -> Vec<(f64, f64)> {
     let usable_width = mw - left_pad - right_pad;
 
@@ -85,8 +151,48 @@ pub(super) fn compute_beat_x_map(
         return vec![];
     }
 
-    let total_q = total_quarters.max(0.001);
     let n = unique_beats.len();
+    let left_x = mx + left_pad;
+    let total_q = total_quarters.max(0.001);
+
+    // Jianpu evenly_spread: place each note at x proportional to cumulative slot count (whole=4, half=2, quarter=1).
+    if evenly_spread {
+        let positions: Vec<f64> = if let Some(slots) = slot_counts {
+            if slots.len() != n {
+                // Fallback if lengths don't match
+                unique_beats
+                    .iter()
+                    .map(|&bt| left_x + (bt / total_q) * usable_width)
+                    .collect()
+            } else {
+                let total_slots: f64 = slots.iter().sum();
+                if total_slots <= 0.0 {
+                    unique_beats
+                        .iter()
+                        .map(|&bt| left_x + (bt / total_q) * usable_width)
+                        .collect()
+                } else {
+                    let mut cum = 0.0_f64;
+                    slots
+                        .iter()
+                        .map(|&s| {
+                            let x = left_x + (cum / total_slots) * usable_width;
+                            cum += s;
+                            x
+                        })
+                        .collect()
+                }
+            }
+        } else {
+            unique_beats
+                .iter()
+                .map(|&bt| left_x + (bt / total_q) * usable_width)
+                .collect()
+        };
+        return (0..n)
+            .map(|i| (unique_beats[i], positions[i]))
+            .collect();
+    }
 
     // Compute gap sizes (n gaps: between consecutive notes + trailing gap to measure end)
     let event_at = |bt: f64| -> Option<&LyricEvent> {

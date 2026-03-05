@@ -94,9 +94,9 @@ final class CloudChoirClient: @unchecked Sendable {
         }
         let clientMs = Self.iso8601ToMs(clientUtc) ?? 0
         let serverMs = Self.iso8601ToMs(serverUtc) ?? 0
-        offsetLock.lock()
-        serverOffsetMs = serverMs - clientMs
-        offsetLock.unlock()
+        offsetLock.withLock {
+            serverOffsetMs = serverMs - clientMs
+        }
 
         DispatchQueue.main.async { self.onJoined() }
 
@@ -138,9 +138,9 @@ final class CloudChoirClient: @unchecked Sendable {
                   let serverUtc = json["utc"] as? String,
                   let serverMs = Self.iso8601ToMs(serverUtc) else { return }
             let clientMs = Int64(Date().timeIntervalSince1970 * 1000)
-            offsetLock.lock()
-            serverOffsetMs = serverMs - clientMs
-            offsetLock.unlock()
+            offsetLock.withLock {
+                serverOffsetMs = serverMs - clientMs
+            }
         } catch {
             // GET /time is optional; keep using offset from join
         }
@@ -185,9 +185,7 @@ final class CloudChoirClient: @unchecked Sendable {
         else { return nil }
         guard let c = cmd, let at = startAt else { return nil }
         let serverMs = Self.iso8601ToMs(at) ?? 0
-        offsetLock.lock()
-        let offset = serverOffsetMs
-        offsetLock.unlock()
+        let offset = offsetLock.withLock { serverOffsetMs }
         let executeAtMs = serverMs - offset
         return (c, executeAtMs)
     }

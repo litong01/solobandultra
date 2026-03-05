@@ -3,6 +3,7 @@
 
 use crate::model::*;
 use super::constants::*;
+use super::jianpu;
 use super::lyrics::*;
 use super::beat_map::*;
 use super::staff::is_jump_text;
@@ -185,7 +186,8 @@ pub(super) fn compute_layout_with_staff_filter(
 
     let mut lyrics_divs: Vec<i32> = vec![1; score.parts.len()];
 
-    let measure_min_widths: Vec<f64> = measure_beats
+    // Staff: min width with key/time sig extras. Used for staff packing only.
+    let measure_min_widths_staff: Vec<f64> = measure_beats
         .iter()
         .enumerate()
         .map(|(mi, &beats)| {
@@ -214,7 +216,6 @@ pub(super) fn compute_layout_with_staff_filter(
             }
             if has_time_change[mi] { w += TIME_SIG_SPACE; }
 
-            // Lyrics minimum width is considered for both staff and jianpu (same code path).
             let lyrics_w = lyrics_min_measure_width(&score.parts, mi, &lyrics_divs, w);
             if lyrics_w > w {
                 w = lyrics_w;
@@ -223,6 +224,83 @@ pub(super) fn compute_layout_with_staff_filter(
             w
         })
         .collect();
+
+    // Jianpu: min width (no key/time extras; key/time drawn inside measure). Used as floor for jianpu estimates and packing.
+    let measure_min_widths_jianpu: Vec<f64> = measure_beats
+        .iter()
+        .enumerate()
+        .map(|(mi, &beats)| {
+            let mut w = (beats * PER_BEAT_MIN_WIDTH).max(JIANPU_MIN_MEASURE_WIDTH);
+            let lyrics_w = lyrics_min_measure_width(&score.parts, mi, &lyrics_divs, w);
+            if lyrics_w > w {
+                w = lyrics_w;
+            }
+            w
+        })
+        .collect();
+
+    // Jianpu: content-based estimated width per measure (notes + lyrics + insets) for row packing and allocation.
+    let measure_estimated_widths: Vec<f64> = if use_jianpu {
+        let num_measures = ref_part.measures.len();
+        (0..num_measures)
+            .map(|mi| {
+                let mut divs = vec![1; score.parts.len()];
+                let mut all_beat_times: Vec<Vec<f64>> = Vec::new();
+                for (pidx, _) in parts_with_staves {
+                    let part = &score.parts[*pidx];
+                    if mi < part.measures.len() {
+                        if let Some(ref attrs) = part.measures[mi].attributes {
+                            if let Some(d) = attrs.divisions {
+                                divs[*pidx] = d;
+                            }
+                        }
+                        let beat_times = compute_note_beat_times(
+                            &part.measures[mi].notes,
+                            divs[*pidx],
+                        );
+                        all_beat_times.push(beat_times);
+                    }
+                }
+                // Row packing: use count of note starts so multiple measures fit per row. Note positions
+                // inside each measure still use the slot rule (whole=4, half=2, quarter=1) for even spacing.
+                let n_slots = count_unique_beat_slots(&all_beat_times);
+                let ref_pidx = parts_with_staves[0].0;
+                let div = divs[ref_pidx].max(1) as f64;
+                let max_suffix_w: f64 = if mi < ref_part.measures.len() {
+                    ref_part.measures[mi]
+                        .notes
+                        .iter()
+                        .map(|n| {
+                            let q = n.duration as f64 / div;
+                            jianpu::jianpu_duration_suffix_width(q, n.dot)
+                        })
+                        .fold(0.0_f64, f64::max)
+                } else {
+                    0.0
+                };
+                let mut left_base = if mi == 0 { 40.0 } else { 36.0 };
+                let mut right_base: f64 = 14.0;
+                if mi < ref_part.measures.len() {
+                    for barline in &ref_part.measures[mi].barlines {
+                        let is_left = barline.location == "left";
+                        let is_right = barline.location == "right" || barline.location.is_empty();
+                        let has_repeat = barline.repeat.is_some();
+                        if is_left && has_repeat {
+                            left_base += JIANPU_REPEAT_EXTRA_OFFSET;
+                        }
+                        if is_right && has_repeat {
+                            right_base = right_base.max(30.0);
+                        }
+                    }
+                }
+                let content_w = left_base + right_base + (n_slots as f64 * JIANPU_ESTIMATE_PER_SLOT) + max_suffix_w;
+                let with_lyrics = lyrics_min_measure_width(&score.parts, mi, &divs, content_w);
+                content_w.max(with_lyrics).max(measure_min_widths_jianpu[mi])
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
 
     let initial_key = score.parts.iter()
         .flat_map(|p| p.measures.iter())
@@ -242,7 +320,12 @@ pub(super) fn compute_layout_with_staff_filter(
     let mut current_width = 0.0;
     let mut is_first_system = true;
 
-    for (mi, &min_w) in measure_min_widths.iter().enumerate() {
+    for mi in 0..measure_beats.len() {
+        let min_w = if use_jianpu {
+            measure_min_widths_jianpu[mi]
+        } else {
+            measure_min_widths_staff[mi]
+        };
         let key_at_mi = running_keys[mi].as_ref();
         let later_prefix = if use_jianpu {
             0.0
@@ -251,15 +334,20 @@ pub(super) fn compute_layout_with_staff_filter(
         };
         let available_later = content_width - later_prefix;
         let available = if is_first_system { available_first } else { available_later };
+        let width_for_packing = if use_jianpu && mi < measure_estimated_widths.len() {
+            measure_estimated_widths[mi]
+        } else {
+            min_w
+        };
 
-        if !current_group.is_empty() && current_width + min_w > available {
+        if !current_group.is_empty() && current_width + width_for_packing > available {
             system_groups.push(current_group);
             current_group = Vec::new();
             current_width = 0.0;
             is_first_system = false;
         }
         current_group.push(mi);
-        current_width += min_w;
+        current_width += width_for_packing;
     }
     if !current_group.is_empty() {
         system_groups.push(current_group);
@@ -287,16 +375,19 @@ pub(super) fn compute_layout_with_staff_filter(
         let x_end = PAGE_MARGIN_LEFT + content_width;
         let available = x_end - x_start;
 
-        let measure_weights: Vec<f64> = group
-            .iter()
-            .map(|&mi| measure_beats[mi])
-            .collect();
-
-        let total_weight: f64 = measure_weights.iter().sum();
-        let scale = if total_weight > 0.0 {
-            available / total_weight
+        let (measure_weights, scale) = if use_jianpu && !measure_estimated_widths.is_empty() {
+            let weights: Vec<f64> = group
+                .iter()
+                .map(|&mi| measure_estimated_widths.get(mi).copied().unwrap_or(measure_beats[mi]))
+                .collect();
+            let total: f64 = weights.iter().sum();
+            let s = if total > 0.0 { available / total } else { 1.0 };
+            (weights, s)
         } else {
-            1.0
+            let weights: Vec<f64> = group.iter().map(|&mi| measure_beats[mi]).collect();
+            let total: f64 = weights.iter().sum();
+            let s = if total > 0.0 { available / total } else { 1.0 };
+            (weights, s)
         };
 
         let mut measures = Vec::new();
@@ -333,20 +424,22 @@ pub(super) fn compute_layout_with_staff_filter(
             let ml_has_time_change = has_time_change[mi] && !is_system_start;
 
             let mut left_inset = 14.0;
-            if ml_has_key_change {
-                if let Some(pf) = prev_key_fifths {
-                    let new_fifths = running_keys[mi].as_ref().map_or(0, |k| k.fifths);
-                    let num_cancel = cancellation_natural_count(pf, new_fifths);
-                    if num_cancel > 0 {
-                        left_inset += num_cancel as f64 * KEY_SIG_NATURAL_SPACE + 2.0;
+            if !use_jianpu {
+                if ml_has_key_change {
+                    if let Some(pf) = prev_key_fifths {
+                        let new_fifths = running_keys[mi].as_ref().map_or(0, |k| k.fifths);
+                        let num_cancel = cancellation_natural_count(pf, new_fifths);
+                        if num_cancel > 0 {
+                            left_inset += num_cancel as f64 * KEY_SIG_NATURAL_SPACE + 2.0;
+                        }
+                    }
+                    if let Some(ref k) = running_keys[mi] {
+                        left_inset += key_sig_width(Some(k)) + 4.0;
                     }
                 }
-                if let Some(ref k) = running_keys[mi] {
-                    left_inset += key_sig_width(Some(k)) + 4.0;
+                if ml_has_time_change {
+                    left_inset += TIME_SIG_SPACE;
                 }
-            }
-            if ml_has_time_change {
-                left_inset += TIME_SIG_SPACE;
             }
 
             let mut right_inset: f64 = 14.0;
@@ -368,14 +461,28 @@ pub(super) fn compute_layout_with_staff_filter(
                     }
                 }
             }
-            // Jianpu: base inset + space for key label and/or time sig when drawn
+            // Jianpu: base inset + space for key label and/or time sig when drawn (match actual drawn width so notes aren’t pushed right).
             if use_jianpu {
                 left_inset = left_inset.max(36.0);
-                if mi == 0 || ml_has_key_change {
-                    left_inset += JIANPU_KEY_LABEL_SPACE;
-                }
-                if ml_has_time_change {
-                    left_inset += TIME_SIG_SPACE;
+                let key_drawn = mi == 0 || ml_has_key_change;
+                let time_drawn = ml_has_time_change || (j == 0 && show_time_sig);
+                let has_left_repeat = mi < ref_part.measures.len()
+                    && ref_part.measures[mi].barlines.iter().any(|b| b.location == "left" && b.repeat.is_some());
+                if key_drawn && time_drawn {
+                    // Use actual drawn prefix width (bar offset + key-to-time gap + time sig) + gap so first note sits close to time sig.
+                    let bar_offset = 2.0 + if has_left_repeat { JIANPU_REPEAT_EXTRA_OFFSET } else { 0.0 };
+                    let prefix_w = bar_offset + JIANPU_KEY_TO_TIME_GAP + TIME_SIG_SPACE;
+                    left_inset = left_inset.max(prefix_w + JIANPU_TIME_TO_NOTE_GAP);
+                } else {
+                    if key_drawn {
+                        left_inset += JIANPU_KEY_LABEL_SPACE;
+                    }
+                    if time_drawn {
+                        left_inset += TIME_SIG_SPACE + JIANPU_TIME_TO_NOTE_GAP;
+                    }
+                    if has_left_repeat {
+                        left_inset += JIANPU_REPEAT_EXTRA_OFFSET;
+                    }
                 }
             }
 
@@ -409,6 +516,27 @@ pub(super) fn compute_layout_with_staff_filter(
             let min_trailing = if use_jianpu { Some(4.0) } else { None };
             let max_trailing_frac = if use_jianpu { Some(0.28) } else { None };
             let min_note_spacing_jianpu = if use_jianpu { Some(18.0) } else { None };
+            let jianpu_slot_counts = if use_jianpu && !all_beat_times.is_empty() {
+                let unique_beats = unique_beat_times_sorted(&all_beat_times);
+                let part_notes: Vec<&[Note]> = parts_with_staves
+                    .iter()
+                    .filter(|(pidx, _)| mi < score.parts[*pidx].measures.len())
+                    .map(|(pidx, _)| score.parts[*pidx].measures[mi].notes.as_slice())
+                    .collect();
+                let part_divs: Vec<i32> = parts_with_staves
+                    .iter()
+                    .filter(|(pidx, _)| mi < score.parts[*pidx].measures.len())
+                    .map(|(pidx, _)| divisions_per_part[*pidx])
+                    .collect();
+                Some(slot_counts_for_unique_beats(
+                    &unique_beats,
+                    &all_beat_times,
+                    &part_notes,
+                    &part_divs,
+                ))
+            } else {
+                None
+            };
             let beat_x_map = compute_beat_x_map(
                 &all_beat_times,
                 x,
@@ -420,6 +548,8 @@ pub(super) fn compute_layout_with_staff_filter(
                 min_trailing,
                 max_trailing_frac,
                 min_note_spacing_jianpu,
+                use_jianpu, // evenly spread notes within the measure so rows fill the screen and look professional
+                jianpu_slot_counts.as_deref(),
             );
 
             measures.push(MeasureLayout {

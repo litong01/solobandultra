@@ -29,6 +29,12 @@ pub(super) const KEY_SIG_NATURAL_SPACE: f64 = 8.0;
 pub(super) const TIME_SIG_SPACE: f64 = 24.0;
 /// Horizontal space for jianpu key label (e.g. "1 = C", "1 = Am") at measure start.
 pub(super) const JIANPU_KEY_LABEL_SPACE: f64 = 44.0;
+/// Gap between key label and time signature in jianpu (keeps time sig close to the bar, like staff).
+pub(super) const JIANPU_KEY_TO_TIME_GAP: f64 = 6.0;
+/// Extra offset when the measure has a left repeat (colon dots) so key/time don’t overlap the repeat.
+pub(super) const JIANPU_REPEAT_EXTRA_OFFSET: f64 = 4.0;
+/// Gap between time signature and first note in jianpu (used for left_inset so notes don’t sit on the time sig).
+pub(super) const JIANPU_TIME_TO_NOTE_GAP: f64 = 8.0;
 
 // ── Note dimensions ─────────────────────────────────────────────────
 pub(super) const NOTEHEAD_RX: f64 = 5.5; // notehead ellipse x-radius
@@ -42,9 +48,14 @@ pub(super) const LEDGER_LINE_WIDTH: f64 = 0.8;
 pub(super) const LEDGER_LINE_EXTEND: f64 = 5.0;
 
 // ── Measure packing ─────────────────────────────────────────────────
+/// Minimum measure width for staff notation (clef, key sig, notes need room).
 pub(super) const MIN_MEASURE_WIDTH: f64 = 38.0;
+/// Minimum measure width for jianpu (can be tighter; key/time drawn inline).
+pub(super) const JIANPU_MIN_MEASURE_WIDTH: f64 = 18.0;
 pub(super) const PER_BEAT_MIN_WIDTH: f64 = 55.0;
 pub(super) const CHORD_SYMBOL_OFFSET_Y: f64 = -18.0; // above staff
+/// Pixels per note slot for jianpu measure width estimate (row-level allocation).
+pub(super) const JIANPU_ESTIMATE_PER_SLOT: f64 = 24.0;
 
 // ── Colors ──────────────────────────────────────────────────────────
 pub(super) const NOTE_COLOR: &str = "#1a1a1a";
