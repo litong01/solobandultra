@@ -12,7 +12,8 @@
 #   ./build-rust.sh              # Build all targets
 #   ./build-rust.sh ios          # Build iOS targets only
 #   ./build-rust.sh android      # Build Android targets only
-#   ./build-rust.sh test         # Run Rust tests
+#   ./build-rust.sh test         # Run all Rust tests
+#   ./build-rust.sh test NAME    # Run tests matching NAME (e.g. top_layer or test_top_layer_print_summary)
 #   ./build-rust.sh coverage     # Run tests with code coverage report
 #
 
@@ -202,11 +203,11 @@ build_android() {
 
 run_tests() {
     echo "═══ Running Rust tests (in Docker container) ═══"
-
-    docker_cargo '
-        cargo test -- --nocapture 2>&1
-    '
-
+    # Pass any extra args to cargo test (e.g. test name filter). Examples:
+    #   ./build-rust.sh test                    # all tests
+    #   ./build-rust.sh test top_layer          # tests whose name contains 'top_layer'
+    #   ./build-rust.sh test test_top_layer_print_summary  # one specific test
+    docker_cargo "cargo test $* -- --nocapture 2>&1"
     echo ""
 }
 
@@ -250,7 +251,7 @@ case "$TARGET" in
         ;;
     test)
         ensure_image
-        run_tests
+        run_tests "${@:2}"
         ;;
     coverage)
         ensure_image

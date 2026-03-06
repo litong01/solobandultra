@@ -239,7 +239,9 @@ pub(super) fn compute_layout_with_staff_filter(
         })
         .collect();
 
-    // Jianpu: content-based estimated width per measure (notes + lyrics + insets) for row packing and allocation.
+    // Jianpu: content-based estimated width per measure (notes + lyrics + insets) for row packing.
+    let ref_pidx = parts_with_staves[0].0;
+    let ref_part = &score.parts[ref_pidx];
     let measure_estimated_widths: Vec<f64> = if use_jianpu {
         let num_measures = ref_part.measures.len();
         (0..num_measures)
@@ -261,10 +263,7 @@ pub(super) fn compute_layout_with_staff_filter(
                         all_beat_times.push(beat_times);
                     }
                 }
-                // Row packing: use count of note starts so multiple measures fit per row. Note positions
-                // inside each measure still use the slot rule (whole=4, half=2, quarter=1) for even spacing.
                 let n_slots = count_unique_beat_slots(&all_beat_times);
-                let ref_pidx = parts_with_staves[0].0;
                 let div = divs[ref_pidx].max(1) as f64;
                 let max_suffix_w: f64 = if mi < ref_part.measures.len() {
                     ref_part.measures[mi]
@@ -294,7 +293,7 @@ pub(super) fn compute_layout_with_staff_filter(
                     }
                 }
                 let content_w = left_base + right_base + (n_slots as f64 * JIANPU_ESTIMATE_PER_SLOT) + max_suffix_w;
-                let with_lyrics = lyrics_min_measure_width(&score.parts, mi, &divs, content_w);
+                let with_lyrics = lyrics_min_measure_width(&score.parts, mi, &lyrics_divs, content_w);
                 content_w.max(with_lyrics).max(measure_min_widths_jianpu[mi])
             })
             .collect()

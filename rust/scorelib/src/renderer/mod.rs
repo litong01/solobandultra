@@ -39,6 +39,43 @@ use layout::*;
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════
 
+/// When rendering or building the playback map in jianpu mode, the score is
+/// simplified to top layer only (first voice per staff, highest note per chord).
+/// Returns a new Score; use when `use_jianpu` is true so layout and playback map match.
+pub fn simplify_score_for_jianpu(
+    score: &Score,
+    staff_indices_1based: Option<&[usize]>,
+) -> Score {
+    let global_staves: Vec<(usize, usize)> = score
+        .parts
+        .iter()
+        .enumerate()
+        .flat_map(|(pidx, part)| {
+            let n = layout::detect_staves(part);
+            (1..=n).map(move |staff_num| (pidx, staff_num))
+        })
+        .collect();
+    let one_based = staff_indices_1based
+        .and_then(|l| l.first().copied())
+        .unwrap_or(1);
+    let gi = one_based.saturating_sub(1);
+    let parts_with_staves: Vec<(usize, Vec<usize>)> =
+        if let Some(&(pidx, staff_num)) = global_staves.get(gi) {
+            vec![(pidx, vec![staff_num])]
+        } else if let Some(&first) = global_staves.first() {
+            vec![(first.0, vec![first.1])]
+        } else {
+            return score.clone();
+        };
+    let mut simplified = score.clone();
+    for (pidx, staves) in &parts_with_staves {
+        let staff_num = staves.first().copied().unwrap_or(1) as i32;
+        simplified.parts[*pidx] =
+            crate::top_layer::simplify_part_for_jianpu(&score.parts[*pidx], staff_num);
+    }
+    simplified
+}
+
 /// Convert an octave-shift `size` attribute (8, 15, 22) to the number
 /// of octaves to transpose.  Uses integer-safe mapping:
 ///   8 → 1, 15 → 2, 22 → 3.  Falls back to `(size + 1) / 8` for
@@ -149,7 +186,17 @@ pub fn render_score_to_svg(
         }
     };
 
-    let layout = compute_layout_with_staff_filter(score, &parts_with_staves, page_width, use_jianpu);
+    // Jianpu preprocess: simplify to top layer only (first voice, highest note per chord)
+    // so layout and rendering see a single layer and indices align.
+    let simplified_score;
+    let score_for_render: &Score = if use_jianpu {
+        simplified_score = simplify_score_for_jianpu(score, staff_indices_1based);
+        &simplified_score
+    } else {
+        score
+    };
+
+    let layout = compute_layout_with_staff_filter(score_for_render, &parts_with_staves, page_width, use_jianpu);
 
     let mut svg = SvgBuilder::new(page_width, layout.total_height);
 
@@ -157,7 +204,7 @@ pub fn render_score_to_svg(
     svg.rect(0.0, 0.0, page_width, layout.total_height, "white", "none", 0.0);
 
     // Title and composer
-    render_header(&mut svg, score, page_width);
+    render_header(&mut svg, score_for_render, page_width);
 
     // Running attributes per part — (clefs vec indexed 1-based, key, time, divisions, transpose)
     struct PartState {
@@ -170,9 +217,9 @@ pub fn render_score_to_svg(
         octave_shift: i32,
     }
 
-    let mut part_states: Vec<PartState> = (0..score.parts.len())
+    let mut part_states: Vec<PartState> = (0..score_for_render.parts.len())
         .map(|pidx| {
-            let part = &score.parts[pidx];
+            let part = &score_for_render.parts[pidx];
             let ns = detect_staves(part);
             let mut clefs: Vec<Option<Clef>> = vec![None; ns + 1];
             let mut key = None;
@@ -235,7 +282,7 @@ pub fn render_score_to_svg(
         if let Some(first_ml) = system.measures.first() {
             for part_info in &system.parts {
                 let pidx = part_info.part_idx;
-                let part = &score.parts[pidx];
+                let part = &score_for_render.parts[pidx];
                 if first_ml.measure_idx < part.measures.len() {
                     let measure = &part.measures[first_ml.measure_idx];
                     if let Some(ref attrs) = measure.attributes {
@@ -336,7 +383,7 @@ pub fn render_score_to_svg(
                 let top_staff_y = system_y + part_info.y_offset;
                 render_instrument_name(
                     &mut svg,
-                    &score.parts[part_info.part_idx],
+                    &score_for_render.parts[part_info.part_idx],
                     top_staff_y,
                     part_info.num_staves,
                 );
@@ -379,10 +426,10 @@ pub fn render_score_to_svg(
             for part_info in &system.parts {
                 let pidx = part_info.part_idx;
                 let ps = &part_states[pidx];
-                if ml_pre.measure_idx >= score.parts[pidx].measures.len() {
+                if ml_pre.measure_idx >= score_for_render.parts[pidx].measures.len() {
                     continue;
                 }
-                let measure = &score.parts[pidx].measures[ml_pre.measure_idx];
+                let measure = &score_for_render.parts[pidx].measures[ml_pre.measure_idx];
                 let bottom_staff_num = part_info.staff_nums.last().copied().unwrap_or(1);
                 let staff_y_bottom = system_y
                     + part_info.y_offset
@@ -404,8 +451,8 @@ pub fn render_score_to_svg(
         for ml_scan in &system.measures {
             for part_info in &system.parts {
                 let pidx = part_info.part_idx;
-                if ml_scan.measure_idx < score.parts[pidx].measures.len() {
-                    let count = score.parts[pidx].measures[ml_scan.measure_idx].directions.iter()
+                if ml_scan.measure_idx < score_for_render.parts[pidx].measures.len() {
+                    let count = score_for_render.parts[pidx].measures[ml_scan.measure_idx].directions.iter()
                         .filter(|dir| {
                             dir.placement.as_deref() == Some("below")
                                 && dir.words.as_ref().map_or(false, |w| !w.is_empty() && !is_jump_text(w))
@@ -421,8 +468,8 @@ pub fn render_score_to_svg(
         let system_has_lyrics = system.measures.iter().any(|ml| {
             system.parts.iter().any(|part_info| {
                 let pidx = part_info.part_idx;
-                if ml.measure_idx < score.parts[pidx].measures.len() {
-                    score.parts[pidx].measures[ml.measure_idx].notes.iter()
+                if ml.measure_idx < score_for_render.parts[pidx].measures.len() {
+                    score_for_render.parts[pidx].measures[ml.measure_idx].notes.iter()
                         .any(|n| !n.lyrics.is_empty())
                 } else {
                     false
@@ -506,7 +553,7 @@ pub fn render_score_to_svg(
 
             for part_info in &system.parts {
                 let pidx = part_info.part_idx;
-                let part = &score.parts[pidx];
+                let part = &score_for_render.parts[pidx];
                 let ps = &mut part_states[pidx];
 
                 if ml.measure_idx >= part.measures.len() {
@@ -671,7 +718,6 @@ pub fn render_score_to_svg(
                         let key_fifths = ps.key.as_ref().map_or(0, |k| k.fifths);
                         let key_fifths_for_degree = jianpu::concert_key_fifths_for_degree(key_fifths, transpose_semitones);
                         let key_mode = ps.key.as_ref().and_then(|k| k.mode.as_deref());
-                        // Key and time sit right at the measure bar (not as "notes") so the cursor never lands on them.
                         let has_left_repeat = measure.barlines.iter().any(|b| b.location == "left" && b.repeat.is_some());
                         let bar_offset = 2.0 + if has_left_repeat { JIANPU_REPEAT_EXTRA_OFFSET } else { 0.0 };
                         let mut inline_x = mx + bar_offset;
@@ -701,7 +747,7 @@ pub fn render_score_to_svg(
                             ml.width,
                             ml.left_inset,
                             ml.right_inset,
-                            false, // key label already drawn above when needed
+                            false,
                         );
                         let staff_ties = system_open_ties
                             .entry((pidx, staff_num))
@@ -799,8 +845,8 @@ pub fn render_score_to_svg(
             // Right barline spanning all staves across all parts.
             let has_special_right_barline = system.parts.first().map_or(false, |pi| {
                 let pidx = pi.part_idx;
-                if ml.measure_idx < score.parts[pidx].measures.len() {
-                    score.parts[pidx].measures[ml.measure_idx].barlines.iter().any(|b| {
+                if ml.measure_idx < score_for_render.parts[pidx].measures.len() {
+                    score_for_render.parts[pidx].measures[ml.measure_idx].barlines.iter().any(|b| {
                         let is_right = b.location == "right" || b.location.is_empty();
                         is_right && b.bar_style.is_some()
                     })

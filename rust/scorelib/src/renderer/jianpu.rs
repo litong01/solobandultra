@@ -1,5 +1,9 @@
 //! Jianpu (numbered musical notation) rendering.
 //!
+//! **Melody only:** We render only the top layer (voice 1). At each position we consider only
+//! voice-1 notes; if voice 1 has a chord we pick the highest pitch. Other voices are ignored.
+//! For full chord display, use staff notation.
+//!
 //! Conventions (key-based movable do), aligned with sample.rs reference:
 //! - Digits 1–7 = scale degrees (do, re, mi, fa, sol, la, si). 0 = rest.
 //! - Key sets which pitch is 1 (e.g. C major → C=1, G major → G=1). Mode (major/minor/etc.) changes the scale.
@@ -12,6 +16,9 @@ use crate::model::Pitch;
 use super::constants::*;
 use super::svg_builder::SvgBuilder;
 use super::tuplet::find_tuplet_groups;
+
+/// Voice number for the top layer (melody) in multi-voice scores; matches MusicXML and note_timeline.
+const TOP_VOICE: i32 = 1;
 
 /// Default font size for Jianpu digits. Exposed so the lyrics path can shift by half note width when needed.
 pub(super) const JIANPU_FONT_SIZE: f64 = 22.0;
@@ -26,25 +33,8 @@ pub(super) fn jianpu_note_head_width(font_size: f64) -> f64 {
     font_size
 }
 
-/// Vertical distance from digit baseline to the first octave dot (above or below).
-const JIANPU_DOT_OFFSET: f64 = 20.0;
-/// Vertical step between multiple octave dots (so they don’t overlap the number or each other).
-const JIANPU_DOT_STEP: f64 = 10.0;
 /// Key label font size (e.g. "1 = C").
 const JIANPU_KEY_LABEL_FONT: f64 = 14.0;
-/// Vertical spacing between stacked chord notes. Must be at least one digit height to avoid overlap
-/// (digit is JIANPU_FONT_SIZE tall; add gap so octave dots don’t touch).
-/// Half-height of one rendered note (digit half + octave dots; up to 2 dots above/below).
-fn jianpu_half_note_height() -> f64 {
-    JIANPU_FONT_SIZE / 2.0 + JIANPU_DOT_OFFSET + 2.0 * JIANPU_DOT_STEP
-}
-/// Extra gap between stacked chord notes (scales with font).
-const JIANPU_CHORD_STACK_GAP_RATIO: f64 = 0.12;
-/// Vertical spacing between stacked chord notes; derived from note height so it stays correct when font or dot metrics change.
-fn jianpu_chord_stack_spacing() -> f64 {
-    2.0 * jianpu_half_note_height() + JIANPU_CHORD_STACK_GAP_RATIO * JIANPU_FONT_SIZE
-}
-
 /// Key fifths (e.g. 0 = C, 1 = G) to root pitch class in semitones (0–11).
 #[inline]
 fn key_root_semitone(fifths: i32) -> i32 {
@@ -364,23 +354,9 @@ pub(super) fn jianpu_note_y_positions_for_ties(
             i = group_end;
             continue;
         }
-        let mut chord_notes: Vec<(usize, &crate::model::Note)> = group_indices
-            .iter()
-            .map(|&k| (k, &measure.notes[k]))
-            .collect();
-        chord_notes.sort_by_key(|(_, n)| {
-            let rest_last = if n.rest { 1 } else { 0 };
-            let midi = n.pitch.as_ref().map(|p| p.to_midi()).unwrap_or(0);
-            (rest_last, midi)
-        });
-        for (chord_idx, &(k, _)) in chord_notes.iter().enumerate() {
-            let y = if chord_notes.len() <= 1 {
-                center_y
-            } else {
-                let offset = chord_idx as f64 - (chord_notes.len() as f64 - 1.0) / 2.0;
-                center_y + offset * jianpu_chord_stack_spacing()
-            };
-            ys[k] = y;
+        // Melody-only: all notes at this position share the same y (no chord stacking).
+        for &k in &group_indices {
+            ys[k] = center_y;
         }
         i = group_end;
     }
@@ -413,10 +389,16 @@ pub(super) fn render_jianpu_measure(
 
     let left_x = measure_x + left_inset;
     let usable_width = (measure_width - left_inset - right_inset).max(0.0);
+    // Top layer only: count slots from voice-1 principals so layout matches what we draw.
     let total_slots: f64 = measure
         .notes
         .iter()
-        .filter(|n| n.staff.unwrap_or(1) == staff_filter && !n.grace && !n.chord)
+        .filter(|n| {
+            n.staff.unwrap_or(1) == staff_filter
+                && n.voice.unwrap_or(TOP_VOICE) == TOP_VOICE
+                && !n.grace
+                && !n.chord
+        })
         .map(|n| slot_count_for_duration(n.duration as f64 / div))
         .sum();
     let slot_x = |slot_index: f64| -> f64 {
@@ -472,16 +454,31 @@ pub(super) fn render_jianpu_measure(
             })
             .collect();
 
-        let group_len = group_indices.len();
         let group_end = group_indices.iter().max().copied().unwrap_or(i) + 1;
 
-        if group_indices.iter().min().copied() != Some(i) {
+        // Top layer only: consider only voice-1 notes at this position.
+        let group_voice1: Vec<usize> = group_indices
+            .iter()
+            .filter(|&k| measure.notes[*k].voice.unwrap_or(TOP_VOICE) == TOP_VOICE)
+            .copied()
+            .collect();
+
+        if group_voice1.is_empty() {
             i = group_end;
             continue;
         }
 
+        // Only process when we're at the first voice-1 note at this position (voice-1 principal).
+        // Advance by one when not, so we go through every note and don't skip past voice-1.
+        let voice1_principal = group_voice1.iter().min().copied();
+        if voice1_principal != Some(i) {
+            i += 1;
+            continue;
+        }
+
         let w = jianpu_note_head_width(JIANPU_FONT_SIZE);
-        if note.rest && group_len == 1 {
+        let group_len_voice1 = group_voice1.len();
+        if note.voice.unwrap_or(TOP_VOICE) == TOP_VOICE && note.rest && group_len_voice1 == 1 {
             let duration_quarters = note.duration as f64 / div;
             let (underlines, dot, dashes) = duration_to_jianpu(duration_quarters, note.dot);
             let slot_count = slot_count_for_duration(duration_quarters);
@@ -502,84 +499,70 @@ pub(super) fn render_jianpu_measure(
         }
 
         if note.grace {
-            // Place grace above the main note so the bottom of the grace nearly touches the top of the main (dominant-baseline=middle).
+            // Place grace above the main note (only voice-1 grace notes).
             let grace_w = jianpu_note_head_width(JIANPU_GRACE_FONT_SIZE);
             let main_top = jianpu_center_y - JIANPU_FONT_SIZE / 2.0;
             let grace_y = main_top - JIANPU_GRACE_FONT_SIZE / 2.0 - JIANPU_GRACE_MAIN_GAP;
-            // Draw each grace at its own x; beat_map already offsets graces left of the principal.
-            for &k in group_indices.iter() {
+            for &k in group_voice1.iter() {
                 let grace_note = &measure.notes[k];
-                if let Some(ref pitch) = grace_note.pitch {
+                if grace_note.grace && grace_note.pitch.is_some() {
+                    if let Some(ref pitch) = grace_note.pitch {
                     let gx = note_positions[k];
                     let (digit, octave_dots, accidental) = pitch_to_jianpu(pitch, key_fifths_for_degree, key_mode);
                     let ascii_str = note_to_jianpu_ascii(digit, octave_dots, accidental, 1, false, 0);
                     svg.jianpu_note_text_centered(gx, grace_y, &ascii_str, grace_w, 0.0, "Jianpu", JIANPU_GRACE_FONT_SIZE, NOTE_COLOR);
+                    }
                 }
             }
             i = group_end;
             continue;
         }
 
-        let mut chord_notes: Vec<(usize, &crate::model::Note)> = group_indices
+        // Top layer only: among voice-1 notes at this position, pick the highest (if chord).
+        let mut group_notes: Vec<(usize, &crate::model::Note)> = group_voice1
             .iter()
             .map(|&k| (k, &measure.notes[k]))
             .collect();
-        chord_notes.sort_by_key(|(_, n)| {
+        group_notes.sort_by_key(|(_, n)| {
             let rest_last = if n.rest { 1 } else { 0 };
             let midi = n.pitch.as_ref().map(|p| p.to_midi()).unwrap_or(0);
-            (rest_last, midi)
+            (rest_last, std::cmp::Reverse(midi))
         });
+        let n = group_notes
+            .first()
+            .map(|(_, n)| *n)
+            .unwrap_or(note);
+        let duration_quarters = n.duration as f64 / div;
+        let (underlines, suffix_dot, suffix_dashes) = duration_to_jianpu(duration_quarters, n.dot);
 
-        for (chord_idx, &(_, n)) in chord_notes.iter().enumerate() {
-            let y = if chord_notes.len() <= 1 {
-                jianpu_center_y
-            } else {
-                let offset = chord_idx as f64 - (chord_notes.len() as f64 - 1.0) / 2.0;
-                jianpu_center_y + offset * jianpu_chord_stack_spacing()
-            };
-
-            if n.rest {
-                let duration_quarters = n.duration as f64 / div;
-                let (underlines, dot, dashes) = duration_to_jianpu(duration_quarters, n.dot);
-                if dashes > 0 {
-                    let digit_str = note_to_jianpu_ascii(0, 0, None, underlines, dot, 0);
-                    svg.jianpu_note_text_centered(nx, y, &digit_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
-                } else {
-                    let ascii_str = note_to_jianpu_ascii(0, 0, None, underlines, dot, dashes);
-                    svg.jianpu_note_text_centered(nx, y, &ascii_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
-                }
-            } else if let Some(ref pitch) = n.pitch {
-                let (digit, octave_dots, accidental) = pitch_to_jianpu(pitch, key_fifths_for_degree, key_mode);
-                let duration_quarters = n.duration as f64 / div;
-                let (underlines, suffix_dot, suffix_dashes) = duration_to_jianpu(duration_quarters, n.dot);
-                if suffix_dashes > 0 {
-                    let digit_str = note_to_jianpu_ascii(
-                        digit, octave_dots, accidental,
-                        underlines, suffix_dot, 0,
-                    );
-                    svg.jianpu_note_text_centered(nx, y, &digit_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
-                } else {
-                    let ascii_str = note_to_jianpu_ascii(
-                        digit, octave_dots, accidental,
-                        underlines, suffix_dot, suffix_dashes,
-                    );
-                    svg.jianpu_note_text_centered(nx, y, &ascii_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
-                }
-            }
-        }
-        // Draw dashes at their own slot positions (once per group; all chord notes share the same duration).
-        if let Some(&(_, ref first_n)) = chord_notes.first() {
-            let duration_quarters = first_n.duration as f64 / div;
-            let (_, _, suffix_dashes) = duration_to_jianpu(duration_quarters, first_n.dot);
+        if n.rest {
             if suffix_dashes > 0 {
-                let dash_y = jianpu_center_y;
+                let digit_str = note_to_jianpu_ascii(0, 0, None, underlines, suffix_dot, 0);
+                svg.jianpu_note_text_centered(nx, jianpu_center_y, &digit_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
                 for k in 0..suffix_dashes {
                     let dash_x = slot_x(current_slot_index + 1.0 + k as f64);
-                    svg.jianpu_note_text_centered(dash_x, dash_y, " -", DASH_WIDTH, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
+                    svg.jianpu_note_text_centered(dash_x, jianpu_center_y, " -", DASH_WIDTH, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
                 }
+            } else {
+                let ascii_str = note_to_jianpu_ascii(0, 0, None, underlines, suffix_dot, suffix_dashes);
+                svg.jianpu_note_text_centered(nx, jianpu_center_y, &ascii_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
             }
-            current_slot_index += slot_count_for_duration(duration_quarters);
+        } else if let Some(ref pitch) = n.pitch {
+            let (digit, octave_dots, accidental) = pitch_to_jianpu(pitch, key_fifths_for_degree, key_mode);
+            if suffix_dashes > 0 {
+                let digit_str = note_to_jianpu_ascii(digit, octave_dots, accidental, underlines, suffix_dot, 0);
+                svg.jianpu_note_text_centered(nx, jianpu_center_y, &digit_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
+                for k in 0..suffix_dashes {
+                    let dash_x = slot_x(current_slot_index + 1.0 + k as f64);
+                    svg.jianpu_note_text_centered(dash_x, jianpu_center_y, " -", DASH_WIDTH, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
+                }
+            } else {
+                let ascii_str = note_to_jianpu_ascii(digit, octave_dots, accidental, underlines, suffix_dot, suffix_dashes);
+                svg.jianpu_note_text_centered(nx, jianpu_center_y, &ascii_str, w, 0.0, "Jianpu", JIANPU_FONT_SIZE, NOTE_COLOR);
+            }
         }
+
+        current_slot_index += slot_count_for_duration(duration_quarters);
 
         // If this group is the start of a tuplet, draw bracket (tie) at the top with the number on it.
         let first_in_group = group_indices.iter().min().copied().unwrap_or(i);

@@ -23,6 +23,7 @@ pub mod accompaniment;
 pub mod playback;
 pub mod audio;
 pub mod note_timeline;
+pub mod top_layer;
 pub mod feedback_overlay;
 
 #[cfg(target_os = "android")]
@@ -320,13 +321,19 @@ pub fn add_feedback_overlay(svg: &str, overlay_dots_json: &str) -> Result<String
 /// The playback map contains measure positions, system positions and the
 /// timemap — everything the WebView needs to animate a playback cursor.
 /// Pass `use_jianpu: true` when the score is rendered in jianpu so cursor positions match.
+/// When jianpu is true, the score is simplified to top layer only so note_positions align.
 pub fn playback_map_from_score(
     score: &Score,
     page_width: Option<f64>,
     staff_indices_1based: Option<&[usize]>,
     use_jianpu: bool,
 ) -> String {
-    let map = generate_playback_map(score, page_width, staff_indices_1based, use_jianpu);
+    let map = if use_jianpu {
+        let simplified = renderer::simplify_score_for_jianpu(score, staff_indices_1based);
+        generate_playback_map(&simplified, page_width, staff_indices_1based, use_jianpu)
+    } else {
+        generate_playback_map(score, page_width, staff_indices_1based, use_jianpu)
+    };
     playback::playback_map_to_json(&map)
 }
 
