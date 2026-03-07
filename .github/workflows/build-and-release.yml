@@ -30,6 +30,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Copy app icon to iOS Assets
+        run: |
+          rm -f ios/SoloBandUltra/SoloBandUltra/Assets.xcassets/AppIcon.appiconset/app-icon-1024.png
+          cp icon/app-icon-1024.png ios/SoloBandUltra/SoloBandUltra/Assets.xcassets/AppIcon.appiconset/app-icon-1024.png
+          rm -f ios/SoloBandUltra/SoloBandUltra/Assets.xcassets/AppIconImage.imageset/app-icon-1024.png
+          cp icon/app-icon-1024.png ios/SoloBandUltra/SoloBandUltra/Assets.xcassets/AppIconImage.imageset/app-icon-1024.png
+
       - name: Copy fonts to iOS bundle
         run: |
           mkdir -p ios/SoloBandUltra/SoloBandUltra/Fonts
@@ -134,6 +141,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Install ImageMagick (for app icon generation)
+        run: sudo apt-get update && sudo apt-get install -y imagemagick
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4

@@ -10,6 +10,26 @@ val copySheetMusic = tasks.register<Copy>("copySheetMusic") {
     into(layout.buildDirectory.dir("generated/sheetmusic-assets/sheetmusic"))
 }
 
+// Copy app icon from single source (works on all platforms; no bash required).
+val repoRoot = rootDir.parentFile!!.parentFile!!
+val copyAndroidIcon = tasks.register<Copy>("copyAndroidIcon") {
+    from(repoRoot.resolve("icon/app-icon-1024.png"))
+    into(layout.projectDirectory.dir("src/main/res/drawable"))
+    rename("app-icon-1024.png", "ic_launcher_foreground.png")
+    onlyIf { repoRoot.resolve("icon/app-icon-1024.png").exists() }
+}
+
+// Generate mipmap densities from icon (requires bash + sips/ImageMagick; skipped on Windows).
+val updateAndroidIcons = tasks.register<Exec>("updateAndroidIcons") {
+    workingDir = repoRoot
+    commandLine("/bin/bash", "scripts/update-android-icons.sh")
+    isIgnoreExitValue = false
+    onlyIf {
+        !System.getProperty("os.name").lowercase().contains("win") &&
+            repoRoot.resolve("icon/app-icon-1024.png").exists()
+    }
+}
+
 android {
     namespace = "com.solobandultra.app"
     compileSdk = 34
@@ -111,11 +131,15 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
-// Ensure sheet music files are copied before any task that reads assets
-// (mergeAssets, lint, etc.).  preBuild is the first task in the Android
-// build lifecycle — everything else depends on it transitively.
+// Ensure sheet music files and app icon are ready before any task that reads assets/resources.
 afterEvaluate {
     tasks.named("preBuild") {
         dependsOn(copySheetMusic)
+    }
+    tasks.named("processReleaseResources") {
+        dependsOn(copyAndroidIcon, updateAndroidIcons)
+    }
+    tasks.named("processDebugResources") {
+        dependsOn(copyAndroidIcon, updateAndroidIcons)
     }
 }
