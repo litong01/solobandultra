@@ -6,10 +6,10 @@
 //! treble, `Some(2)` for bass, `Some(3)` for a third staff) so only that staff's
 //! top layer is returned; use `staff_filter: None` only if you need all staves.
 //!
-//! **Jianpu preprocessing:** Before rendering jianpu, the score can be simplified
-//! so that each measure keeps only the top layer (first voice on the staff, and
-//! at each chord only the highest-pitched note). The simplified music is then
-//! passed to the normal render path so layout and drawing see a single layer.
+//! **Jianpu preprocessing:** Before rendering jianpu, the score is simplified so
+//! that each measure keeps only voice-1 notes on the selected staff and drops any
+//! note with <chord/> (per MusicXML, the first note at a chord has no <chord/> and
+//! is the principal; chord members are removed). No "highest note per chord" logic.
 
 use crate::model::{Measure, Note, Part, Pitch};
 use std::collections::{HashMap, HashSet};
@@ -226,93 +226,31 @@ pub fn extract_top_layer_from_part(
         .collect()
 }
 
-// ─── Jianpu preprocess: remove non–top-layer notes ────────────────────────────
+// ─── Jianpu preprocess: voice 1 only, drop chord notes ────────────────────────
 
-/// Returns the set of note indices to keep for jianpu: one note per (staff, beat)
-/// (top voice, highest pitch or single rest), plus all top-voice grace notes on that staff.
-fn measure_keep_indices(measure: &Measure, staff_filter: i32) -> HashSet<usize> {
-    let divisions = measure
-        .attributes
-        .as_ref()
-        .and_then(|a| a.divisions)
-        .unwrap_or(1)
-        .max(1);
-    let beat_times = compute_note_beat_times(&measure.notes, divisions);
-
-    let mut staff_top_voice: HashMap<i32, i32> = HashMap::new();
-    for note in &measure.notes {
-        if note.rest || note.grace {
-            continue;
-        }
-        let staff = note.staff.unwrap_or(1);
-        let voice = note.voice.unwrap_or(DEFAULT_TOP_VOICE);
-        staff_top_voice
-            .entry(staff)
-            .and_modify(|v| *v = (*v).min(voice))
-            .or_insert(voice);
-    }
-    let top_voice = *staff_top_voice.get(&staff_filter).unwrap_or(&DEFAULT_TOP_VOICE);
-
-    type GroupKey = (i32, i64);
-    let mut groups: HashMap<GroupKey, Vec<usize>> = HashMap::new();
-    for (i, &beat) in beat_times.iter().enumerate() {
-        if i >= measure.notes.len() {
-            break;
-        }
-        let note = &measure.notes[i];
-        if note.grace {
-            continue;
-        }
-        let staff = note.staff.unwrap_or(1);
-        if staff != staff_filter {
-            continue;
-        }
-        let beat_scaled = (beat / BEAT_EPS).round() as i64;
-        groups
-            .entry((staff, beat_scaled))
-            .or_default()
-            .push(i);
-    }
-
-    let mut keep = HashSet::new();
-    for (_, indices) in groups {
-        let voice1: Vec<usize> = indices
-            .into_iter()
-            .filter(|&k| measure.notes[k].voice.unwrap_or(DEFAULT_TOP_VOICE) == top_voice)
-            .collect();
-        if voice1.is_empty() {
-            continue;
-        }
-        let pitched: Vec<(usize, i32)> = voice1
-            .iter()
-            .filter_map(|&k| {
-                let n = &measure.notes[k];
-                n.pitch.as_ref().map(|p| (k, p.to_midi()))
-            })
-            .collect();
-        if pitched.is_empty() {
-            keep.insert(voice1[0]);
-        } else {
-            let (idx, _) = pitched.into_iter().max_by_key(|(_, m)| *m).unwrap();
-            keep.insert(idx);
-        }
-    }
-    for (i, note) in measure.notes.iter().enumerate() {
-        if note.grace
-            && note.staff.unwrap_or(1) == staff_filter
-            && note.voice.unwrap_or(DEFAULT_TOP_VOICE) == top_voice
-        {
-            keep.insert(i);
-        }
-    }
-    keep
+/// Returns the set of note indices to keep for jianpu: all notes on the given
+/// staff that belong to voice 1 and are not chord notes. Per MusicXML, the first
+/// note at a chord has no <chord/> and carries the voice; following <chord/> notes
+/// are removed so we keep exactly the principal (first) note at each beat.
+fn measure_keep_indices_jianpu(measure: &Measure, staff_filter: i32) -> HashSet<usize> {
+    measure
+        .notes
+        .iter()
+        .enumerate()
+        .filter(|(_, note)| {
+            note.staff.unwrap_or(1) == staff_filter
+                && note.voice.unwrap_or(DEFAULT_TOP_VOICE) == DEFAULT_TOP_VOICE
+                && !note.chord
+        })
+        .map(|(i, _)| i)
+        .collect()
 }
 
-/// Simplify one measure for jianpu: keep only top-layer notes (first voice on the
-/// given staff, and at each chord only the highest-pitched note). Returns a new
-/// `Vec<Note>` in display order; kept notes are cloned with `chord: false`.
+/// Simplify one measure for jianpu: keep only voice-1 notes on the given staff
+/// and drop any note with <chord/> (chord members). Preserves display order.
+/// Kept notes are cloned with `chord: false`.
 pub fn simplify_measure_for_jianpu(measure: &Measure, staff_filter: i32) -> Vec<Note> {
-    let keep = measure_keep_indices(measure, staff_filter);
+    let keep = measure_keep_indices_jianpu(measure, staff_filter);
     let mut out = Vec::new();
     let mut pending_graces: Vec<Note> = Vec::new();
     for (i, note) in measure.notes.iter().enumerate() {
@@ -336,9 +274,8 @@ pub fn simplify_measure_for_jianpu(measure: &Measure, staff_filter: i32) -> Vec<
     out
 }
 
-/// Simplify a part for jianpu: replace each measure's notes with the top layer
-/// only (first voice on the given staff, one note per chord = highest). Returns a
-/// new `Part`; the original is unchanged.
+/// Simplify a part for jianpu: keep only voice-1 notes on the selected staff and
+/// remove any note with <chord/>. Returns a new `Part`; the original is unchanged.
 pub fn simplify_part_for_jianpu(part: &Part, staff_filter: i32) -> Part {
     let mut part = part.clone();
     for measure in &mut part.measures {
