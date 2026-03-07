@@ -86,7 +86,7 @@ fun FeedbackReportScreen(
 
             if (showSvgOverlay && overlayDotsJson != null) {
                 val svgWithOverlay = ScoreLib.addFeedbackOverlay(svgContent!!, overlayDotsJson)
-                if (svgWithOverlay != null) {
+                if (svgWithOverlay != null && svgWithOverlay.isNotBlank()) {
                     // Summary + SVG with overlay (Rust-generated; no script)
                     Column(
                         modifier = Modifier

@@ -19,7 +19,8 @@ struct FeedbackReportView: View {
         NavigationStack {
             Group {
                 if showSvgOverlay, let overlayJson = overlayDotsJson, let svg = svgContent,
-                   let svgWithOverlay = ScoreLib.addFeedbackOverlay(svg: svg, overlayDotsJson: overlayJson) {
+                   let svgWithOverlay = ScoreLib.addFeedbackOverlay(svg: svg, overlayDotsJson: overlayJson),
+                   !svgWithOverlay.isEmpty {
                     ScrollView {
                         VStack(spacing: 20) {
                             summarySection

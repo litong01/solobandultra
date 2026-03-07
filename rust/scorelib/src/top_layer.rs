@@ -184,9 +184,15 @@ pub fn extract_top_layer_from_measure(
             continue;
         }
         // Highest pitch at this position (soprano / top of chord)
-        let (note_index, midi) = pitched.into_iter().max_by_key(|(_, m)| *m).unwrap();
-        let pitch = measure.notes[note_index].pitch.as_ref().unwrap();
-        let beat_time = beat_times[note_index];
+        let (note_index, midi) = match pitched.into_iter().max_by_key(|(_, m)| *m) {
+            Some(p) => p,
+            None => continue,
+        };
+        let pitch = match measure.notes.get(note_index).and_then(|n| n.pitch.as_ref()) {
+            Some(p) => p,
+            None => continue,
+        };
+        let beat_time = beat_times.get(note_index).copied().unwrap_or(0.0);
         top_notes.push(TopLayerNote {
             measure_idx,
             staff,

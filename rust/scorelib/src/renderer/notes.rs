@@ -270,12 +270,12 @@ const REST_DOT_R: f64 = 1.8;
 const REST_DOT_OFFSET_X: f64 = 11.0;
 
 fn render_rest(svg: &mut SvgBuilder, x: f64, staff_y: f64, note_type: Option<&str>, measure_rest: bool, dot: bool) {
-    if measure_rest || note_type.is_none() {
+    if measure_rest {
         svg.rect(x - 7.0, staff_y + 10.0, 14.0, 5.0, REST_COLOR, "none", 0.0);
         return;
     }
-
-    match note_type.unwrap() {
+    let note_type = note_type.unwrap_or("quarter");
+    match note_type {
         "whole" => {
             svg.rect(x - 7.0, staff_y + 10.0, 14.0, 5.0, REST_COLOR, "none", 0.0);
             if dot {
@@ -417,7 +417,10 @@ fn render_tuplet_group(
         return;
     }
     let first_idx = group[0];
-    let last_idx = *group.last().unwrap();
+    let last_idx = match group.last() {
+        Some(&idx) => idx,
+        None => return,
+    };
     let first_note = &measure.notes[first_idx];
     let x_first = note_positions[first_idx];
     let x_last = note_positions[last_idx];
@@ -557,16 +560,19 @@ fn render_beam_group(
         n.stem_x = if stem_up { n.x + NOTEHEAD_RX - 1.0 } else { n.x - NOTEHEAD_RX + 1.0 };
     }
 
-    // Use outermost chord notehead for stem anchor (max_y for stem-up, min_y for stem-down)
-    let first_anchor = if stem_up { notes.first().unwrap().max_y } else { notes.first().unwrap().min_y };
-    let last_anchor  = if stem_up { notes.last().unwrap().max_y }  else { notes.last().unwrap().min_y };
+    let (first_anchor, last_anchor, first_x, last_x) = match (notes.first(), notes.last()) {
+        (Some(a), Some(b)) => (
+            if stem_up { a.max_y } else { a.min_y },
+            if stem_up { b.max_y } else { b.min_y },
+            a.stem_x,
+            b.stem_x,
+        ),
+        _ => return,
+    };
     let first_stem_end = if stem_up { first_anchor - STEM_LENGTH }
                          else { first_anchor + STEM_LENGTH };
     let last_stem_end  = if stem_up { last_anchor - STEM_LENGTH }
                          else { last_anchor + STEM_LENGTH };
-
-    let first_x = notes.first().unwrap().stem_x;
-    let last_x  = notes.last().unwrap().stem_x;
     let beam_dx = last_x - first_x;
 
     let slope = if beam_dx.abs() > 0.1 {

@@ -581,7 +581,7 @@ fun SheetMusicScreen(
             val pmap     = result[1] as? String
             val timeline = result[2] as? String
             val audio    = result[3] as? ByteArray
-            if (svg != null) {
+            if (svg != null && svg.isNotBlank()) {
                 svgContent = svg
                 playbackMapJson = pmap
 
@@ -590,9 +590,8 @@ fun SheetMusicScreen(
                     feedbackManager.loadTimeline(NoteEvent.parseList(timeline))
                 }
 
-                // Prepare the playback manager with the rendered WAV audio.
-                // File write on IO, MediaPlayer setup on Main (needs Looper).
-                if (audio != null) {
+                // Prepare the playback manager with the rendered WAV audio (skip empty buffer).
+                if (audio != null && audio.isNotEmpty()) {
                     val tempFile = withContext(Dispatchers.IO) {
                         playbackManager?.writeTempWav(audio)
                     }
@@ -604,6 +603,8 @@ fun SheetMusicScreen(
                     }
                 }
             } else {
+                svgContent = null
+                playbackMapJson = null
                 errorMessage = renderFailureReason?.let { "Failed to render $filePath: $it" }
                     ?: "Failed to render $filePath"
             }
@@ -932,7 +933,7 @@ fun SheetMusicScreen(
                             color = MaterialTheme.colorScheme.error
                         )
                     }
-                    svgContent != null -> {
+                    svgContent != null && svgContent!!.isNotBlank() -> {
                         SvgWebView(
                             svg = svgContent!!,
                             playbackMapJson = playbackMapJson,

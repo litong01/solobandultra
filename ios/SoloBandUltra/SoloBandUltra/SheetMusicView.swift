@@ -277,7 +277,7 @@ struct SheetMusicView: View {
                 guard thisGeneration == loadGeneration else { return }
 
                 isLoading = false
-                if let svg = svg {
+                if let svg = svg, !svg.isEmpty {
                     svgContent = svg
                     playbackMapJson = pmap
                     onScoreLoaded(svg, pmap ?? "")
@@ -289,11 +289,13 @@ struct SheetMusicView: View {
                         feedbackManager.loadTimeline(events)
                     }
 
-                    // Prepare the playback manager with the rendered audio
-                    if let wavData = audio {
+                    // Prepare the playback manager with the rendered audio (skip empty buffer).
+                    if let wavData = audio, !wavData.isEmpty {
                         playbackManager.prepareAudio(wavData)
                     }
                 } else {
+                    svgContent = nil
+                    playbackMapJson = nil
                     errorMessage = "Failed to render '\(filename)'"
                 }
             }
@@ -319,7 +321,7 @@ struct SheetMusicView: View {
             DispatchQueue.main.async {
                 // Discard if a newer regeneration was started while we were working.
                 guard thisMidiGen == midiGeneration else { return }
-                if let wavData = audio {
+                if let wavData = audio, !wavData.isEmpty {
                     playbackManager.prepareAudio(wavData)
                 }
             }

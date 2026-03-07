@@ -276,6 +276,9 @@ pub fn render_score_to_svg(
 
     // Render each system
     for (sys_idx, system) in layout.systems.iter().enumerate() {
+        if system.parts.is_empty() {
+            continue;
+        }
         let system_y = system.y;
 
         // Pre-update part states from the first measure of this system
@@ -392,31 +395,32 @@ pub fn render_score_to_svg(
 
         // Bracket spanning ALL staves in the system (if multiple parts)
         if system.parts.len() > 1 || system.total_staves > 1 {
-            let first_part = system.parts.first().unwrap();
-            let last_part = system.parts.last().unwrap();
-            let top_y = system_y + first_part.y_offset;
-            let bottom_y = system_y
-                + last_part.y_offset
-                + (last_part.num_staves as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP)
-                + STAFF_HEIGHT;
+            if let (Some(first_part), Some(last_part)) = (system.parts.first(), system.parts.last()) {
+                let top_y = system_y + first_part.y_offset;
+                let bottom_y = system_y
+                    + last_part.y_offset
+                    + (last_part.num_staves as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP)
+                    + STAFF_HEIGHT;
 
-            svg.line(
-                sys_prefix_x, top_y, sys_prefix_x, bottom_y,
-                BARLINE_COLOR, BARLINE_WIDTH,
-            );
+                svg.line(
+                    sys_prefix_x, top_y, sys_prefix_x, bottom_y,
+                    BARLINE_COLOR, BARLINE_WIDTH,
+                );
+            }
         }
 
         // ── Measure number at the start of each system line ──
         if let Some(first_ml) = system.measures.first() {
             let measure_num = first_ml.measure_idx + 1;
             if measure_num > 1 {
-                let first_part = system.parts.first().unwrap();
-                let top_staff_y = system_y + first_part.y_offset;
-                let color = "#555555";
-                svg.elements.push(format!(
-                    "<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"15\" font-style=\"italic\" fill=\"{}\" text-anchor=\"start\">{}</text>",
-                    sys_prefix_x - 10.0, top_staff_y - 8.0, color, measure_num
-                ));
+                if let Some(first_part) = system.parts.first() {
+                    let top_staff_y = system_y + first_part.y_offset;
+                    let color = "#555555";
+                    svg.elements.push(format!(
+                        "<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"15\" font-style=\"italic\" fill=\"{}\" text-anchor=\"start\">{}</text>",
+                        sys_prefix_x - 10.0, top_staff_y - 8.0, color, measure_num
+                    ));
+                }
             }
         }
 
@@ -752,14 +756,16 @@ pub fn render_score_to_svg(
                         let staff_ties = system_open_ties
                             .entry((pidx, staff_num))
                             .or_insert_with(std::collections::HashMap::new);
-                        ties::collect_and_render_ties_for_measure_jianpu(
-                            &mut svg,
-                            measure,
-                            Some(staff_num as i32),
-                            &note_xs,
-                            jianpu_note_ys.as_deref().unwrap(),
-                            staff_ties,
-                        );
+                        if let Some(ys) = jianpu_note_ys.as_deref() {
+                            ties::collect_and_render_ties_for_measure_jianpu(
+                                &mut svg,
+                                measure,
+                                Some(staff_num as i32),
+                                &note_xs,
+                                ys,
+                                staff_ties,
+                            );
+                        }
                     } else {
                         // Notes and rests for this staff — always filter so only notes on this staff are drawn.
                         let effective_transpose = ps.transpose_octave + ps.octave_shift;
@@ -856,14 +862,14 @@ pub fn render_score_to_svg(
             });
 
             if !has_special_right_barline {
-                let first_part = system.parts.first().unwrap();
-                let last_part = system.parts.last().unwrap();
-                let top_y = system_y + first_part.y_offset;
-                let bottom_y = system_y
-                    + last_part.y_offset
-                    + (last_part.num_staves as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP)
-                    + STAFF_HEIGHT;
-                svg.line(mx + mw, top_y, mx + mw, bottom_y, BARLINE_COLOR, BARLINE_WIDTH);
+                if let (Some(first_part), Some(last_part)) = (system.parts.first(), system.parts.last()) {
+                    let top_y = system_y + first_part.y_offset;
+                    let bottom_y = system_y
+                        + last_part.y_offset
+                        + (last_part.num_staves as f64 - 1.0) * (STAFF_HEIGHT + GRAND_STAFF_GAP)
+                        + STAFF_HEIGHT;
+                    svg.line(mx + mw, top_y, mx + mw, bottom_y, BARLINE_COLOR, BARLINE_WIDTH);
+                }
             }
         }
 

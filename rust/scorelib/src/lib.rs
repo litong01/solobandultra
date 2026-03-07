@@ -263,6 +263,9 @@ pub fn render_bytes_to_svg(
 /// optionally generates accompaniment tracks.  Returns a Standard MIDI
 /// File (SMF Type 1) as raw bytes.
 pub fn generate_midi_from_score(score: &Score, options: &MidiOptions) -> Vec<u8> {
+    if score.parts.is_empty() {
+        return Vec::new();
+    }
     let part_idx = 0; // melody from first part
     let unrolled = unroll(score, part_idx);
     let tmap = generate_timemap(score, part_idx, &unrolled);

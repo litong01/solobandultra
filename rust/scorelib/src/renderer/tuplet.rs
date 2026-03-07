@@ -68,7 +68,13 @@ pub(super) fn find_tuplet_groups(
         }
 
         if note.time_modification.is_some() && !note.tuplet_start && !note.tuplet_stop {
-            let tm = note.time_modification.as_ref().unwrap();
+            let tm = match note.time_modification.as_ref() {
+                Some(t) => t,
+                None => {
+                    i += 1;
+                    continue;
+                }
+            };
             let actual = tm.actual_notes as usize;
             let mut group = Vec::new();
             let mut j = i;
