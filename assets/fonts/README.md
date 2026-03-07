@@ -14,4 +14,4 @@ Place `.ttf` files here. They are copied to Android and iOS by `./build-rust.sh`
 - **Lora-Regular.ttf**, **Lora-Italic.ttf** — Lora (optional, for body/titles)
 - **LXGWWenKai-Regular.ttf** — LXGW WenKai (optional, for Chinese lyrics)
 
-After adding any `.ttf`, run `./build-rust.sh` (or your full app build) so they are deployed to the app.
+After adding any `.ttf`, run `./build-rust.sh` (or your full app build) so they are deployed to the app. Release builds on GitHub Actions also copy these fonts into the iOS and Android bundles.

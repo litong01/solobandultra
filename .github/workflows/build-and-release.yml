@@ -33,9 +33,7 @@ jobs:
       - name: Copy fonts to iOS bundle
         run: |
           mkdir -p ios/SoloBandUltra/SoloBandUltra/Fonts
-          cp assets/fonts/Lora-Regular.ttf ios/SoloBandUltra/SoloBandUltra/Fonts/
-          cp assets/fonts/Lora-Italic.ttf ios/SoloBandUltra/SoloBandUltra/Fonts/
-          cp assets/fonts/LXGWWenKai-Regular.ttf ios/SoloBandUltra/SoloBandUltra/Fonts/
+          cp assets/fonts/*.ttf ios/SoloBandUltra/SoloBandUltra/Fonts/
 
       - name: Show Xcode version
         run: xcodebuild -version
@@ -180,6 +178,11 @@ jobs:
 
           cp "$RUST_TARGET/aarch64-linux-android/release/libscorelib.so" "$JNI/arm64-v8a/"
           cp "$RUST_TARGET/x86_64-linux-android/release/libscorelib.so" "$JNI/x86_64/"
+
+      - name: Copy fonts to Android assets
+        run: |
+          mkdir -p android/app/src/main/assets/fonts
+          cp assets/fonts/*.ttf android/app/src/main/assets/fonts/
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
