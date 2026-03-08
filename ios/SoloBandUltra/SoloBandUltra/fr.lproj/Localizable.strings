@@ -1,0 +1,90 @@
+/* Menu */
+"menu_open_file" = "Ouvrir un fichier";
+"menu_paste_link" = "Coller le lien";
+"menu_choir" = "Chœur";
+"menu_settings" = "Paramètres";
+"menu_sign_in" = "Connexion";
+"menu_sign_out" = "Déconnexion";
+
+/* Settings */
+"settings_title" = "Paramètres";
+"settings_apply" = "Appliquer";
+"settings_music_source" = "Source musicale";
+"settings_playlist" = "Liste de lecture";
+"settings_music" = "Morceau";
+"settings_accompaniment" = "Accompagnement";
+"settings_melody" = "Mélodie";
+"settings_piano" = "Piano";
+"settings_bass" = "Basse";
+"settings_strings" = "Cordes";
+"settings_drums" = "Batterie";
+"settings_metronome" = "Métronome";
+"settings_feedback" = "Retour";
+"settings_playback" = "Lecture";
+"settings_speed" = "Vitesse";
+"settings_mute" = "Muet";
+"settings_cursor" = "Curseur";
+"settings_repeat" = "Répéter";
+"settings_transpose" = "Transposition";
+"settings_semitones" = "Demi-tons";
+"settings_score_rendering" = "Affichage de la partition";
+"settings_staff" = "Portée";
+"settings_all" = "Toutes";
+"settings_specific_parts" = "Voix spécifiques";
+"settings_jianpu" = "Jianpu";
+"settings_specific_part" = "Voix spécifique";
+"settings_language" = "Langue";
+
+"language_system" = "Par défaut du système";
+"language_english" = "English";
+"language_chinese" = "中文";
+"language_german" = "Deutsch";
+"language_spanish" = "Español";
+"language_french" = "Français";
+
+"choir_title" = "Chœur";
+"choir_name" = "Nom du chœur";
+"choir_password" = "Mot de passe";
+"choir_join" = "Rejoindre";
+"choir_leave" = "Quitter";
+"choir_done" = "Terminé";
+"choir_reconnecting" = "Reconnexion…";
+
+"piece_locked_title" = "Morceau verrouillé";
+"piece_locked_message" = "Ce morceau n'est pas encore disponible. Achetez le pack complet pour le débloquer.";
+"bundle_error_title" = "Erreur de pack";
+"bundle_empty_message" = "Ce pack ne contient pas de musique.";
+"downloading" = "Téléchargement…";
+"ok" = "OK";
+
+"content_desc_mysoloband" = "Mysoloband";
+"content_desc_menu" = "Menu";
+"content_desc_settings" = "Paramètres";
+"content_desc_play" = "Lecture";
+"content_desc_pause" = "Pause";
+"content_desc_stop" = "Stop";
+"content_desc_previous" = "Précédent";
+"content_desc_next" = "Suivant";
+"content_desc_book" = "Livre";
+"content_desc_report" = "Rapport de performance";
+"content_desc_close" = "Fermer";
+"content_desc_pieces" = "Morceaux";
+
+"performance_report_title" = "Rapport de performance";
+"report_done" = "Terminé";
+"report_summary" = "Résumé";
+"report_notes" = "Notes";
+"report_note_accuracy" = "Précision des notes sur la partition";
+"report_legend" = "Vert = à temps, Jaune = mauvais timing, Rouge = mauvaise hauteur, Bleu = manqué";
+"report_expected" = "Attendu";
+"report_detected" = "Détecté";
+"report_delta" = "Écart";
+"report_pitch" = "Hauteur";
+"report_rhythm" = "Rythme";
+"report_score" = "Partition";
+
+"pdf_close" = "Fermer";
+"pdf_pieces" = "Morceaux";
+"pdf_unable_to_open" = "Impossible d'ouvrir le PDF";
+
+"source_bundled" = "Partitions incluses";

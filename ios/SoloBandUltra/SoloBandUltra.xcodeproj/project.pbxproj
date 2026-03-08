@@ -32,6 +32,12 @@
 		QQ00000000000000000003B1 /* FeedbackReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = QQ00000000000000000003A1 /* FeedbackReportView.swift */; };
 		RR00000000000000000001B1 /* RemoteIOCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = RR00000000000000000001A1 /* RemoteIOCapture.swift */; };
 		SS00000000000000000001B1 /* RemoteIODuplex.swift in Sources */ = {isa = PBXBuildFile; fileRef = SS00000000000000000001A1 /* RemoteIODuplex.swift */; };
+		LL00000000000000000001B1 /* AppLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = LL00000000000000000001A1 /* AppLanguage.swift */; };
+		LZ00000000000000000001B1 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = LZ00000000000000000001A1 /* Localizable.strings */; };
+		LZ00000000000000000002B1 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = LZ00000000000000000002A1 /* Localizable.strings */; };
+		LZ00000000000000000003B1 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = LZ00000000000000000003A1 /* Localizable.strings */; };
+		LZ00000000000000000004B1 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = LZ00000000000000000004A1 /* Localizable.strings */; };
+		LZ00000000000000000005B1 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = LZ00000000000000000005A1 /* Localizable.strings */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -64,6 +70,12 @@
 		QQ00000000000000000003A1 /* FeedbackReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedbackReportView.swift; sourceTree = "<group>"; };
 		RR00000000000000000001A1 /* RemoteIOCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteIOCapture.swift; sourceTree = "<group>"; };
 		SS00000000000000000001A1 /* RemoteIODuplex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteIODuplex.swift; sourceTree = "<group>"; };
+		LL00000000000000000001A1 /* AppLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLanguage.swift; sourceTree = "<group>"; };
+		LZ00000000000000000001A1 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = Localizable.strings; sourceTree = "<group>"; };
+		LZ00000000000000000002A1 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = Localizable.strings; sourceTree = "<group>"; };
+		LZ00000000000000000003A1 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = Localizable.strings; sourceTree = "<group>"; };
+		LZ00000000000000000004A1 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = Localizable.strings; sourceTree = "<group>"; };
+		LZ00000000000000000005A1 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = Localizable.strings; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -137,8 +149,54 @@
 			QQ00000000000000000001A1 /* FeedbackManager.swift */,
 			QQ00000000000000000002A1 /* FeedbackReport.swift */,
 			QQ00000000000000000003A1 /* FeedbackReportView.swift */,
+			LL00000000000000000001A1 /* AppLanguage.swift */,
+			LZ00000000000000000006A1 /* en.lproj */,
+			LZ00000000000000000007A1 /* zh-Hans.lproj */,
+			LZ00000000000000000008A1 /* de.lproj */,
+			LZ00000000000000000009A1 /* es.lproj */,
+			LZ0000000000000000000AA1 /* fr.lproj */,
 		);
 			path = SoloBandUltra;
+			sourceTree = "<group>";
+		};
+		LZ00000000000000000006A1 /* en.lproj */ = {
+			isa = PBXGroup;
+			children = (
+				LZ00000000000000000001A1 /* Localizable.strings */,
+			);
+			path = en.lproj;
+			sourceTree = "<group>";
+		};
+		LZ00000000000000000007A1 /* zh-Hans.lproj */ = {
+			isa = PBXGroup;
+			children = (
+				LZ00000000000000000002A1 /* Localizable.strings */,
+			);
+			path = "zh-Hans.lproj";
+			sourceTree = "<group>";
+		};
+		LZ00000000000000000008A1 /* de.lproj */ = {
+			isa = PBXGroup;
+			children = (
+				LZ00000000000000000003A1 /* Localizable.strings */,
+			);
+			path = de.lproj;
+			sourceTree = "<group>";
+		};
+		LZ00000000000000000009A1 /* es.lproj */ = {
+			isa = PBXGroup;
+			children = (
+				LZ00000000000000000004A1 /* Localizable.strings */,
+			);
+			path = es.lproj;
+			sourceTree = "<group>";
+		};
+		LZ0000000000000000000AA1 /* fr.lproj */ = {
+			isa = PBXGroup;
+			children = (
+				LZ00000000000000000005A1 /* Localizable.strings */,
+			);
+			path = fr.lproj;
 			sourceTree = "<group>";
 		};
 		AA0000000000000000000D03 /* Products */ = {
@@ -195,6 +253,10 @@
 			knownRegions = (
 				en,
 				Base,
+				"zh-Hans",
+				de,
+				es,
+				fr,
 			);
 			mainGroup = AA0000000000000000000D01;
 			packageReferences = (
@@ -219,6 +281,11 @@
 				FF00000000000000000002B1 /* kinde-auth.json in Resources */,
 				GG00000000000000000001B1 /* GeneralUser_GS.sf2 in Resources */,
 				HH00000000000000000003B1 /* Fonts in Resources */,
+				LZ00000000000000000001B1 /* Localizable.strings in Resources */,
+				LZ00000000000000000002B1 /* Localizable.strings in Resources */,
+				LZ00000000000000000003B1 /* Localizable.strings in Resources */,
+				LZ00000000000000000004B1 /* Localizable.strings in Resources */,
+				LZ00000000000000000005B1 /* Localizable.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -247,7 +314,8 @@
 			QQ00000000000000000001B1 /* FeedbackManager.swift in Sources */,
 			QQ00000000000000000002B1 /* FeedbackReport.swift in Sources */,
 			QQ00000000000000000003B1 /* FeedbackReportView.swift in Sources */,
-		);
+				LL00000000000000000001B1 /* AppLanguage.swift in Sources */,
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */

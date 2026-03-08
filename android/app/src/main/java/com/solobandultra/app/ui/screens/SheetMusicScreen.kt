@@ -57,6 +57,9 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.res.stringResource
+import com.solobandultra.app.ui.LocalAppLocale
+import com.solobandultra.app.ui.stringResourceForLocale
 import android.Manifest
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Close
@@ -152,7 +155,8 @@ fun SheetMusicScreen(
     onPendingActionConsumed: () -> Unit = {},
     getAccessToken: () -> String? = { null },
     onLoginRequested: (PendingAuthAction?) -> Unit = {},
-    onLogoutRequested: () -> Unit = {}
+    onLogoutRequested: () -> Unit = {},
+    onLanguageChange: (languageTag: String) -> Unit = {}
 ) {
     val isPlaying by playbackManager?.isPlaying?.collectAsState()
         ?: remember { mutableStateOf(false) }
@@ -399,7 +403,8 @@ fun SheetMusicScreen(
     }
 
     // Build music sources from available files + loaded bundles
-    val musicSources = remember(availableFiles, activeBundles) {
+    val bundledLabel = stringResourceForLocale(R.string.source_bundled)
+    val musicSources = remember(availableFiles, activeBundles, bundledLabel) {
         val bundledItems = availableFiles.map { path ->
             val fileName = path.substringAfterLast('/')
             MusicItem(
@@ -408,7 +413,7 @@ fun SheetMusicScreen(
             )
         }
         val sources = mutableListOf(
-            MusicSourceData(id = "bundled", name = "Bundled Sheet Music", items = bundledItems)
+            MusicSourceData(id = "bundled", name = bundledLabel, items = bundledItems)
         )
         for ((bookId, bundle) in activeBundles.entries.sortedBy { it.key }) {
             val items = bundle.allPieces.map { piece ->
@@ -779,14 +784,14 @@ fun SheetMusicScreen(
                 ) {
                     Image(
                         painter = painterResource(id = R.drawable.ic_launcher_foreground),
-                        contentDescription = "Mysoloband",
+                        contentDescription = stringResourceForLocale(R.string.content_desc_mysoloband),
                         modifier = Modifier.fillMaxSize()
                     )
                 }
                 Spacer(modifier = Modifier.weight(1f))
                 Box {
                     IconButton(onClick = { showMenu = !showMenu }) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "Menu")
+                        Icon(Icons.Default.MoreVert, contentDescription = stringResourceForLocale(R.string.content_desc_menu))
                     }
                     DropdownMenu(
                         expanded = showMenu,
@@ -800,7 +805,7 @@ fun SheetMusicScreen(
 
                         // ── Gated actions ──
                         DropdownMenuItem(
-                            text = { Text("Open File") },
+                            text = { Text(stringResourceForLocale(R.string.menu_open_file)) },
                             onClick = {
                                 showMenu = false
                                 if (isAuthenticated) {
@@ -811,7 +816,7 @@ fun SheetMusicScreen(
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("Paste Link") },
+                            text = { Text(stringResourceForLocale(R.string.menu_paste_link)) },
                             enabled = pasteEnabled,
                             onClick = {
                                 showMenu = false
@@ -836,7 +841,7 @@ fun SheetMusicScreen(
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("Choir") },
+                            text = { Text(stringResourceForLocale(R.string.menu_choir)) },
                             onClick = {
                                 showMenu = false
                                 if (isAuthenticated) {
@@ -847,7 +852,7 @@ fun SheetMusicScreen(
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("Settings") },
+                            text = { Text(stringResourceForLocale(R.string.menu_settings)) },
                             onClick = {
                                 showMenu = false
                                 if (isAuthenticated) {
@@ -863,7 +868,7 @@ fun SheetMusicScreen(
                         // ── Login / Logout ──
                         if (isAuthenticated) {
                             DropdownMenuItem(
-                                text = { Text("Sign Out") },
+                                text = { Text(stringResourceForLocale(R.string.menu_sign_out)) },
                                 onClick = {
                                     showMenu = false
                                     onLogoutRequested()
@@ -871,7 +876,7 @@ fun SheetMusicScreen(
                             )
                         } else {
                             DropdownMenuItem(
-                                text = { Text("Sign In") },
+                                text = { Text(stringResourceForLocale(R.string.menu_sign_in)) },
                                 onClick = {
                                     showMenu = false
                                     onLoginRequested(null)
@@ -920,7 +925,7 @@ fun SheetMusicScreen(
                 when {
                     activeBundle != null && activeBundle.allPieces.isEmpty() -> {
                         Text(
-                            text = "This bundle contains no music.",
+                            text = stringResourceForLocale(R.string.bundle_empty_message),
                             color = MaterialTheme.colorScheme.error
                         )
                     }
@@ -962,7 +967,7 @@ fun SheetMusicScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         CircularProgressIndicator()
-                        Text("Downloading…", style = MaterialTheme.typography.bodyMedium)
+                        Text(stringResourceForLocale(R.string.downloading), style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }
@@ -1005,9 +1010,9 @@ fun SheetMusicScreen(
         AlertDialog(
             onDismissRequest = { bundleErrorMessage = null },
             confirmButton = {
-                TextButton(onClick = { bundleErrorMessage = null }) { Text("OK") }
+                TextButton(onClick = { bundleErrorMessage = null }) { Text(stringResourceForLocale(R.string.ok)) }
             },
-            title = { Text("Bundle Error") },
+            title = { Text(stringResourceForLocale(R.string.bundle_error_title)) },
             text  = { Text(msg) }
         )
     }
@@ -1046,7 +1051,8 @@ fun SheetMusicScreen(
                 initialStaffStavesOption = staffStavesOption,
                 initialStaffStavesList = staffStavesList,
                 initialJianpuStaffNumber = jianpuStaffNumber,
-                onDone = { src, file, mel, pia, bas, str, drm, met, fbk, spd, mute, rep, trans, cursor, rendMode, staffOpt, staffList, jianpuNum ->
+                initialSelectedLangTag = context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE).getString("app_language", "") ?: "",
+                onDone = { src, file, mel, pia, bas, str, drm, met, fbk, spd, mute, rep, trans, cursor, rendMode, staffOpt, staffList, jianpuNum, selectedLangTag ->
                     selectedSourceId = src
                     selectedFileUrl = file
                     includeMelody = mel
@@ -1088,6 +1094,13 @@ fun SheetMusicScreen(
                         .putString("selectedSourceId", if (src == "external") "bundled" else src)
                         .putString("selectedFileUrl", if (src == "external") "file://sheetmusic/$DEFAULT_LANDING_FILE" else file)
                         .apply()
+                    // Apply language only when user taps Apply; persist and recreate if changed
+                    val appPrefs = context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
+                    val previousLang = appPrefs.getString("app_language", "") ?: ""
+                    if (selectedLangTag != previousLang) {
+                        appPrefs.edit().putString("app_language", selectedLangTag).apply()
+                        onLanguageChange(selectedLangTag)
+                    }
                 }
             )
             } // end MaterialTheme(typography = settingsTypography)
@@ -1217,11 +1230,11 @@ private fun ChoirSheetContent(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Choir",
+                text = stringResourceForLocale(R.string.choir_title),
                 style = MaterialTheme.typography.headlineSmall
             )
             TextButton(onClick = onDone) {
-                Text("Done", style = MaterialTheme.typography.bodySmall)
+                Text(stringResourceForLocale(R.string.choir_done), style = MaterialTheme.typography.bodySmall)
             }
         }
 
@@ -1237,14 +1250,14 @@ private fun ChoirSheetContent(
                 OutlinedTextField(
                     value = choirName,
                     onValueChange = { choirName = it },
-                    label = { Text("Choir name") },
+                    label = { Text(stringResourceForLocale(R.string.choir_name)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
                 OutlinedTextField(
                     value = joinPassword,
                     onValueChange = { joinPassword = it },
-                    label = { Text("Password") },
+                    label = { Text(stringResourceForLocale(R.string.choir_password)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation()
@@ -1257,7 +1270,7 @@ private fun ChoirSheetContent(
                 }
                 if (state.isReconnecting) {
                     Text(
-                        text = "Reconnecting…",
+                        text = stringResourceForLocale(R.string.choir_reconnecting),
                         style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
                     )
                 }
@@ -1341,7 +1354,7 @@ private fun ChoirSheetContent(
                     modifier = Modifier.fillMaxWidth(),
                     enabled = state.isJoined || state.isReconnecting || choirName.trim().isNotEmpty()
                 ) {
-                    Text(if (state.isJoined || state.isReconnecting) "Leave" else "Join")
+                    Text(if (state.isJoined || state.isReconnecting) stringResourceForLocale(R.string.choir_leave) else stringResourceForLocale(R.string.choir_join))
                 }
             }
         }
@@ -1452,7 +1465,8 @@ private fun SettingsSheetContent(
     initialStaffStavesOption: String,
     initialStaffStavesList: String,
     initialJianpuStaffNumber: String,
-    onDone: (String, String, Boolean, Boolean, Boolean, Boolean, Boolean, Boolean, Boolean, Double, Boolean, Int, Int, Boolean, String, String, String, String) -> Unit
+    initialSelectedLangTag: String,
+    onDone: (String, String, Boolean, Boolean, Boolean, Boolean, Boolean, Boolean, Boolean, Double, Boolean, Int, Int, Boolean, String, String, String, String, String) -> Unit
 ) {
     // Local working copies (only applied when Apply is tapped)
     var selectedSourceId by remember { mutableStateOf(initialSelectedSourceId) }
@@ -1473,16 +1487,18 @@ private fun SettingsSheetContent(
     var staffStavesOption by remember { mutableStateOf(initialStaffStavesOption) }
     var staffStavesList by remember { mutableStateOf(initialStaffStavesList) }
     var jianpuStaffNumber by remember { mutableStateOf(initialJianpuStaffNumber) }
+    var selectedLangTag by remember(initialSelectedLangTag) { mutableStateOf(initialSelectedLangTag) }
     var showLockedDialog by remember { mutableStateOf(false) }
 
+    CompositionLocalProvider(LocalAppLocale provides selectedLangTag) {
     if (showLockedDialog) {
         AlertDialog(
             onDismissRequest = { showLockedDialog = false },
             confirmButton = {
-                TextButton(onClick = { showLockedDialog = false }) { Text("OK") }
+                TextButton(onClick = { showLockedDialog = false }) { Text(stringResourceForLocale(R.string.ok)) }
             },
-            title = { Text("Piece Locked") },
-            text = { Text("This piece is not yet available. Purchase the full bundle to unlock it.") }
+            title = { Text(stringResourceForLocale(R.string.piece_locked_title)) },
+            text = { Text(stringResourceForLocale(R.string.piece_locked_message)) }
         )
     }
 
@@ -1501,7 +1517,7 @@ private fun SettingsSheetContent(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Settings",
+                text = stringResourceForLocale(R.string.settings_title),
                 style = MaterialTheme.typography.headlineSmall
             )
             TextButton(onClick = {
@@ -1510,15 +1526,16 @@ private fun SettingsSheetContent(
                     includeMelody, includePiano, includeBass, includeStrings,
                     includeDrums, includeMetronome, includeFeedback, playbackSpeed,
                     muteMusic, repeatCount, transpose, showCursor,
-                    scoreRenderingMode, staffStavesOption, staffStavesList, jianpuStaffNumber
+                    scoreRenderingMode, staffStavesOption, staffStavesList, jianpuStaffNumber,
+                    selectedLangTag
                 )
             }) {
-                Text("Apply", style = MaterialTheme.typography.bodySmall)
+                Text(stringResourceForLocale(R.string.settings_apply), style = MaterialTheme.typography.bodySmall)
             }
         }
 
         // ── 1. Music Source ──────────────────────────────────────
-        SettingsCard("Music Source") {
+        SettingsCard(stringResourceForLocale(R.string.settings_music_source)) {
             // Playlist row: label on left, dropdown on right (matches iOS layout)
             var sourceExpanded by remember { mutableStateOf(false) }
             val selectedSource = musicSources.firstOrNull { it.id == selectedSourceId }
@@ -1528,7 +1545,7 @@ private fun SettingsSheetContent(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    "Playlist",
+                    stringResourceForLocale(R.string.settings_playlist),
                     style = settingsLabelStyle(),
                     modifier = Modifier.width(72.dp)
                 )
@@ -1596,8 +1613,8 @@ private fun SettingsSheetContent(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        "Music",
-                        style = settingsLabelStyle(),
+stringResourceForLocale(R.string.settings_music),
+                    style = settingsLabelStyle(),
                         modifier = Modifier.width(72.dp)
                     )
                     ExposedDropdownMenuBox(
@@ -1651,7 +1668,7 @@ private fun SettingsSheetContent(
         }
 
         // ── 2. Accompaniment ─────────────────────────────────────
-        SettingsCard("Accompaniment") {
+        SettingsCard(stringResourceForLocale(R.string.settings_accompaniment)) {
             // Four-column checkbox grid
             Column(
                 modifier = Modifier.padding(vertical = 6.dp),
@@ -1661,18 +1678,18 @@ private fun SettingsSheetContent(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    CompactCheckbox("Melody", includeMelody, { includeMelody = it }, Modifier.weight(1f))
-                    CompactCheckbox("Piano", includePiano, { includePiano = it }, Modifier.weight(1f))
-                    CompactCheckbox("Bass", includeBass, { includeBass = it }, Modifier.weight(1f))
-                    CompactCheckbox("Strings", includeStrings, { includeStrings = it }, Modifier.weight(1f))
+                    CompactCheckbox(stringResourceForLocale(R.string.settings_melody), includeMelody, { includeMelody = it }, Modifier.weight(1f))
+                    CompactCheckbox(stringResourceForLocale(R.string.settings_piano), includePiano, { includePiano = it }, Modifier.weight(1f))
+                    CompactCheckbox(stringResourceForLocale(R.string.settings_bass), includeBass, { includeBass = it }, Modifier.weight(1f))
+                    CompactCheckbox(stringResourceForLocale(R.string.settings_strings), includeStrings, { includeStrings = it }, Modifier.weight(1f))
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    CompactCheckbox("Drums", includeDrums, { includeDrums = it }, Modifier.weight(1f))
-                    CompactCheckbox("Metronome", includeMetronome, { includeMetronome = it }, Modifier.weight(1f))
-                    CompactCheckbox("Feedback", includeFeedback, { includeFeedback = it }, Modifier.weight(1f))
+                    CompactCheckbox(stringResourceForLocale(R.string.settings_drums), includeDrums, { includeDrums = it }, Modifier.weight(1f))
+                    CompactCheckbox(stringResourceForLocale(R.string.settings_metronome), includeMetronome, { includeMetronome = it }, Modifier.weight(1f))
+                    CompactCheckbox(stringResourceForLocale(R.string.settings_feedback), includeFeedback, { includeFeedback = it }, Modifier.weight(1f))
                     Spacer(modifier = Modifier.weight(1f))
                 }
             }
@@ -1680,7 +1697,7 @@ private fun SettingsSheetContent(
 
         // ── 3. Playback ─────────────────────────────────────────
         // Adaptive: single row on tablets (>= 600dp), two rows on phones.
-        SettingsCard("Playback") {
+        SettingsCard(stringResourceForLocale(R.string.settings_playback)) {
             val isNarrow = LocalConfiguration.current.screenWidthDp < 600
             var speedText by remember(playbackSpeed) {
                 mutableStateOf(
@@ -1697,7 +1714,7 @@ private fun SettingsSheetContent(
             fun SpeedInput() {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "Speed",
+                        text = stringResourceForLocale(R.string.settings_speed),
                         style = settingsLabelStyle()
                     )
                     Spacer(modifier = Modifier.width(4.dp))
@@ -1734,7 +1751,7 @@ private fun SettingsSheetContent(
                         .padding(vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = "Mute", style = settingsLabelStyle())
+                    Text(text = stringResourceForLocale(R.string.settings_mute), style = settingsLabelStyle())
                     Spacer(modifier = Modifier.width(4.dp))
                     Checkbox(checked = muteMusic, onCheckedChange = null, modifier = Modifier.size(20.dp))
                 }
@@ -1749,7 +1766,7 @@ private fun SettingsSheetContent(
                         .padding(vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = "Cursor", style = settingsLabelStyle())
+                    Text(text = stringResourceForLocale(R.string.settings_cursor), style = settingsLabelStyle())
                     Spacer(modifier = Modifier.width(4.dp))
                     Checkbox(checked = showCursor, onCheckedChange = null, modifier = Modifier.size(20.dp))
                 }
@@ -1759,7 +1776,7 @@ private fun SettingsSheetContent(
             fun RepeatStepper() {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "Repeat",
+                        text = stringResourceForLocale(R.string.settings_repeat),
                         style = settingsLabelStyle()
                     )
                     Spacer(modifier = Modifier.width(4.dp))
@@ -1768,7 +1785,7 @@ private fun SettingsSheetContent(
                         enabled = repeatCount > 1,
                         modifier = Modifier.size(28.dp)
                     ) {
-                        Icon(Icons.Default.Remove, "Decrease", Modifier.size(14.dp))
+                        Icon(Icons.Default.Remove, stringResourceForLocale(R.string.content_desc_decrease), Modifier.size(14.dp))
                     }
                     Text(
                         text = "${repeatCount}×",
@@ -1780,7 +1797,7 @@ private fun SettingsSheetContent(
                         onClick = { repeatCount += 1 },
                         modifier = Modifier.size(28.dp)
                     ) {
-                        Icon(Icons.Default.Add, "Increase", Modifier.size(14.dp))
+                        Icon(Icons.Default.Add, stringResourceForLocale(R.string.content_desc_increase), Modifier.size(14.dp))
                     }
                 }
             }
@@ -1825,7 +1842,7 @@ private fun SettingsSheetContent(
         }
 
         // ── 4. Transpose ────────────────────────────────────────
-        SettingsCard("Transpose") {
+        SettingsCard(stringResourceForLocale(R.string.settings_transpose)) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1833,7 +1850,7 @@ private fun SettingsSheetContent(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Semitones",
+                    text = stringResourceForLocale(R.string.settings_semitones),
                     style = settingsLabelStyle()
                 )
 
@@ -1845,7 +1862,7 @@ private fun SettingsSheetContent(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Remove,
-                        contentDescription = "Decrease",
+                        contentDescription = stringResourceForLocale(R.string.content_desc_decrease),
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -1863,7 +1880,7 @@ private fun SettingsSheetContent(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
-                        contentDescription = "Increase",
+                        contentDescription = stringResourceForLocale(R.string.content_desc_increase),
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -1871,7 +1888,7 @@ private fun SettingsSheetContent(
         }
 
         // ── 5. Score Rendering ────────────────────────────────────────
-        SettingsCard("Score Rendering") {
+        SettingsCard(stringResourceForLocale(R.string.settings_score_rendering)) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1890,7 +1907,7 @@ private fun SettingsSheetContent(
                         onClick = { scoreRenderingMode = "staff" }
                     )
                     Text(
-                        "Staff",
+                        stringResourceForLocale(R.string.settings_staff),
                         style = settingsLabelStyle(),
                         modifier = Modifier.clickable { scoreRenderingMode = "staff" }
                     )
@@ -1905,7 +1922,7 @@ private fun SettingsSheetContent(
                         modifier = Modifier.scale(0.72f)
                     )
                     Text(
-                        "All",
+                        stringResourceForLocale(R.string.settings_all),
                         style = settingsLabelStyle().copy(fontSize = 11.sp),
                         modifier = Modifier.clickable {
                             scoreRenderingMode = "staff"
@@ -1923,7 +1940,7 @@ private fun SettingsSheetContent(
                         modifier = Modifier.scale(0.72f)
                     )
                     Text(
-                        "Specific parts",
+                        stringResourceForLocale(R.string.settings_specific_parts),
                         style = settingsLabelStyle().copy(fontSize = 11.sp),
                         modifier = Modifier.clickable {
                             scoreRenderingMode = "staff"
@@ -1937,7 +1954,7 @@ private fun SettingsSheetContent(
                             onValueChange = { new ->
                                 staffStavesList = new.filter { c -> c.isDigit() || c == ',' }
                             },
-                            placeholder = { Text("1,3,4,6", style = settingsLabelStyle()) },
+                            placeholder = { Text(stringResourceForLocale(R.string.placeholder_staves), style = settingsLabelStyle()) },
                             modifier = Modifier.width(100.dp),
                             singleLine = true
                         )
@@ -1955,14 +1972,14 @@ private fun SettingsSheetContent(
                         onClick = { scoreRenderingMode = "jianpu" }
                     )
                     Text(
-                        "Jianpu",
+                        stringResourceForLocale(R.string.settings_jianpu),
                         style = settingsLabelStyle(),
                         modifier = Modifier.clickable { scoreRenderingMode = "jianpu" }
                     )
                     if (scoreRenderingMode == "jianpu") {
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            "Specific part",
+                            stringResourceForLocale(R.string.settings_specific_part),
                             style = settingsLabelStyle()
                         )
                         Spacer(modifier = Modifier.width(4.dp))
@@ -1972,7 +1989,7 @@ private fun SettingsSheetContent(
                                 val firstSegment = new.split(',').firstOrNull() ?: new
                                 jianpuStaffNumber = firstSegment.filter { it.isDigit() }.take(4)
                             },
-                            placeholder = { Text("1", style = settingsLabelStyle()) },
+                            placeholder = { Text(stringResourceForLocale(R.string.placeholder_jianpu_part), style = settingsLabelStyle()) },
                             modifier = Modifier.width(48.dp),
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
@@ -1981,7 +1998,65 @@ private fun SettingsSheetContent(
                 }
             }
         }
+
+        // ── 6. Language (at bottom; applied only when Apply is tapped) ──
+        var languageExpanded by remember { mutableStateOf(false) }
+        val languageOptions = listOf(
+            "" to R.string.language_system,
+            "en" to R.string.language_english,
+            "zh" to R.string.language_chinese,
+            "de" to R.string.language_german,
+            "es" to R.string.language_spanish,
+            "fr" to R.string.language_french
+        )
+        SettingsCard(stringResourceForLocale(R.string.settings_language)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                ExposedDropdownMenuBox(
+                    expanded = languageExpanded,
+                    onExpandedChange = { languageExpanded = it },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .menuAnchor()
+                            .fillMaxWidth()
+                            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(8.dp))
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = languageOptions.find { it.first == selectedLangTag }?.let { stringResourceForLocale(it.second) }
+                                ?: stringResourceForLocale(R.string.language_system),
+                            style = settingsLabelStyle(),
+                            modifier = Modifier.weight(1f)
+                        )
+                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = languageExpanded)
+                    }
+                    ExposedDropdownMenu(
+                        expanded = languageExpanded,
+                        onDismissRequest = { languageExpanded = false }
+                    ) {
+                        languageOptions.forEach { (tag, resId) ->
+                            DropdownMenuItem(
+                                text = { Text(stringResourceForLocale(resId), style = settingsLabelStyle()) },
+                                onClick = {
+                                    selectedLangTag = tag
+                                    languageExpanded = false
+                                },
+                                modifier = Modifier.defaultMinSize(minHeight = 36.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
+    } // end CompositionLocalProvider (settings sheet locale preview)
 }
 
 // ── Settings helper composables ──────────────────────────────────────
@@ -2273,7 +2348,7 @@ private fun PlaybackControlBar(
                 IconButton(onClick = onPrev, enabled = canGoPrev) {
                     Icon(
                         imageVector = Icons.Default.SkipPrevious,
-                        contentDescription = "Previous",
+                        contentDescription = stringResourceForLocale(R.string.content_desc_previous),
                         modifier = Modifier.size(26.dp),
                         tint = if (canGoPrev) MaterialTheme.colorScheme.onSurface
                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
@@ -2285,7 +2360,7 @@ private fun PlaybackControlBar(
             IconButton(onClick = onStop) {
                 Icon(
                     imageVector = Icons.Default.Stop,
-                    contentDescription = "Stop",
+                    contentDescription = stringResourceForLocale(R.string.content_desc_stop),
                     modifier = Modifier.size(28.dp)
                 )
             }
@@ -2299,7 +2374,7 @@ private fun PlaybackControlBar(
             ) {
                 Icon(
                     imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (isPlaying) "Pause" else "Play",
+                    contentDescription = if (isPlaying) stringResourceForLocale(R.string.content_desc_pause) else stringResourceForLocale(R.string.content_desc_play),
                     modifier = Modifier.size(32.dp)
                 )
             }
@@ -2311,7 +2386,7 @@ private fun PlaybackControlBar(
                 IconButton(onClick = onNext, enabled = canGoNext) {
                     Icon(
                         imageVector = Icons.Default.SkipNext,
-                        contentDescription = "Next",
+                        contentDescription = stringResourceForLocale(R.string.content_desc_next),
                         modifier = Modifier.size(26.dp),
                         tint = if (canGoNext) MaterialTheme.colorScheme.onSurface
                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
@@ -2327,7 +2402,7 @@ private fun PlaybackControlBar(
             IconButton(onClick = onSettings) {
                 Icon(
                     imageVector = Icons.Default.Settings,
-                    contentDescription = "Settings",
+                    contentDescription = stringResourceForLocale(R.string.content_desc_settings),
                     modifier = Modifier.size(28.dp)
                 )
             }
@@ -2337,7 +2412,7 @@ private fun PlaybackControlBar(
                 IconButton(onClick = onBook) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                        contentDescription = "Book",
+                        contentDescription = stringResourceForLocale(R.string.content_desc_book),
                         modifier = Modifier.size(28.dp),
                         tint = MaterialTheme.colorScheme.primary
                     )
@@ -2349,7 +2424,7 @@ private fun PlaybackControlBar(
                 IconButton(onClick = onReport) {
                     Icon(
                         imageVector = Icons.Default.BarChart,
-                        contentDescription = "Performance Report",
+                        contentDescription = stringResourceForLocale(R.string.content_desc_report),
                         modifier = Modifier.size(28.dp),
                         tint = MaterialTheme.colorScheme.primary
                     )

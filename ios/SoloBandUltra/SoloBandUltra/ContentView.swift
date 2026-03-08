@@ -8,6 +8,7 @@ struct ContentView: View {
     @EnvironmentObject var authManager: AuthManager
     @EnvironmentObject var feedbackManager: FeedbackManager
     @EnvironmentObject var choirManager: ChoirManager
+    @EnvironmentObject var appLanguage: AppLanguage
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var showSettings = false
@@ -84,24 +85,24 @@ struct ContentView: View {
                     .scaledToFit()
                     .frame(width: 28, height: 28)
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    .help("Mysoloband")
+                    .help(L10n.string("content_desc_mysoloband", language: appLanguage.preferredCode))
 
                 Spacer()
 
                 Menu {
                     // ── Gated actions ──
                     Button(action: { requireAuth(for: .openFile) }) {
-                        Label("Open File", systemImage: "doc.badge.plus")
+                        Label(L10n.string("menu_open_file", language: appLanguage.preferredCode), systemImage: "doc.badge.plus")
                     }
                     Button(action: { requireAuth(for: .pasteLink) }) {
-                        Label("Paste Link", systemImage: "doc.on.clipboard")
+                        Label(L10n.string("menu_paste_link", language: appLanguage.preferredCode), systemImage: "doc.on.clipboard")
                     }
                     .disabled(!clipboardHasUrl)
                     Button(action: { requireAuth(for: .showChoir) }) {
-                        Label("Choir", systemImage: "person.3")
+                        Label(L10n.string("menu_choir", language: appLanguage.preferredCode), systemImage: "person.3")
                     }
                     Button(action: { requireAuth(for: .showSettings) }) {
-                        Label("Settings", systemImage: "gear")
+                        Label(L10n.string("menu_settings", language: appLanguage.preferredCode), systemImage: "gear")
                     }
 
                     Divider()
@@ -109,11 +110,11 @@ struct ContentView: View {
                     // ── Login / Logout ──
                     if authManager.isAuthenticated {
                         Button(action: { authManager.logout() }) {
-                            Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                            Label(L10n.string("menu_sign_out", language: appLanguage.preferredCode), systemImage: "rectangle.portrait.and.arrow.right")
                         }
                     } else {
                         Button(action: { authManager.login() }) {
-                            Label("Sign In", systemImage: "person.crop.circle.badge.plus")
+                            Label(L10n.string("menu_sign_in", language: appLanguage.preferredCode), systemImage: "person.crop.circle.badge.plus")
                         }
                     }
                 } label: {
@@ -314,7 +315,7 @@ struct ContentView: View {
         .overlay {
             if showSettings {
                 BottomSheetOverlay(isPresented: $showSettings) {
-                    SettingsSheet(midiSettings: midiSettings, isPresented: $showSettings)
+                    SettingsSheet(midiSettings: midiSettings, isPresented: $showSettings, appLanguage: appLanguage)
                 }
             }
         }
@@ -556,6 +557,7 @@ struct PlaybackControlBar: View {
 struct SettingsSheet: View {
     @ObservedObject var midiSettings: MidiSettings
     @Binding var isPresented: Bool
+    @ObservedObject var appLanguage: AppLanguage
 
     // ── Working copies of settings (only applied when Apply is tapped) ──
     @State private var selectedSourceId: String = "bundled"
@@ -576,11 +578,12 @@ struct SettingsSheet: View {
     @State private var staffStavesOption: String = "all"
     @State private var staffStavesList: String = ""
     @State private var jianpuStaffNumber: String = "1"
+    @State private var selectedLanguageCode: String = ""
     @State private var showLockedAlert: Bool = false
 
     /// Available music sources: built-in bundle + any loaded .mbk bundles.
     private var musicSources: [MusicSource] {
-        var sources = [MusicSource(id: "bundled", name: "Bundled Sheet Music", items: Self.discoverBundledFiles())]
+        var sources = [MusicSource(id: "bundled", name: L10n.string("source_bundled", language: selectedLanguageCode), items: Self.discoverBundledFiles())]
         for (_, bundle) in midiSettings.activeBundles.sorted(by: { $0.key < $1.key }) {
             let items = bundle.allPieces.map { piece in
                 MusicItem(
@@ -635,12 +638,12 @@ struct SettingsSheet: View {
             ScrollView {
                 VStack(spacing: 24) {
                     // ── 1. Music Source ───────────────────────────
-                    SettingsSection("Music Source") {
+                    SettingsSection(L10n.string("settings_music_source", language: selectedLanguageCode)) {
                         // Playlist dropdown — use Menu so the collapsed label
                         // respects .settingsLabel font (Picker ignores custom
                         // fonts on its closed-state button label).
                         HStack {
-                            Text("Playlist")
+                            Text(L10n.string("settings_playlist", language: selectedLanguageCode))
                                 .font(.settingsLabel)
                                 .fixedSize()
                             Spacer()
@@ -672,7 +675,7 @@ struct SettingsSheet: View {
                         // Music file dropdown
                         if let source = selectedSource, !source.items.isEmpty {
                             HStack {
-                                Text("Music")
+                                Text(L10n.string("settings_music", language: selectedLanguageCode))
                                     .font(.settingsLabel)
                                     .fixedSize()
                                 Spacer()
@@ -703,36 +706,37 @@ struct SettingsSheet: View {
                     }
 
                     // ── 2. Accompaniment ──────────────────────────
-                    SettingsSection("Accompaniment") {
+                    SettingsSection(L10n.string("settings_accompaniment", language: selectedLanguageCode)) {
                         // Four-column checkbox grid
                         let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 4)
 
                         LazyVGrid(columns: columns, spacing: 16) {
-                            CheckboxToggle("Melody", isOn: $includeMelody)
-                            CheckboxToggle("Piano", isOn: $includePiano)
-                            CheckboxToggle("Bass", isOn: $includeBass)
-                            CheckboxToggle("Strings", isOn: $includeStrings)
-                            CheckboxToggle("Drums", isOn: $includeDrums)
-                            CheckboxToggle("Metronome", isOn: $includeMetronome)
-                            CheckboxToggle("Feedback", isOn: $includeFeedback)
+                            CheckboxToggle(L10n.string("settings_melody", language: selectedLanguageCode), isOn: $includeMelody)
+                            CheckboxToggle(L10n.string("settings_piano", language: selectedLanguageCode), isOn: $includePiano)
+                            CheckboxToggle(L10n.string("settings_bass", language: selectedLanguageCode), isOn: $includeBass)
+                            CheckboxToggle(L10n.string("settings_strings", language: selectedLanguageCode), isOn: $includeStrings)
+                            CheckboxToggle(L10n.string("settings_drums", language: selectedLanguageCode), isOn: $includeDrums)
+                            CheckboxToggle(L10n.string("settings_metronome", language: selectedLanguageCode), isOn: $includeMetronome)
+                            CheckboxToggle(L10n.string("settings_feedback", language: selectedLanguageCode), isOn: $includeFeedback)
                         }
                         .padding(.vertical, 4)
                     }
 
                     // ── 3. Playback ──────────────────────────────
-                    SettingsSection("Playback") {
+                    SettingsSection(L10n.string("settings_playback", language: selectedLanguageCode)) {
                         PlaybackSettingsContent(
                             playbackSpeed: $playbackSpeed,
                             muteMusic: $muteMusic,
                             showCursor: $showCursor,
-                            repeatCount: $repeatCount
+                            repeatCount: $repeatCount,
+                            languageCode: selectedLanguageCode
                         )
                     }
 
                     // ── 4. Transpose ─────────────────────────────
-                    SettingsSection("Transpose") {
+                    SettingsSection(L10n.string("settings_transpose", language: selectedLanguageCode)) {
                         HStack(spacing: 16) {
-                            Text("Semitones")
+                            Text(L10n.string("settings_semitones", language: selectedLanguageCode))
                                 .font(.settingsLabel)
 
                             Spacer()
@@ -762,7 +766,7 @@ struct SettingsSheet: View {
                     }
 
                     // ── 5. Score Rendering ─────────────────────────────
-                    SettingsSection("Score Rendering") {
+                    SettingsSection(L10n.string("settings_score_rendering", language: selectedLanguageCode)) {
                         VStack(alignment: .leading, spacing: 10) {
                             // Row 1: Staff + All + Specific staves + narrow entry when Staff & custom
                             HStack(alignment: .center, spacing: 8) {
@@ -770,7 +774,7 @@ struct SettingsSheet: View {
                                     HStack(spacing: 6) {
                                         Image(systemName: scoreRenderingMode == "staff" ? "largecircle.fill.circle" : "circle")
                                             .font(.body)
-                                        Text("Staff")
+                                        Text(L10n.string("settings_staff", language: selectedLanguageCode))
                                             .font(.settingsLabel)
                                     }
                                     .foregroundStyle(.primary)
@@ -784,7 +788,7 @@ struct SettingsSheet: View {
                                     HStack(spacing: 4) {
                                         Image(systemName: staffStavesOption == "all" ? "largecircle.fill.circle" : "circle")
                                             .font(.caption)
-                                        Text("All")
+                                        Text(L10n.string("settings_all", language: selectedLanguageCode))
                                             .font(.caption)
                                     }
                                     .foregroundStyle(.primary)
@@ -797,7 +801,7 @@ struct SettingsSheet: View {
                                     HStack(spacing: 4) {
                                         Image(systemName: staffStavesOption == "custom" ? "largecircle.fill.circle" : "circle")
                                             .font(.caption)
-                                        Text("Specific parts")
+                                        Text(L10n.string("settings_specific_parts", language: selectedLanguageCode))
                                             .font(.caption)
                                     }
                                     .foregroundStyle(.primary)
@@ -821,14 +825,14 @@ struct SettingsSheet: View {
                                     HStack(spacing: 6) {
                                         Image(systemName: scoreRenderingMode == "jianpu" ? "largecircle.fill.circle" : "circle")
                                             .font(.body)
-                                        Text("Jianpu")
+                                        Text(L10n.string("settings_jianpu", language: selectedLanguageCode))
                                             .font(.settingsLabel)
                                     }
                                     .foregroundStyle(.primary)
                                 }
                                 .buttonStyle(.plain)
                                 if scoreRenderingMode == "jianpu" {
-                                    Text("Specific part")
+                                    Text(L10n.string("settings_specific_part", language: selectedLanguageCode))
                                         .font(.settingsLabel)
                                     TextField("1", text: $jianpuStaffNumber)
                                         .textFieldStyle(.roundedBorder)
@@ -845,6 +849,52 @@ struct SettingsSheet: View {
                         }
                         .padding(.vertical, 4)
                     }
+
+                    // ── 6. Language (at bottom; applied only when Apply is tapped) ──
+                    SettingsSection(L10n.string("settings_language", language: selectedLanguageCode)) {
+                        HStack {
+                            Text(L10n.string("settings_language", language: selectedLanguageCode))
+                                .font(.settingsLabel)
+                                .fixedSize()
+                            Spacer()
+                            Menu {
+                                Button { selectedLanguageCode = "" } label: {
+                                    Text(L10n.string("language_system", language: nil)).font(.settingsLabel)
+                                }
+                                Button { selectedLanguageCode = "en" } label: {
+                                    Text(L10n.string("language_english", language: nil)).font(.settingsLabel)
+                                }
+                                Button { selectedLanguageCode = "zh-Hans" } label: {
+                                    Text(L10n.string("language_chinese", language: nil)).font(.settingsLabel)
+                                }
+                                Button { selectedLanguageCode = "de" } label: {
+                                    Text(L10n.string("language_german", language: nil)).font(.settingsLabel)
+                                }
+                                Button { selectedLanguageCode = "es" } label: {
+                                    Text(L10n.string("language_spanish", language: nil)).font(.settingsLabel)
+                                }
+                                Button { selectedLanguageCode = "fr" } label: {
+                                    Text(L10n.string("language_french", language: nil)).font(.settingsLabel)
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text(selectedLanguageCode.isEmpty ? L10n.string("language_system", language: nil) :
+                                        selectedLanguageCode == "en" ? L10n.string("language_english", language: nil) :
+                                        selectedLanguageCode == "zh-Hans" ? L10n.string("language_chinese", language: nil) :
+                                        selectedLanguageCode == "de" ? L10n.string("language_german", language: nil) :
+                                        selectedLanguageCode == "es" ? L10n.string("language_spanish", language: nil) :
+                                        selectedLanguageCode == "fr" ? L10n.string("language_french", language: nil) :
+                                        L10n.string("language_system", language: nil))
+                                        .font(.settingsLabel)
+                                    Image(systemName: "chevron.up.chevron.down")
+                                        .font(.settingsLabel)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .tint(.primary)
+                        }
+                        .padding(.vertical, 4)
+                    }
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 32)
@@ -852,20 +902,20 @@ struct SettingsSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    Text("Settings")
+                    Text(L10n.string("settings_title", language: selectedLanguageCode))
                         .font(.lora(.headline))
                         .fontWeight(.semibold)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Apply") { applySettings() }
+                    Button(L10n.string("settings_apply", language: selectedLanguageCode)) { applySettings() }
                         .font(.settingsLabel)
                 }
             }
             .onAppear { loadFromSettings() }
-            .alert("Piece Locked", isPresented: $showLockedAlert) {
-                Button("OK", role: .cancel) {}
+            .alert(L10n.string("piece_locked_title", language: selectedLanguageCode), isPresented: $showLockedAlert) {
+                Button(L10n.string("ok", language: selectedLanguageCode), role: .cancel) {}
             } message: {
-                Text("This piece is not yet available. Purchase the full bundle to unlock it.")
+                Text(L10n.string("piece_locked_message", language: selectedLanguageCode))
             }
         }
     }
@@ -890,6 +940,7 @@ struct SettingsSheet: View {
         staffStavesOption = midiSettings.staffStavesOption
         staffStavesList = midiSettings.staffStavesList
         jianpuStaffNumber = midiSettings.jianpuStaffNumber
+        selectedLanguageCode = appLanguage.preferredCode
     }
 
     /// Write local working copies back to midiSettings and dismiss.
@@ -912,6 +963,7 @@ struct SettingsSheet: View {
         midiSettings.staffStavesOption = staffStavesOption
         midiSettings.staffStavesList = staffStavesList
         midiSettings.jianpuStaffNumber = jianpuStaffNumber
+        appLanguage.preferredCode = selectedLanguageCode
         midiSettings.saveToDisk()
         isPresented = false
     }
@@ -962,6 +1014,7 @@ struct ChoirSheet: View {
     @Binding var isPresented: Bool
     @ObservedObject var choirManager: ChoirManager
     @EnvironmentObject var authManager: AuthManager
+    @EnvironmentObject var appLanguage: AppLanguage
 
     @State private var choirName = ""
     @State private var joinPassword = ""
@@ -970,17 +1023,17 @@ struct ChoirSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
-                    SettingsSection("Join a choir") {
+                    SettingsSection(L10n.string("choir_title", language: appLanguage.preferredCode)) {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("Choir name")
+                            Text(L10n.string("choir_name", language: appLanguage.preferredCode))
                                 .font(.settingsLabel)
-                            TextField("Choir name", text: $choirName)
+                            TextField(L10n.string("choir_name", language: appLanguage.preferredCode), text: $choirName)
                                 .textFieldStyle(.roundedBorder)
                                 .textInputAutocapitalization(.words)
                                 .autocorrectionDisabled()
-                            Text("Password")
+                            Text(L10n.string("choir_password", language: appLanguage.preferredCode))
                                 .font(.settingsLabel)
-                            SecureField("Password", text: $joinPassword)
+                            SecureField(L10n.string("choir_password", language: appLanguage.preferredCode), text: $joinPassword)
                                 .textFieldStyle(.roundedBorder)
                             if let err = choirManager.joinError {
                                 Text(err)
@@ -988,7 +1041,7 @@ struct ChoirSheet: View {
                                     .foregroundStyle(.red)
                             }
                             if choirManager.isReconnecting {
-                                Text("Reconnecting…")
+                                Text(L10n.string("choir_reconnecting", language: appLanguage.preferredCode))
                                     .font(.settingsLabel)
                                     .foregroundStyle(.secondary)
                             }
@@ -1008,7 +1061,7 @@ struct ChoirSheet: View {
                                     )
                                 }
                             }) {
-                                Text((choirManager.isJoined || choirManager.isReconnecting) ? "Leave" : "Join")
+                                Text((choirManager.isJoined || choirManager.isReconnecting) ? L10n.string("choir_leave", language: appLanguage.preferredCode) : L10n.string("choir_join", language: appLanguage.preferredCode))
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 10)
                             }
@@ -1019,11 +1072,11 @@ struct ChoirSheet: View {
                 }
                 .padding()
             }
-            .navigationTitle("Choir")
+            .navigationTitle(L10n.string("choir_title", language: appLanguage.preferredCode))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { isPresented = false }
+                    Button(L10n.string("choir_done", language: appLanguage.preferredCode)) { isPresented = false }
                 }
             }
             .onAppear {
@@ -1101,6 +1154,7 @@ private struct PlaybackSettingsContent: View {
     @Binding var muteMusic: Bool
     @Binding var showCursor: Bool
     @Binding var repeatCount: Int
+    var languageCode: String = ""
 
     @Environment(\.horizontalSizeClass) private var hSizeClass
     @Environment(\.verticalSizeClass) private var vSizeClass
@@ -1143,7 +1197,7 @@ private struct PlaybackSettingsContent: View {
 
     private var speedControl: some View {
         HStack(spacing: 4) {
-            Text("Speed")
+            Text(L10n.string("settings_speed", language: languageCode))
                 .font(.settingsLabel)
             TextField("1.0", value: $playbackSpeed, format: .number)
                 .textFieldStyle(.roundedBorder)
@@ -1156,7 +1210,7 @@ private struct PlaybackSettingsContent: View {
     private var muteToggle: some View {
         Button { muteMusic.toggle() } label: {
             HStack(spacing: 3) {
-                Text("Mute")
+                Text(L10n.string("settings_mute", language: languageCode))
                     .font(.settingsLabel)
                 Image(systemName: muteMusic ? "checkmark.square.fill" : "square")
                     .foregroundStyle(muteMusic ? Color.accentColor : .secondary)
@@ -1169,7 +1223,7 @@ private struct PlaybackSettingsContent: View {
     private var cursorToggle: some View {
         Button { showCursor.toggle() } label: {
             HStack(spacing: 3) {
-                Text("Cursor")
+                Text(L10n.string("settings_cursor", language: languageCode))
                     .font(.settingsLabel)
                 Image(systemName: showCursor ? "checkmark.square.fill" : "square")
                     .foregroundStyle(showCursor ? Color.accentColor : .secondary)
@@ -1181,7 +1235,7 @@ private struct PlaybackSettingsContent: View {
 
     private var repeatControl: some View {
         HStack(spacing: 4) {
-            Text("Repeat")
+            Text(L10n.string("settings_repeat", language: languageCode))
                 .font(.settingsLabel)
             TextField("1", value: $repeatCount, format: .number)
                 .textFieldStyle(.roundedBorder)
@@ -1282,4 +1336,5 @@ private struct BottomSheetOverlay<Content: View>: View {
         .environmentObject(PlaybackManager(audioSessionManager: asm))
         .environmentObject(MidiSettings())
         .environmentObject(AuthManager())
+        .environmentObject(AppLanguage())
 }

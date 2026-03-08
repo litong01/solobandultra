@@ -1,6 +1,8 @@
 package com.solobandultra.app.ui.theme
 
 import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
@@ -27,6 +29,16 @@ private val LightColorScheme = lightColorScheme(
     tertiary = Pink40
 )
 
+/** Unwrap ContextWrapper (e.g. from CompositionLocalProvider locale context) to get the Activity. */
+private fun Context.findActivity(): Activity? {
+    var ctx = this
+    while (ctx is ContextWrapper) {
+        if (ctx is Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
+}
+
 @Composable
 fun SoloBandUltraTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
@@ -45,9 +57,12 @@ fun SoloBandUltraTheme(
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
-            val window = (view.context as Activity).window
-            window.statusBarColor = colorScheme.primary.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            val activity = view.context.findActivity()
+            if (activity != null) {
+                val window = activity.window
+                window.statusBarColor = colorScheme.primary.toArgb()
+                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            }
         }
     }
 

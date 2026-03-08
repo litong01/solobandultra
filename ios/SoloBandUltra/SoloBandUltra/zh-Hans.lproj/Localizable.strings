@@ -1,0 +1,90 @@
+/* Menu */
+"menu_open_file" = "打开文件";
+"menu_paste_link" = "粘贴链接";
+"menu_choir" = "合唱团";
+"menu_settings" = "设置";
+"menu_sign_in" = "登录";
+"menu_sign_out" = "退出登录";
+
+/* Settings */
+"settings_title" = "设置";
+"settings_apply" = "应用";
+"settings_music_source" = "音乐来源";
+"settings_playlist" = "播放列表";
+"settings_music" = "曲目";
+"settings_accompaniment" = "伴奏";
+"settings_melody" = "旋律";
+"settings_piano" = "钢琴";
+"settings_bass" = "贝斯";
+"settings_strings" = "弦乐";
+"settings_drums" = "鼓";
+"settings_metronome" = "节拍器";
+"settings_feedback" = "反馈";
+"settings_playback" = "播放";
+"settings_speed" = "速度";
+"settings_mute" = "静音";
+"settings_cursor" = "光标";
+"settings_repeat" = "重复";
+"settings_transpose" = "移调";
+"settings_semitones" = "半音";
+"settings_score_rendering" = "乐谱显示";
+"settings_staff" = "五线谱";
+"settings_all" = "全部";
+"settings_specific_parts" = "指定声部";
+"settings_jianpu" = "简谱";
+"settings_specific_part" = "指定声部";
+"settings_language" = "语言";
+
+"language_system" = "跟随系统";
+"language_english" = "English";
+"language_chinese" = "中文";
+"language_german" = "Deutsch";
+"language_spanish" = "Español";
+"language_french" = "Français";
+
+"choir_title" = "合唱团";
+"choir_name" = "合唱团名称";
+"choir_password" = "密码";
+"choir_join" = "加入";
+"choir_leave" = "离开";
+"choir_done" = "完成";
+"choir_reconnecting" = "重新连接中…";
+
+"piece_locked_title" = "曲目已锁定";
+"piece_locked_message" = "此曲目尚未开放。购买完整套件即可解锁。";
+"bundle_error_title" = "套件错误";
+"bundle_empty_message" = "此套件中没有曲目。";
+"downloading" = "正在下载…";
+"ok" = "确定";
+
+"content_desc_mysoloband" = "Mysoloband";
+"content_desc_menu" = "菜单";
+"content_desc_settings" = "设置";
+"content_desc_play" = "播放";
+"content_desc_pause" = "暂停";
+"content_desc_stop" = "停止";
+"content_desc_previous" = "上一首";
+"content_desc_next" = "下一首";
+"content_desc_book" = "乐谱书";
+"content_desc_report" = "表现报告";
+"content_desc_close" = "关闭";
+"content_desc_pieces" = "曲目";
+
+"performance_report_title" = "表现报告";
+"report_done" = "完成";
+"report_summary" = "摘要";
+"report_notes" = "音符";
+"report_note_accuracy" = "乐谱上的音符准确度";
+"report_legend" = "绿色=准时，黄色=节奏错误，红色=音高错误，蓝色=遗漏";
+"report_expected" = "预期";
+"report_detected" = "检测";
+"report_delta" = "偏差";
+"report_pitch" = "音高";
+"report_rhythm" = "节奏";
+"report_score" = "乐谱";
+
+"pdf_close" = "关闭";
+"pdf_pieces" = "曲目";
+"pdf_unable_to_open" = "无法打开 PDF";
+
+"source_bundled" = "内置乐谱";

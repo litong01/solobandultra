@@ -25,6 +25,8 @@ import com.solobandultra.app.FeedbackReport
 import com.solobandultra.app.FeedbackState
 import com.solobandultra.app.NoteResult
 import com.solobandultra.app.ScoreLib
+import com.solobandultra.app.R
+import com.solobandultra.app.ui.stringResourceForLocale
 import kotlin.math.abs
 import org.json.JSONArray
 import org.json.JSONObject
@@ -75,12 +77,12 @@ fun FeedbackReportScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Performance Report",
+                    text = stringResourceForLocale(R.string.performance_report_title),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold
                 )
                 IconButton(onClick = onDismiss) {
-                    Icon(Icons.Filled.Close, contentDescription = "Close")
+                    Icon(Icons.Filled.Close, contentDescription = stringResourceForLocale(R.string.content_desc_close))
                 }
             }
 
@@ -97,12 +99,12 @@ fun FeedbackReportScreen(
                         SummarySection(report)
                         HorizontalDivider()
                         Text(
-                            text = "Note accuracy on score",
+                            text = stringResourceForLocale(R.string.report_note_accuracy),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            text = "Green = on time, Yellow = wrong timing, Red = wrong pitch, Blue = missed",
+                            text = stringResourceForLocale(R.string.report_legend),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -140,7 +142,7 @@ fun FeedbackReportScreen(
                         item { HorizontalDivider() }
                         item {
                             Text(
-                                text = "Notes",
+                                text = stringResourceForLocale(R.string.report_notes),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -162,7 +164,7 @@ fun FeedbackReportScreen(
                     item { HorizontalDivider() }
                     item {
                         Text(
-                            text = "Notes",
+                            text = stringResourceForLocale(R.string.report_notes),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -255,7 +257,7 @@ private fun buildReportSvgHtml(svgWithOverlay: String): String {
 @Composable
 private fun SummarySection(report: FeedbackReport) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Summary", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(stringResourceForLocale(R.string.report_summary), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
 
         Row(
             modifier = Modifier
@@ -336,11 +338,11 @@ private fun NoteListHeader() {
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text("Expected", style = MaterialTheme.typography.labelSmall,
+        Text(stringResourceForLocale(R.string.report_expected), style = MaterialTheme.typography.labelSmall,
              color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-        Text("Detected", style = MaterialTheme.typography.labelSmall,
+        Text(stringResourceForLocale(R.string.report_detected), style = MaterialTheme.typography.labelSmall,
              color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(64.dp), textAlign = TextAlign.Center)
-        Text("Delta", style = MaterialTheme.typography.labelSmall,
+        Text(stringResourceForLocale(R.string.report_delta), style = MaterialTheme.typography.labelSmall,
              color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(64.dp), textAlign = TextAlign.End)
         Spacer(modifier = Modifier.width(20.dp))
     }

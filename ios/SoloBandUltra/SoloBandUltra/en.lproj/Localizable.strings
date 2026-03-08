@@ -1,0 +1,97 @@
+/* Menu */
+"menu_open_file" = "Open File";
+"menu_paste_link" = "Paste Link";
+"menu_choir" = "Choir";
+"menu_settings" = "Settings";
+"menu_sign_in" = "Sign In";
+"menu_sign_out" = "Sign Out";
+
+/* Settings */
+"settings_title" = "Settings";
+"settings_apply" = "Apply";
+"settings_music_source" = "Music Source";
+"settings_playlist" = "Playlist";
+"settings_music" = "Music";
+"settings_accompaniment" = "Accompaniment";
+"settings_melody" = "Melody";
+"settings_piano" = "Piano";
+"settings_bass" = "Bass";
+"settings_strings" = "Strings";
+"settings_drums" = "Drums";
+"settings_metronome" = "Metronome";
+"settings_feedback" = "Feedback";
+"settings_playback" = "Playback";
+"settings_speed" = "Speed";
+"settings_mute" = "Mute";
+"settings_cursor" = "Cursor";
+"settings_repeat" = "Repeat";
+"settings_transpose" = "Transpose";
+"settings_semitones" = "Semitones";
+"settings_score_rendering" = "Score Rendering";
+"settings_staff" = "Staff";
+"settings_all" = "All";
+"settings_specific_parts" = "Specific parts";
+"settings_jianpu" = "Jianpu";
+"settings_specific_part" = "Specific part";
+"settings_language" = "Language";
+
+/* Language names */
+"language_system" = "System default";
+"language_english" = "English";
+"language_chinese" = "中文";
+"language_german" = "Deutsch";
+"language_spanish" = "Español";
+"language_french" = "Français";
+
+/* Choir */
+"choir_title" = "Choir";
+"choir_name" = "Choir name";
+"choir_password" = "Password";
+"choir_join" = "Join";
+"choir_leave" = "Leave";
+"choir_done" = "Done";
+"choir_reconnecting" = "Reconnecting…";
+
+/* Alerts */
+"piece_locked_title" = "Piece Locked";
+"piece_locked_message" = "This piece is not yet available. Purchase the full bundle to unlock it.";
+"bundle_error_title" = "Bundle Error";
+"bundle_empty_message" = "This bundle contains no music.";
+"downloading" = "Downloading…";
+"ok" = "OK";
+
+/* Content descriptions / accessibility */
+"content_desc_mysoloband" = "Mysoloband";
+"content_desc_menu" = "Menu";
+"content_desc_settings" = "Settings";
+"content_desc_play" = "Play";
+"content_desc_pause" = "Pause";
+"content_desc_stop" = "Stop";
+"content_desc_previous" = "Previous";
+"content_desc_next" = "Next";
+"content_desc_book" = "Book";
+"content_desc_report" = "Performance Report";
+"content_desc_close" = "Close";
+"content_desc_pieces" = "Pieces";
+
+/* Feedback report */
+"performance_report_title" = "Performance Report";
+"report_done" = "Done";
+"report_summary" = "Summary";
+"report_notes" = "Notes";
+"report_note_accuracy" = "Note accuracy on score";
+"report_legend" = "Green = on time, Yellow = wrong timing, Red = wrong pitch, Blue = missed";
+"report_expected" = "Expected";
+"report_detected" = "Detected";
+"report_delta" = "Delta";
+"report_pitch" = "Pitch";
+"report_rhythm" = "Rhythm";
+"report_score" = "Score";
+
+/* PDF viewer */
+"pdf_close" = "Close";
+"pdf_pieces" = "Pieces";
+"pdf_unable_to_open" = "Unable to open PDF";
+
+/* Source */
+"source_bundled" = "Bundled Sheet Music";

@@ -1,5 +1,6 @@
 package com.solobandultra.app
 
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -13,8 +14,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import com.solobandultra.app.ui.LocalAppLocale
 import au.kinde.sdk.GrantType
 import au.kinde.sdk.KindeSDK
 import au.kinde.sdk.SDKListener
@@ -42,8 +45,12 @@ class MainActivity : ComponentActivity() {
     /** Action to execute after a successful login. */
     val pendingAuthAction = mutableStateOf<PendingAuthAction?>(null)
 
+    /** Current UI language (persisted on Apply). No recreate — menu/settings update only; score does not re-render. */
+    val appLocale = mutableStateOf("")
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        appLocale.value = getSharedPreferences("app_prefs", Context.MODE_PRIVATE).getString("app_language", "") ?: ""
         enableEdgeToEdge()
 
         // Initialize playback manager (created first so focus callbacks can reference it)
@@ -102,32 +109,41 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
 
         setContent {
-            SoloBandUltraTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    SheetMusicScreen(
-                        playbackManager = playbackManager,
-                        openFileUri = pendingFileUri.value,
-                        onFileUriConsumed = { pendingFileUri.value = null },
-                        isAuthenticated = isAuthenticated.value,
-                        pendingAuthAction = pendingAuthAction.value,
-                        onPendingActionConsumed = { pendingAuthAction.value = null },
-                        getAccessToken = { kindeSDK?.getToken(TokenType.ACCESS_TOKEN) },
-                        onLoginRequested = { action ->
-                            val sdk = kindeSDK
-                            if (sdk != null) {
-                                pendingAuthAction.value = action
-                                sdk.login(GrantType.PKCE)
-                            } else {
-                                Log.w("Kinde", "Login requested but Kinde SDK is not initialized")
+            CompositionLocalProvider(LocalAppLocale provides appLocale.value) {
+                SoloBandUltraTheme {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background
+                    ) {
+                        SheetMusicScreen(
+                            playbackManager = playbackManager,
+                            openFileUri = pendingFileUri.value,
+                            onFileUriConsumed = { pendingFileUri.value = null },
+                            isAuthenticated = isAuthenticated.value,
+                            pendingAuthAction = pendingAuthAction.value,
+                            onPendingActionConsumed = { pendingAuthAction.value = null },
+                            getAccessToken = { kindeSDK?.getToken(TokenType.ACCESS_TOKEN) },
+                            onLoginRequested = { action ->
+                                val sdk = kindeSDK
+                                if (sdk != null) {
+                                    pendingAuthAction.value = action
+                                    sdk.login(GrantType.PKCE)
+                                } else {
+                                    Log.w("Kinde", "Login requested but Kinde SDK is not initialized")
+                                }
+                            },
+                            onLogoutRequested = {
+                                kindeSDK?.logout()
+                            },
+                            onLanguageChange = { tag ->
+                                appLocale.value = tag
+                                getSharedPreferences("app_prefs", MODE_PRIVATE)
+                                    .edit()
+                                    .putString("app_language", tag)
+                                    .apply()
                             }
-                        },
-                        onLogoutRequested = {
-                            kindeSDK?.logout()
-                        }
-                    )
+                        )
+                    }
                 }
             }
         }

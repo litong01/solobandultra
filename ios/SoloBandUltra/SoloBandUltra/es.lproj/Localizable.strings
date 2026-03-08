@@ -1,0 +1,90 @@
+/* Menu */
+"menu_open_file" = "Abrir archivo";
+"menu_paste_link" = "Pegar enlace";
+"menu_choir" = "Coro";
+"menu_settings" = "Ajustes";
+"menu_sign_in" = "Iniciar sesión";
+"menu_sign_out" = "Cerrar sesión";
+
+/* Settings */
+"settings_title" = "Ajustes";
+"settings_apply" = "Aplicar";
+"settings_music_source" = "Fuente de música";
+"settings_playlist" = "Lista de reproducción";
+"settings_music" = "Canción";
+"settings_accompaniment" = "Acompañamiento";
+"settings_melody" = "Melodía";
+"settings_piano" = "Piano";
+"settings_bass" = "Bajo";
+"settings_strings" = "Cuerdas";
+"settings_drums" = "Batería";
+"settings_metronome" = "Metrónomo";
+"settings_feedback" = "Retroalimentación";
+"settings_playback" = "Reproducción";
+"settings_speed" = "Velocidad";
+"settings_mute" = "Silenciar";
+"settings_cursor" = "Cursor";
+"settings_repeat" = "Repetir";
+"settings_transpose" = "Transportar";
+"settings_semitones" = "Semitonos";
+"settings_score_rendering" = "Visualización de partitura";
+"settings_staff" = "Pentagrama";
+"settings_all" = "Todas";
+"settings_specific_parts" = "Partes específicas";
+"settings_jianpu" = "Jianpu";
+"settings_specific_part" = "Parte específica";
+"settings_language" = "Idioma";
+
+"language_system" = "Predeterminado del sistema";
+"language_english" = "English";
+"language_chinese" = "中文";
+"language_german" = "Deutsch";
+"language_spanish" = "Español";
+"language_french" = "Français";
+
+"choir_title" = "Coro";
+"choir_name" = "Nombre del coro";
+"choir_password" = "Contraseña";
+"choir_join" = "Unirse";
+"choir_leave" = "Salir";
+"choir_done" = "Listo";
+"choir_reconnecting" = "Reconectando…";
+
+"piece_locked_title" = "Pieza bloqueada";
+"piece_locked_message" = "Esta pieza aún no está disponible. Compra el paquete completo para desbloquearla.";
+"bundle_error_title" = "Error del paquete";
+"bundle_empty_message" = "Este paquete no contiene música.";
+"downloading" = "Descargando…";
+"ok" = "OK";
+
+"content_desc_mysoloband" = "Mysoloband";
+"content_desc_menu" = "Menú";
+"content_desc_settings" = "Ajustes";
+"content_desc_play" = "Reproducir";
+"content_desc_pause" = "Pausa";
+"content_desc_stop" = "Detener";
+"content_desc_previous" = "Anterior";
+"content_desc_next" = "Siguiente";
+"content_desc_book" = "Libro";
+"content_desc_report" = "Informe de actuación";
+"content_desc_close" = "Cerrar";
+"content_desc_pieces" = "Piezas";
+
+"performance_report_title" = "Informe de actuación";
+"report_done" = "Listo";
+"report_summary" = "Resumen";
+"report_notes" = "Notas";
+"report_note_accuracy" = "Precisión de notas en la partitura";
+"report_legend" = "Verde = a tiempo, Amarillo = tiempo incorrecto, Rojo = tono incorrecto, Azul = omitido";
+"report_expected" = "Esperado";
+"report_detected" = "Detectado";
+"report_delta" = "Diferencia";
+"report_pitch" = "Tono";
+"report_rhythm" = "Ritmo";
+"report_score" = "Partitura";
+
+"pdf_close" = "Cerrar";
+"pdf_pieces" = "Piezas";
+"pdf_unable_to_open" = "No se puede abrir el PDF";
+
+"source_bundled" = "Partituras incluidas";

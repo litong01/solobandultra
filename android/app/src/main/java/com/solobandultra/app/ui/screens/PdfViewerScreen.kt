@@ -28,6 +28,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.solobandultra.app.BookBundle
 import com.solobandultra.app.BookPiece
+import com.solobandultra.app.R
+import com.solobandultra.app.ui.stringResourceForLocale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -70,12 +72,12 @@ fun PdfViewerScreen(
                 title = { Text(bundle.title, maxLines = 1) },
                 navigationIcon = {
                     IconButton(onClick = { showPiecePicker = true }) {
-                        Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Pieces")
+                        Icon(Icons.AutoMirrored.Filled.List, contentDescription = stringResourceForLocale(R.string.content_desc_pieces))
                     }
                 },
                 actions = {
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close")
+                        Icon(Icons.Default.Close, contentDescription = stringResourceForLocale(R.string.content_desc_close))
                     }
                 }
             )
@@ -86,7 +88,7 @@ fun PdfViewerScreen(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center
             ) {
-                Text("Unable to open PDF", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResourceForLocale(R.string.pdf_unable_to_open), style = MaterialTheme.typography.bodyMedium)
             }
         } else {
             PdfPageList(
