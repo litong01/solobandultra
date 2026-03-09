@@ -237,8 +237,9 @@ private fun buildReportSvgHtml(svgWithOverlay: String): String {
         <head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes">
         <style>
-            @font-face { font-family: 'Lora'; src: url('fonts/Lora-Regular.ttf') format('truetype'); font-weight: 100 900; font-style: normal; }
-            @font-face { font-family: 'Lora'; src: url('fonts/Lora-Italic.ttf') format('truetype'); font-weight: 100 900; font-style: italic; }
+            @font-face { font-family: 'Edwin'; src: url('fonts/Edwin-Bold.otf') format('opentype'); font-weight: 100 900; font-style: normal; }
+            @font-face { font-family: 'Edwin'; src: url('fonts/Edwin-Italic.otf') format('opentype'); font-weight: 100 900; font-style: italic; }
+            @font-face { font-family: 'Noto Sans CJK'; src: url('fonts/NotoSansCJK-Regular.ttc') format('truetype'); font-weight: normal; font-style: normal; }
             @font-face { font-family: 'LXGW WenKai'; src: url('fonts/LXGWWenKai-Regular.ttf') format('truetype'); font-weight: normal; font-style: normal; }
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { background: white; display: flex; justify-content: center; padding: 8px; }

@@ -7,32 +7,35 @@ use super::beat_map::compute_note_beat_times;
 
 /// The app-bundled Latin serif font used for all non-CJK text.
 /// The app layer must register this via `@font-face` in its WebView HTML.
-pub(super) const LATIN_FONT_STACK: &str = "Lora, Georgia, serif";
+pub(super) const LATIN_FONT_STACK: &str = "Edwin, Georgia, serif";
 
-/// The CJK regular-script (楷体) font stack used for all Chinese/Japanese/Korean text.
-/// "LXGW WenKai" is the app-bundled Kaiti font (declared via @font-face in the WebView HTML).
-/// It covers 27 000+ characters (CJK Unified Ideographs A–F), unlike Ma Shan Zheng (~6 763).
-/// and will always be available.  The remaining entries are system-font fallbacks for any
-/// characters not covered by the bundled font, or on platforms where the @font-face hasn't
-/// loaded yet.
+/// The CJK font stack used for all Chinese/Japanese/Korean text.
+/// "Noto Sans CJK" is the app-bundled font (NotoSansCJK-Regular.ttc, declared via @font-face).
+/// It covers Chinese (SC/TC), Japanese, and Korean. Remaining entries are system fallbacks.
 pub(super) const CJK_FONT_STACK: &str =
-    "LXGW WenKai, Kaiti TC, Kaiti SC, KaiTi, STKaiti, PingFang SC, Noto Sans CJK SC, sans-serif";
+    "Noto Sans CJK, Kaiti TC, Kaiti SC, KaiTi, STKaiti, PingFang SC, Noto Sans CJK SC, sans-serif";
 
-/// Returns true if `text` contains any CJK Unified Ideograph character.
+/// Returns true if `text` contains any character that should use the CJK font (Noto Sans CJK):
+/// Chinese (ideographs), Japanese (Kanji, Hiragana, Katakana), or Korean (Hangul).
 pub(super) fn has_cjk(text: &str) -> bool {
     text.chars().any(|c| {
         matches!(c,
-            '\u{4E00}'..='\u{9FFF}'     // CJK Unified Ideographs
+            '\u{4E00}'..='\u{9FFF}'     // CJK Unified Ideographs (Chinese, Kanji, Hanja)
             | '\u{3400}'..='\u{4DBF}'   // CJK Extension A
             | '\u{F900}'..='\u{FAFF}'   // CJK Compatibility Ideographs
             | '\u{3000}'..='\u{303F}'   // CJK Symbols and Punctuation
+            | '\u{3040}'..='\u{309F}'   // Hiragana
+            | '\u{30A0}'..='\u{30FF}'   // Katakana
+            | '\u{AC00}'..='\u{D7A3}'   // Hangul Syllables
+            | '\u{1100}'..='\u{11FF}'   // Hangul Jamo
+            | '\u{3130}'..='\u{318F}'   // Hangul Compatibility Jamo
             | '\u{FF00}'..='\u{FFEF}'   // Halfwidth/Fullwidth Forms
         )
     })
 }
 
 /// Choose the correct font stack for a piece of text:
-/// 楷体 for CJK, Lora for everything else.
+/// Noto Sans CJK (then fallbacks) for CJK, Edwin for everything else.
 pub(super) fn font_for_text(text: &str) -> &'static str {
     if has_cjk(text) { CJK_FONT_STACK } else { LATIN_FONT_STACK }
 }
@@ -63,8 +66,7 @@ pub(super) const MAX_LYRICS_ELONGATION_FACTOR: f64 = 2.5;
 /// Estimate the rendered width of a text string in pixels for a given font size.
 ///
 /// Latin characters average ~55% of the em width.
-/// CJK characters are full-width square glyphs: exactly 1.0em wide.
-/// Mixed strings are measured per-character so the estimate stays accurate.
+/// CJK characters (ideographs, Hiragana, Katakana, Hangul) are full-width: 1.0em.
 pub(super) fn estimate_text_width(text: &str, font_size: f64) -> f64 {
     text.chars().map(|c| {
         let factor = if matches!(c,
@@ -72,6 +74,11 @@ pub(super) fn estimate_text_width(text: &str, font_size: f64) -> f64 {
             | '\u{3400}'..='\u{4DBF}'
             | '\u{F900}'..='\u{FAFF}'
             | '\u{3000}'..='\u{303F}'
+            | '\u{3040}'..='\u{309F}'   // Hiragana
+            | '\u{30A0}'..='\u{30FF}'   // Katakana
+            | '\u{AC00}'..='\u{D7A3}'   // Hangul Syllables
+            | '\u{1100}'..='\u{11FF}'   // Hangul Jamo
+            | '\u{3130}'..='\u{318F}'   // Hangul Compatibility Jamo
             | '\u{FF00}'..='\u{FFEF}'
         ) { 1.0 } else { LYRICS_CHAR_WIDTH_FACTOR };
         font_size * factor

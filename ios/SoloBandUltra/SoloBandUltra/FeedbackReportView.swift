@@ -124,9 +124,9 @@ struct FeedbackReportView: View {
         <head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes">
         <style>
-            @font-face { font-family: 'Lora'; src: url('Fonts/Lora-Regular.ttf') format('truetype'); font-weight: 100 900; font-style: normal; }
-            @font-face { font-family: 'Lora'; src: url('Fonts/Lora-Italic.ttf') format('truetype'); font-weight: 100 900; font-style: italic; }
-            @font-face { font-family: 'LXGW WenKai'; src: url('Fonts/LXGWWenKai-Regular.ttf') format('truetype'); font-weight: normal; font-style: normal; }
+            @font-face { font-family: 'Edwin'; src: url('Fonts/Edwin-Bold.otf') format('opentype'); font-weight: 100 900; font-style: normal; }
+            @font-face { font-family: 'Edwin'; src: url('Fonts/Edwin-Italic.otf') format('opentype'); font-weight: 100 900; font-style: italic; }
+            @font-face { font-family: 'Noto Sans CJK'; src: url('Fonts/NotoSansCJK-Regular.ttc') format('truetype'); font-weight: normal; font-style: normal; }
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { background: white; display: flex; justify-content: center; padding: 8px; }
             svg { width: 100%; height: auto; max-width: 100%; display: block; }

@@ -2005,6 +2005,8 @@ stringResourceForLocale(R.string.settings_music),
             "" to R.string.language_system,
             "en" to R.string.language_english,
             "zh" to R.string.language_chinese,
+            "ja" to R.string.language_japanese,
+            "ko" to R.string.language_korean,
             "de" to R.string.language_german,
             "es" to R.string.language_spanish,
             "fr" to R.string.language_french
@@ -2219,20 +2221,20 @@ private fun buildHtml(svg: String, playbackMapJson: String?, cursorBarVisible: B
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes">
         <style>
             @font-face {
-                font-family: 'Lora';
-                src: url('fonts/Lora-Regular.ttf') format('truetype');
+                font-family: 'Edwin';
+                src: url('fonts/Edwin-Bold.otf') format('opentype');
                 font-weight: 100 900;
                 font-style: normal;
             }
             @font-face {
-                font-family: 'Lora';
-                src: url('fonts/Lora-Italic.ttf') format('truetype');
+                font-family: 'Edwin';
+                src: url('fonts/Edwin-Italic.otf') format('opentype');
                 font-weight: 100 900;
                 font-style: italic;
             }
             @font-face {
-                font-family: 'LXGW WenKai';
-                src: url('fonts/LXGWWenKai-Regular.ttf') format('truetype');
+                font-family: 'Noto Sans CJK';
+                src: url('fonts/NotoSansCJK-Regular.ttc') format('truetype');
                 font-weight: normal;
                 font-style: normal;
             }
@@ -2281,21 +2283,23 @@ private fun buildHtml(svg: String, playbackMapJson: String?, cursorBarVisible: B
             <div id="cursor"></div>
         </div>
         <script>
-        // Log whether Jianpu font loaded (see Logcat tag "JianpuFont" on Android; Xcode console on iOS)
-        (function checkJianpuFont() {
+        // Log whether bundled fonts loaded (see Logcat "JianpuFont" on Android; Xcode console on iOS)
+        (function checkFonts() {
             function log(msg) {
                 console.log(msg);
                 if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.fontLog)
                     window.webkit.messageHandlers.fontLog.postMessage(msg);
             }
             if (!document.fonts || typeof document.fonts.check !== 'function') {
-                log('[Jianpu font] Font Loading API not supported');
+                log('[Fonts] Font Loading API not supported');
                 return;
             }
             document.fonts.ready.then(function() {
-                var loaded = document.fonts.check("1em 'Jianpu'");
-                log(loaded ? '[Jianpu font] LOADED' : '[Jianpu font] NOT LOADED (check font file in assets/fonts)');
-            }).catch(function(e) { log('[Jianpu font] Error: ' + e); });
+                var jianpu = document.fonts.check("1em 'Jianpu'");
+                log(jianpu ? '[Jianpu font] LOADED' : '[Jianpu font] NOT LOADED (check font file in assets/fonts)');
+                var notoCjk = document.fonts.check("1em 'Noto Sans CJK'");
+                log(notoCjk ? '[Noto Sans CJK] LOADED' : '[Noto Sans CJK] NOT LOADED (check NotoSansCJK-Regular.ttc in bundle)');
+            }).catch(function(e) { log('[Fonts] Error: ' + e); });
         })();
         ${CURSOR_JAVASCRIPT}
         // Apply cursor bar visibility from the native setting before init

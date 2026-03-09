@@ -1,0 +1,101 @@
+/* Menu */
+"menu_open_file" = "ファイルを開く";
+"menu_paste_link" = "リンクを貼り付け";
+"menu_choir" = "合唱";
+"menu_settings" = "設定";
+"menu_sign_in" = "サインイン";
+"menu_sign_out" = "サインアウト";
+
+/* Settings */
+"settings_title" = "設定";
+"settings_apply" = "適用";
+"settings_music_source" = "音楽ソース";
+"settings_playlist" = "プレイリスト";
+"settings_music" = "曲";
+"settings_accompaniment" = "伴奏";
+"settings_melody" = "メロディ";
+"settings_piano" = "ピアノ";
+"settings_bass" = "ベース";
+"settings_strings" = "弦楽器";
+"settings_drums" = "ドラム";
+"settings_metronome" = "メトロノーム";
+"settings_feedback" = "フィードバック";
+"settings_playback" = "再生";
+"settings_speed" = "速度";
+"settings_mute" = "ミュート";
+"settings_cursor" = "カーソル";
+"settings_repeat" = "リピート";
+"settings_transpose" = "移調";
+"settings_semitones" = "半音";
+"settings_score_rendering" = "楽譜表示";
+"settings_staff" = "五線譜";
+"settings_all" = "すべて";
+"settings_specific_parts" = "特定のパート";
+"settings_jianpu" = "数字譜";
+"settings_specific_part" = "特定のパート";
+"settings_language" = "言語";
+
+/* Language names */
+"language_system" = "システムのデフォルト";
+"language_english" = "English";
+"language_chinese" = "中文";
+"language_japanese" = "日本語";
+"language_korean" = "한국어";
+"language_german" = "Deutsch";
+"language_spanish" = "Español";
+"language_french" = "Français";
+
+/* Choir */
+"choir_title" = "合唱";
+"choir_name" = "合唱団名";
+"choir_password" = "パスワード";
+"choir_join" = "参加";
+"choir_leave" = "退出";
+"choir_done" = "完了";
+"choir_reconnecting" = "再接続中…";
+
+/* Alerts */
+"piece_locked_title" = "曲がロックされています";
+"piece_locked_message" = "この曲はまだ利用できません。フルバンドルを購入してアンロックしてください。";
+"bundle_error_title" = "バンドルエラー";
+"bundle_empty_message" = "このバンドルに曲が含まれていません。";
+"downloading" = "ダウンロード中…";
+"ok" = "OK";
+
+/* Content descriptions / accessibility */
+"content_desc_mysoloband" = "Mysoloband";
+"content_desc_menu" = "メニュー";
+"content_desc_settings" = "設定";
+"content_desc_play" = "再生";
+"content_desc_pause" = "一時停止";
+"content_desc_stop" = "停止";
+"content_desc_previous" = "前へ";
+"content_desc_next" = "次へ";
+"content_desc_book" = "楽譜ブック";
+"content_desc_report" = "パフォーマンスレポート";
+"content_desc_decrease" = "減らす";
+"content_desc_increase" = "増やす";
+"content_desc_close" = "閉じる";
+"content_desc_pieces" = "曲";
+
+/* Feedback report */
+"performance_report_title" = "パフォーマンスレポート";
+"report_done" = "完了";
+"report_summary" = "概要";
+"report_notes" = "音符";
+"report_note_accuracy" = "楽譜上の音符の正確さ";
+"report_legend" = "緑=タイミング正確、黄=タイミング誤り、赤=音高誤り、青=見逃し";
+"report_expected" = "予想";
+"report_detected" = "検出";
+"report_delta" = "差";
+"report_pitch" = "音高";
+"report_rhythm" = "リズム";
+"report_score" = "楽譜";
+
+/* PDF viewer */
+"pdf_close" = "閉じる";
+"pdf_pieces" = "曲";
+"pdf_unable_to_open" = "PDFを開けません";
+
+/* Source */
+"source_bundled" = "同梱楽譜";

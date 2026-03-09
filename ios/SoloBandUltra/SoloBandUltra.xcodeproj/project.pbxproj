@@ -38,6 +38,8 @@
 		LZ00000000000000000003B1 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = LZ00000000000000000003A1 /* Localizable.strings */; };
 		LZ00000000000000000004B1 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = LZ00000000000000000004A1 /* Localizable.strings */; };
 		LZ00000000000000000005B1 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = LZ00000000000000000005A1 /* Localizable.strings */; };
+		LZ0000000000000000000BB1 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = LZ0000000000000000000BA1 /* Localizable.strings */; };
+		LZ0000000000000000000CB1 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = LZ0000000000000000000CA1 /* Localizable.strings */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -76,6 +78,8 @@
 		LZ00000000000000000003A1 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = Localizable.strings; sourceTree = "<group>"; };
 		LZ00000000000000000004A1 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = Localizable.strings; sourceTree = "<group>"; };
 		LZ00000000000000000005A1 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = Localizable.strings; sourceTree = "<group>"; };
+		LZ0000000000000000000BA1 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = Localizable.strings; sourceTree = "<group>"; };
+		LZ0000000000000000000CA1 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = Localizable.strings; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -105,7 +109,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Copy fonts (Lora, LXGW WenKai, JianpuASCII, etc.) from repo assets/fonts/ into the app Fonts folder.\nFONTS_SRC=\"${PROJECT_DIR}/../../assets/fonts\"\nFONTS_DST=\"${PROJECT_DIR}/SoloBandUltra/Fonts\"\nmkdir -p \"$FONTS_DST\"\nif [ -d \"$FONTS_SRC\" ]; then\n  cp \"$FONTS_SRC\"/*.ttf \"$FONTS_DST\"/ 2>/dev/null || true\nfi\n";
+			shellScript = "# Copy fonts (Edwin, Noto Sans CJK, JianpuASCII, etc.) from repo assets/fonts/ into the app Fonts folder.\nFONTS_SRC=\"${PROJECT_DIR}/../../assets/fonts\"\nFONTS_DST=\"${PROJECT_DIR}/SoloBandUltra/Fonts\"\nmkdir -p \"$FONTS_DST\"\nif [ -d \"$FONTS_SRC\" ]; then\n  cp \"$FONTS_SRC\"/*.ttf \"$FONTS_DST\"/ 2>/dev/null || true\n  cp \"$FONTS_SRC\"/*.otf \"$FONTS_DST\"/ 2>/dev/null || true\n  cp \"$FONTS_SRC\"/*.ttc \"$FONTS_DST\"/ 2>/dev/null || true\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -155,6 +159,8 @@
 			LZ00000000000000000008A1 /* de.lproj */,
 			LZ00000000000000000009A1 /* es.lproj */,
 			LZ0000000000000000000AA1 /* fr.lproj */,
+			LZ0000000000000000000AB1 /* ja.lproj */,
+			LZ0000000000000000000AC1 /* ko.lproj */,
 		);
 			path = SoloBandUltra;
 			sourceTree = "<group>";
@@ -197,6 +203,22 @@
 				LZ00000000000000000005A1 /* Localizable.strings */,
 			);
 			path = fr.lproj;
+			sourceTree = "<group>";
+		};
+		LZ0000000000000000000AB1 /* ja.lproj */ = {
+			isa = PBXGroup;
+			children = (
+				LZ0000000000000000000BA1 /* Localizable.strings */,
+			);
+			path = ja.lproj;
+			sourceTree = "<group>";
+		};
+		LZ0000000000000000000AC1 /* ko.lproj */ = {
+			isa = PBXGroup;
+			children = (
+				LZ0000000000000000000CA1 /* Localizable.strings */,
+			);
+			path = ko.lproj;
 			sourceTree = "<group>";
 		};
 		AA0000000000000000000D03 /* Products */ = {
@@ -257,6 +279,8 @@
 				de,
 				es,
 				fr,
+				ja,
+				ko,
 			);
 			mainGroup = AA0000000000000000000D01;
 			packageReferences = (
@@ -286,6 +310,8 @@
 				LZ00000000000000000003B1 /* Localizable.strings in Resources */,
 				LZ00000000000000000004B1 /* Localizable.strings in Resources */,
 				LZ00000000000000000005B1 /* Localizable.strings in Resources */,
+				LZ0000000000000000000BB1 /* Localizable.strings in Resources */,
+				LZ0000000000000000000CB1 /* Localizable.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

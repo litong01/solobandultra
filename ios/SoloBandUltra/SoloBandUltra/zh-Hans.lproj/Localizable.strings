@@ -41,6 +41,8 @@
 "language_german" = "Deutsch";
 "language_spanish" = "Español";
 "language_french" = "Français";
+"language_japanese" = "日本語";
+"language_korean" = "한국어";
 
 "choir_title" = "合唱团";
 "choir_name" = "合唱团名称";

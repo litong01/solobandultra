@@ -13,7 +13,7 @@ use super::lyrics::font_for_text;
 pub(super) fn render_header(svg: &mut SvgBuilder, score: &Score, page_width: f64) {
     let center_x = page_width / 2.0;
 
-    // Font selection is purely content-driven: CJK text → 楷体, everything else → Lora.
+    // Font selection is purely content-driven: CJK text → Noto Sans CJK, everything else → Edwin.
     // MusicXML-specified fonts are intentionally ignored for visual consistency.
 
     if let Some(ref title) = score.title {

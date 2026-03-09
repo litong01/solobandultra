@@ -135,9 +135,9 @@
 	</dict>
 	<key>UIAppFonts</key>
 	<array>
-		<string>Fonts/Lora-Regular.ttf</string>
-		<string>Fonts/Lora-Italic.ttf</string>
-		<string>Fonts/LXGWWenKai-Regular.ttf</string>
+		<string>Fonts/Edwin-Bold.otf</string>
+		<string>Fonts/Edwin-Italic.otf</string>
+		<string>Fonts/NotoSansCJK-Regular.ttc</string>
 	</array>
 	<key>CHOIR_WS_BASE_URL</key>
 	<string>https://websocket-888861749871.us-south1.run.app</string>

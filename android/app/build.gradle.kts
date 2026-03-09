@@ -36,8 +36,8 @@ android {
 
     sourceSets {
         getByName("main") {
-            // Fonts (Lora, JianpuASCII, etc.) live in src/main/assets/fonts/ — populated by build-rust.sh deploy_fonts.
-            // Do not add a second font source here or Lora-Italic.ttf etc. become duplicate resources.
+            // Fonts (Edwin, JianpuASCII, etc.) live in src/main/assets/fonts/ — populated by build-rust.sh deploy_fonts.
+            // res/font/ (Edwin for Compose) is also populated by deploy_fonts from assets/fonts.
             assets.srcDirs("src/main/assets", layout.buildDirectory.dir("generated/sheetmusic-assets"))
         }
     }

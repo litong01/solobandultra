@@ -398,7 +398,7 @@ struct SVGWebView: UIViewRepresentable {
             cursorBarVisible: playbackManager.showCursorEnabled
         )
         // Use the bundle resource URL as base so @font-face relative paths
-        // (e.g. "Fonts/Lora-Regular.ttf") resolve to the bundled font files.
+        // (e.g. "Fonts/Edwin-Bold.otf") resolve to the bundled font files.
         webView.loadHTMLString(html, baseURL: Bundle.main.resourceURL)
     }
 
@@ -420,20 +420,20 @@ struct SVGWebView: UIViewRepresentable {
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes">
         <style>
             @font-face {
-                font-family: 'Lora';
-                src: url('Fonts/Lora-Regular.ttf') format('truetype');
+                font-family: 'Edwin';
+                src: url('Fonts/Edwin-Bold.otf') format('opentype');
                 font-weight: 100 900;
                 font-style: normal;
             }
             @font-face {
-                font-family: 'Lora';
-                src: url('Fonts/Lora-Italic.ttf') format('truetype');
+                font-family: 'Edwin';
+                src: url('Fonts/Edwin-Italic.otf') format('opentype');
                 font-weight: 100 900;
                 font-style: italic;
             }
             @font-face {
-                font-family: 'LXGW WenKai';
-                src: url('Fonts/LXGWWenKai-Regular.ttf') format('truetype');
+                font-family: 'Noto Sans CJK';
+                src: url('Fonts/NotoSansCJK-Regular.ttc') format('truetype');
                 font-weight: normal;
                 font-style: normal;
             }
@@ -482,21 +482,23 @@ struct SVGWebView: UIViewRepresentable {
             <div id="cursor"></div>
         </div>
         <script>
-        // Log whether Jianpu font loaded (see Xcode console / Android Logcat tag "JianpuFont")
-        (function checkJianpuFont() {
+        // Log whether bundled fonts loaded (see Xcode console / Android Logcat tag "JianpuFont")
+        (function checkFonts() {
             function log(msg) {
                 console.log(msg);
                 if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.fontLog)
                     window.webkit.messageHandlers.fontLog.postMessage(msg);
             }
             if (!document.fonts || typeof document.fonts.check !== 'function') {
-                log('[Jianpu font] Font Loading API not supported');
+                log('[Fonts] Font Loading API not supported');
                 return;
             }
             document.fonts.ready.then(function() {
-                var loaded = document.fonts.check("1em 'Jianpu'");
-                log(loaded ? '[Jianpu font] LOADED' : '[Jianpu font] NOT LOADED (check font file in assets/fonts)');
-            }).catch(function(e) { log('[Jianpu font] Error: ' + e); });
+                var jianpu = document.fonts.check("1em 'Jianpu'");
+                log(jianpu ? '[Jianpu font] LOADED' : '[Jianpu font] NOT LOADED (check font file in assets/fonts)');
+                var notoCjk = document.fonts.check("1em 'Noto Sans CJK'");
+                log(notoCjk ? '[Noto Sans CJK] LOADED' : '[Noto Sans CJK] NOT LOADED (check NotoSansCJK-Regular.ttc in bundle)');
+            }).catch(function(e) { log('[Fonts] Error: ' + e); });
         })();
         \(Self.cursorJavaScript)
         // Apply cursor bar visibility from the native setting before init

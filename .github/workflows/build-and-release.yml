@@ -40,7 +40,9 @@ jobs:
       - name: Copy fonts to iOS bundle
         run: |
           mkdir -p ios/SoloBandUltra/SoloBandUltra/Fonts
-          cp assets/fonts/*.ttf ios/SoloBandUltra/SoloBandUltra/Fonts/
+          cp assets/fonts/*.ttf ios/SoloBandUltra/SoloBandUltra/Fonts/ 2>/dev/null || true
+          cp assets/fonts/*.otf ios/SoloBandUltra/SoloBandUltra/Fonts/ 2>/dev/null || true
+          cp assets/fonts/*.ttc ios/SoloBandUltra/SoloBandUltra/Fonts/ 2>/dev/null || true
 
       - name: Show Xcode version
         run: xcodebuild -version
@@ -192,7 +194,11 @@ jobs:
       - name: Copy fonts to Android assets
         run: |
           mkdir -p android/app/src/main/assets/fonts
-          cp assets/fonts/*.ttf android/app/src/main/assets/fonts/
+          cp assets/fonts/*.ttf android/app/src/main/assets/fonts/ 2>/dev/null || true
+          cp assets/fonts/*.otf android/app/src/main/assets/fonts/ 2>/dev/null || true
+          cp assets/fonts/*.ttc android/app/src/main/assets/fonts/ 2>/dev/null || true
+          mkdir -p android/app/src/main/res/font
+          cp assets/fonts/NotoSansCJK-Regular.ttc android/app/src/main/res/font/noto_sans_cjk_regular.ttc 2>/dev/null || true
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4

@@ -26,7 +26,7 @@ impl SvgBuilder {
 
     pub(super) fn build(self) -> String {
         let mut svg = format!(
-            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {} {}" width="{}" height="{}" style="font-family: 'Lora', 'Georgia', serif;">"#,
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {} {}" width="{}" height="{}" style="font-family: 'Edwin', 'Georgia', serif;">"#,
             self.width, self.height, self.width, self.height
         );
         svg.push('\n');

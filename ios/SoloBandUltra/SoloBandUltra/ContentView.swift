@@ -750,7 +750,7 @@ struct SettingsSheet: View {
                             }
 
                             Text("\(transpose)")
-                                .font(.lora(.title3).monospacedDigit())
+                                .font(.edwin(.title3).monospacedDigit())
                                 .frame(minWidth: 36)
                                 .multilineTextAlignment(.center)
 
@@ -867,6 +867,12 @@ struct SettingsSheet: View {
                                 Button { selectedLanguageCode = "zh-Hans" } label: {
                                     Text(L10n.string("language_chinese", language: nil)).font(.settingsLabel)
                                 }
+                                Button { selectedLanguageCode = "ja" } label: {
+                                    Text(L10n.string("language_japanese", language: nil)).font(.settingsLabel)
+                                }
+                                Button { selectedLanguageCode = "ko" } label: {
+                                    Text(L10n.string("language_korean", language: nil)).font(.settingsLabel)
+                                }
                                 Button { selectedLanguageCode = "de" } label: {
                                     Text(L10n.string("language_german", language: nil)).font(.settingsLabel)
                                 }
@@ -881,6 +887,8 @@ struct SettingsSheet: View {
                                     Text(selectedLanguageCode.isEmpty ? L10n.string("language_system", language: nil) :
                                         selectedLanguageCode == "en" ? L10n.string("language_english", language: nil) :
                                         selectedLanguageCode == "zh-Hans" ? L10n.string("language_chinese", language: nil) :
+                                        selectedLanguageCode == "ja" ? L10n.string("language_japanese", language: nil) :
+                                        selectedLanguageCode == "ko" ? L10n.string("language_korean", language: nil) :
                                         selectedLanguageCode == "de" ? L10n.string("language_german", language: nil) :
                                         selectedLanguageCode == "es" ? L10n.string("language_spanish", language: nil) :
                                         selectedLanguageCode == "fr" ? L10n.string("language_french", language: nil) :
@@ -903,7 +911,7 @@ struct SettingsSheet: View {
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text(L10n.string("settings_title", language: selectedLanguageCode))
-                        .font(.lora(.headline))
+                        .font(.edwin(.headline))
                         .fontWeight(.semibold)
                 }
                 ToolbarItem(placement: .confirmationAction) {
@@ -972,17 +980,18 @@ struct SettingsSheet: View {
 // MARK: - App Fonts
 
 private extension Font {
-    static func lora(_ style: Font.TextStyle) -> Font {
-        .custom("Lora-Regular", size: style.basePointSize, relativeTo: style)
+    static func edwin(_ style: Font.TextStyle) -> Font {
+        .custom("Edwin-Bold", size: style.basePointSize, relativeTo: style)
     }
 
-    static let wenKaiSubheadline = Font.custom("LXGWWenKai-Regular", size: 13, relativeTo: .subheadline)
-    static let wenKaiBody = Font.custom("LXGWWenKai-Regular", size: 15, relativeTo: .body)
+    /// Noto Sans CJK for Chinese/Japanese/Korean (settings, menus). Uses SC face from bundled TTC.
+    static let wenKaiSubheadline = Font.custom("Noto Sans CJK SC", size: 13, relativeTo: .subheadline)
+    static let wenKaiBody = Font.custom("Noto Sans CJK SC", size: 15, relativeTo: .body)
 
     // ── Settings label tokens ────────────────────────────────────────
     // Single source of truth for all option labels in the settings screen.
     // Change these two lines to restyle every label at once.
-    static let settingsLabel: Font = .lora(.subheadline)
+    static let settingsLabel: Font = .edwin(.subheadline)
     static let settingsLabelChinese: Font = .wenKaiSubheadline
 }
 
@@ -1104,7 +1113,7 @@ private struct SettingsSection<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
-                .font(.lora(.headline))
+                .font(.edwin(.headline))
 
             VStack(alignment: .leading, spacing: 4) {
                 content
@@ -1133,7 +1142,7 @@ private struct CheckboxToggle: View {
             HStack(spacing: 3) {
                 Image(systemName: isOn ? "checkmark.square.fill" : "square")
                     .foregroundStyle(isOn ? Color.accentColor : .secondary)
-                    .font(.lora(.callout))
+                    .font(.edwin(.callout))
                 Text(label)
                     .font(.settingsLabel)
                     .lineLimit(1)
@@ -1214,7 +1223,7 @@ private struct PlaybackSettingsContent: View {
                     .font(.settingsLabel)
                 Image(systemName: muteMusic ? "checkmark.square.fill" : "square")
                     .foregroundStyle(muteMusic ? Color.accentColor : .secondary)
-                    .font(.lora(.callout))
+                    .font(.edwin(.callout))
             }
         }
         .buttonStyle(.plain)
@@ -1227,7 +1236,7 @@ private struct PlaybackSettingsContent: View {
                     .font(.settingsLabel)
                 Image(systemName: showCursor ? "checkmark.square.fill" : "square")
                     .foregroundStyle(showCursor ? Color.accentColor : .secondary)
-                    .font(.lora(.callout))
+                    .font(.edwin(.callout))
             }
         }
         .buttonStyle(.plain)

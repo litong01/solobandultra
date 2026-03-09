@@ -68,7 +68,7 @@ docker_cargo() {
 
 # ─── Font deployment ────────────────────────────────────────────────
 #
-# Fonts (Lora, LXGW WenKai, JianpuASCII, etc.) live once in assets/fonts/
+# Fonts (Edwin, Noto Sans CJK, JianpuASCII, etc.) live once in assets/fonts/
 # (source of truth). This script deploys them to both platform destinations.
 # Android and iOS also copy from assets/fonts/ during their own builds
 # (Gradle copyFonts task, Xcode "Deploy Fonts" run script).
@@ -81,10 +81,25 @@ deploy_fonts() {
 
     echo "→ Deploying bundled fonts..."
 
-    # Android: copy .ttf files so WebView can load them via file:///android_asset/fonts/
+    # Android assets: .ttf, .otf, .ttc for WebView @font-face (file:///android_asset/fonts/)
     mkdir -p "$ANDROID_FONTS_DST"
-    cp "$FONTS_SRC"/*.ttf "$ANDROID_FONTS_DST/"
+    cp "$FONTS_SRC"/*.ttf "$ANDROID_FONTS_DST/" 2>/dev/null || true
+    cp "$FONTS_SRC"/*.otf "$ANDROID_FONTS_DST/" 2>/dev/null || true
+    cp "$FONTS_SRC"/*.ttc "$ANDROID_FONTS_DST/" 2>/dev/null || true
     echo "  Android: $ANDROID_FONTS_DST"
+
+    # Android res/font: Edwin and Noto Sans CJK for Compose Typography (R.font.*)
+    ANDROID_RES_FONT="android/app/src/main/res/font"
+    mkdir -p "$ANDROID_RES_FONT"
+    if [ -f "$FONTS_SRC/Edwin-Bold.otf" ]; then
+        cp "$FONTS_SRC/Edwin-Bold.otf" "$ANDROID_RES_FONT/edwin_bold.otf"
+        cp "$FONTS_SRC/Edwin-Italic.otf" "$ANDROID_RES_FONT/edwin_italic.otf" 2>/dev/null || true
+        echo "  Android: $ANDROID_RES_FONT (Edwin)"
+    fi
+    if [ -f "$FONTS_SRC/NotoSansCJK-Regular.ttc" ]; then
+        cp "$FONTS_SRC/NotoSansCJK-Regular.ttc" "$ANDROID_RES_FONT/noto_sans_cjk_regular.ttc"
+        echo "  Android: $ANDROID_RES_FONT (Noto Sans CJK)"
+    fi
 
     # iOS: copy font files into the Xcode bundle's Fonts/ folder.
     # The folder is registered as a folder-reference resource in project.pbxproj so
@@ -92,7 +107,9 @@ deploy_fonts() {
     # SheetMusicView loads them via @font-face relative URLs with
     # baseURL = Bundle.main.resourceURL.
     mkdir -p "$IOS_FONTS_DST"
-    cp "$FONTS_SRC"/*.ttf "$IOS_FONTS_DST/"
+    cp "$FONTS_SRC"/*.ttf "$IOS_FONTS_DST/" 2>/dev/null || true
+    cp "$FONTS_SRC"/*.otf "$IOS_FONTS_DST/" 2>/dev/null || true
+    cp "$FONTS_SRC"/*.ttc "$IOS_FONTS_DST/" 2>/dev/null || true
     echo "  iOS:     $IOS_FONTS_DST"
 }
 

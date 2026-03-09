@@ -1,0 +1,101 @@
+/* Menu */
+"menu_open_file" = "파일 열기";
+"menu_paste_link" = "링크 붙여넣기";
+"menu_choir" = "합창";
+"menu_settings" = "설정";
+"menu_sign_in" = "로그인";
+"menu_sign_out" = "로그아웃";
+
+/* Settings */
+"settings_title" = "설정";
+"settings_apply" = "적용";
+"settings_music_source" = "음악 소스";
+"settings_playlist" = "재생 목록";
+"settings_music" = "곡";
+"settings_accompaniment" = "반주";
+"settings_melody" = "멜로디";
+"settings_piano" = "피아노";
+"settings_bass" = "베이스";
+"settings_strings" = "현악기";
+"settings_drums" = "드럼";
+"settings_metronome" = "메트로놈";
+"settings_feedback" = "피드백";
+"settings_playback" = "재생";
+"settings_speed" = "속도";
+"settings_mute" = "음소거";
+"settings_cursor" = "커서";
+"settings_repeat" = "반복";
+"settings_transpose" = "조옮김";
+"settings_semitones" = "반음";
+"settings_score_rendering" = "악보 표시";
+"settings_staff" = "오선보";
+"settings_all" = "전체";
+"settings_specific_parts" = "특정 파트";
+"settings_jianpu" = "숫자악보";
+"settings_specific_part" = "특정 파트";
+"settings_language" = "언어";
+
+/* Language names */
+"language_system" = "시스템 기본값";
+"language_english" = "English";
+"language_chinese" = "中文";
+"language_japanese" = "日本語";
+"language_korean" = "한국어";
+"language_german" = "Deutsch";
+"language_spanish" = "Español";
+"language_french" = "Français";
+
+/* Choir */
+"choir_title" = "합창";
+"choir_name" = "합창단 이름";
+"choir_password" = "비밀번호";
+"choir_join" = "참가";
+"choir_leave" = "나가기";
+"choir_done" = "완료";
+"choir_reconnecting" = "재연결 중…";
+
+/* Alerts */
+"piece_locked_title" = "곡이 잠겨 있습니다";
+"piece_locked_message" = "이 곡은 아직 사용할 수 없습니다. 전체 번들을 구매하여 잠금을 해제하세요.";
+"bundle_error_title" = "번들 오류";
+"bundle_empty_message" = "이 번들에 음악이 없습니다.";
+"downloading" = "다운로드 중…";
+"ok" = "확인";
+
+/* Content descriptions / accessibility */
+"content_desc_mysoloband" = "Mysoloband";
+"content_desc_menu" = "메뉴";
+"content_desc_settings" = "설정";
+"content_desc_play" = "재생";
+"content_desc_pause" = "일시정지";
+"content_desc_stop" = "정지";
+"content_desc_previous" = "이전";
+"content_desc_next" = "다음";
+"content_desc_book" = "악보책";
+"content_desc_report" = "연주 리포트";
+"content_desc_decrease" = "줄이기";
+"content_desc_increase" = "늘리기";
+"content_desc_close" = "닫기";
+"content_desc_pieces" = "곡";
+
+/* Feedback report */
+"performance_report_title" = "연주 리포트";
+"report_done" = "완료";
+"report_summary" = "요약";
+"report_notes" = "음표";
+"report_note_accuracy" = "악보상 음표 정확도";
+"report_legend" = "초록=제시간, 노랑=박자 오류, 빨강=음높이 오류, 파랑=놓침";
+"report_expected" = "예상";
+"report_detected" = "감지";
+"report_delta" = "차이";
+"report_pitch" = "음높이";
+"report_rhythm" = "리듬";
+"report_score" = "악보";
+
+/* PDF viewer */
+"pdf_close" = "닫기";
+"pdf_pieces" = "곡";
+"pdf_unable_to_open" = "PDF를 열 수 없습니다";
+
+/* Source */
+"source_bundled" = "번들 악보";

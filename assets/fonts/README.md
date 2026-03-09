@@ -1,6 +1,6 @@
 # Bundled fonts
 
-Place `.ttf` files here. They are copied to Android and iOS by `./build-rust.sh` (see `deploy_fonts`).
+Place `.ttf`, `.otf`, and `.ttc` files here. They are copied to Android and iOS by `./build-rust.sh` (see `deploy_fonts`).
 
 ## Required for jianpu (numbered notation)
 
@@ -11,7 +11,7 @@ Place `.ttf` files here. They are copied to Android and iOS by `./build-rust.sh`
 
 ## Other fonts (lyrics, body text)
 
-- **Lora-Regular.ttf**, **Lora-Italic.ttf** — Lora (optional, for body/titles)
-- **LXGWWenKai-Regular.ttf** — LXGW WenKai (optional, for Chinese lyrics)
+- **NotoSansCJK-Regular.ttc** — Noto Sans CJK (Chinese, Japanese, Korean). Primary CJK font for lyrics. TTC contains SC/TC/JP/KR faces.
+- **Edwin-Bold.otf**, **Edwin-Italic.otf** — Edwin (for Western lyrics and body/titles)
 
-After adding any `.ttf`, run `./build-rust.sh` (or your full app build) so they are deployed to the app. Release builds on GitHub Actions also copy these fonts into the iOS and Android bundles.
+After adding any `.ttf`, `.otf`, or `.ttc`, run `./build-rust.sh` (or your full app build) so they are deployed to the app. Release builds on GitHub Actions also copy these fonts into the iOS and Android bundles.
