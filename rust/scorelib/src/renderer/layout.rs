@@ -587,12 +587,16 @@ pub(super) fn compute_layout_with_staff_filter(
         }
 
         let mut max_lyric_verses = 0i32;
+        let mut has_cjk_lyrics = false;
         for ml_check in &measures {
             for (pidx, _) in parts_with_staves {
                 if ml_check.measure_idx < score.parts[*pidx].measures.len() {
                     for note in &score.parts[*pidx].measures[ml_check.measure_idx].notes {
                         for lyric in &note.lyrics {
                             max_lyric_verses = max_lyric_verses.max(lyric.number);
+                            if has_cjk(&lyric.text) {
+                                has_cjk_lyrics = true;
+                            }
                         }
                     }
                 }
@@ -622,8 +626,13 @@ pub(super) fn compute_layout_with_staff_filter(
             0.0
         };
 
+        let lyrics_line_height = if has_cjk_lyrics {
+            LYRICS_LINE_HEIGHT_CJK
+        } else {
+            LYRICS_LINE_HEIGHT
+        };
         let lyrics_extra = if max_lyric_verses > 0 {
-            LYRICS_MIN_Y_BELOW_STAFF - STAFF_HEIGHT + max_lyric_verses as f64 * LYRICS_LINE_HEIGHT
+            LYRICS_MIN_Y_BELOW_STAFF - STAFF_HEIGHT + max_lyric_verses as f64 * lyrics_line_height
                 + dir_words_extra
         } else {
             0.0

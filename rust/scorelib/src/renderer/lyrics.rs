@@ -44,9 +44,11 @@ pub(super) fn font_for_text(text: &str) -> &'static str {
 
 pub(super) const LYRICS_COLOR: &str = "#000000";
 pub(super) const LYRICS_FONT_SIZE: f64 = 13.0;
-pub(super) const LYRICS_FONT_SIZE_CJK: f64 = 15.0;
+pub(super) const LYRICS_FONT_SIZE_CJK: f64 = 19.0;
 pub(super) const LYRICS_PAD_BELOW: f64 = 16.0;
 pub(super) const LYRICS_LINE_HEIGHT: f64 = 16.0;
+/// Line height between lyric verses when using CJK font (larger font needs more vertical space).
+pub(super) const LYRICS_LINE_HEIGHT_CJK: f64 = 23.0;
 pub(super) const LYRICS_MIN_Y_BELOW_STAFF: f64 = 54.0;
 /// When lyrics are positioned from note (e.g. jianpu), vertical distance below the note to the lyric baseline.
 pub(super) const LYRICS_BELOW_NOTE_OFFSET: f64 = 28.0;
@@ -250,8 +252,14 @@ pub(super) fn render_lyrics(
             lyrics_base_y
         };
 
+        let line_height = if measure.notes.iter().flat_map(|n| &n.lyrics).any(|l| has_cjk(&l.text)) {
+            LYRICS_LINE_HEIGHT_CJK
+        } else {
+            LYRICS_LINE_HEIGHT
+        };
+
         for lyric in &note.lyrics {
-            let verse_offset = (lyric.number - 1) as f64 * LYRICS_LINE_HEIGHT;
+            let verse_offset = (lyric.number - 1) as f64 * line_height;
             let lyric_y = ly + verse_offset;
 
             let display_text = match lyric.syllabic.as_deref() {
