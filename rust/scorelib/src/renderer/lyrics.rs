@@ -106,8 +106,8 @@ pub(super) fn collect_lyric_events(parts: &[Part], mi: usize, divisions_map: &[i
 
     for (pidx, part) in parts.iter().enumerate() {
         if mi >= part.measures.len() { continue; }
+        let divisions = divisions_map.get(pidx).copied().unwrap_or(1).max(1);
         let measure = &part.measures[mi];
-        let divisions = divisions_map[pidx].max(1);
         let beat_times = compute_note_beat_times(&measure.notes, divisions);
 
         for (i, note) in measure.notes.iter().enumerate() {
@@ -187,13 +187,17 @@ pub(super) fn lyrics_min_measure_width(
             total += lyric_pair_min_spacing(&events[i - 1], &events[i]);
         }
     }
-    if let Some(last) = events.last() {
-        let right_half = if last.is_last {
-            (last.text_width / 2.0 - LYRICS_OVERLAP_INTO_NEXT_MEASURE).max(0.0)
-        } else {
-            last.text_width / 2.0
-        };
-        total += right_half;
+    // Only add the last event's right half when there is a single event; for 2+ events
+    // it was already included in lyric_pair_min_spacing(events[n-2], events[n-1]).
+    if events.len() == 1 {
+        if let Some(last) = events.last() {
+            let right_half = if last.is_last {
+                (last.text_width / 2.0 - LYRICS_OVERLAP_INTO_NEXT_MEASURE).max(0.0)
+            } else {
+                last.text_width / 2.0
+            };
+            total += right_half;
+        }
     }
     total += 28.0;
 
@@ -259,7 +263,7 @@ pub(super) fn render_lyrics(
         };
 
         for lyric in &note.lyrics {
-            let verse_offset = (lyric.number - 1) as f64 * line_height;
+            let verse_offset = (lyric.number.max(1) - 1) as f64 * line_height;
             let lyric_y = ly + verse_offset;
 
             let display_text = match lyric.syllabic.as_deref() {
