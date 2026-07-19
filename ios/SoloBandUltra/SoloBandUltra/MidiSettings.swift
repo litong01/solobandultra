@@ -26,7 +26,8 @@ struct MusicSource: Identifiable {
 class MidiSettings: ObservableObject {
     // ── Accompaniment track toggles ──
     @Published var includeMelody: Bool = true
-    /// Melody voice filter: "all" or "custom" with comma-separated MusicXML voices (e.g. "1,3").
+    /// Melody track filter: "all" or "custom" with comma-separated global track
+    /// numbers (top-to-bottom lines across all parts/staves, e.g. "1,3").
     @Published var melodyTracksOption: String = "all"
     @Published var melodyTracksList: String = ""
     @Published var includePiano: Bool = false
@@ -212,20 +213,8 @@ class MidiSettings: ObservableObject {
     }
 
     /// Serialize to the JSON format expected by the Rust FFI layer.
-    ///
-    /// Until multi-track MIDI filtering lands, only the first selected track
-    /// number is sent as `melody_track` (0 = all voices).
     func toJson() -> String {
-        let track: Int = {
-            guard melodyTracksOption == "custom" else { return 0 }
-            let first = melodyTracksList
-                .split(separator: ",")
-                .map { $0.trimmingCharacters(in: .whitespaces) }
-                .compactMap { Int($0) }
-                .first { (1...4).contains($0) }
-            return first ?? 0
-        }()
-        let parts = [
+        var parts = [
             "\"include_melody\":\(includeMelody)",
             "\"include_piano\":\(includePiano)",
             "\"include_bass\":\(includeBass)",
@@ -234,9 +223,22 @@ class MidiSettings: ObservableObject {
             "\"include_metronome\":\(includeMetronome)",
             "\"include_feedback\":\(includeFeedback)",
             "\"energy\":\"\(energy.rawValue)\"",
-            "\"transpose\":\(transpose)",
-            "\"melody_track\":\(track)"
+            "\"transpose\":\(transpose)"
         ]
+        if melodyTracksOption == "custom" {
+            let tracks = melodyTracksList
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .compactMap { Int($0) }
+                .filter { $0 >= 1 }
+            // Deduplicate while preserving order
+            var seen = Set<Int>()
+            let unique = tracks.filter { seen.insert($0).inserted }
+            let csv = unique.map(String.init).joined(separator: ",")
+            // Always send the key when custom: empty list means no melody lines
+            // (not "all tracks").
+            parts.append("\"melody_tracks\":\"\(csv)\"")
+        }
         return "{\(parts.joined(separator: ","))}"
     }
 }

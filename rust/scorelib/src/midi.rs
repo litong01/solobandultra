@@ -42,9 +42,10 @@ pub struct MidiOptions {
     pub energy: Energy,
     /// Transposition in semitones (applied to the Score before generation).
     pub transpose: i32,
-    /// When set (1–4), only emit melody notes for that MusicXML voice ("track").
-    /// `None` keeps all voices (current default behavior).
-    pub melody_track: Option<i32>,
+    /// When set, only emit melody notes for these **global track** numbers
+    /// (1-based, top-to-bottom across all parts/staves: each distinct voice
+    /// line on a staff is one track). `None` / empty keeps all tracks.
+    pub melody_tracks: Option<Vec<i32>>,
 }
 
 impl Default for MidiOptions {
@@ -59,7 +60,7 @@ impl Default for MidiOptions {
             melody_channel: 0,
             energy: Energy::Medium,
             transpose: 0,
-            melody_track: None,
+            melody_tracks: None,
         }
     }
 }
@@ -76,7 +77,72 @@ pub struct MidiEvent {
 /// Ticks per quarter note in our MIDI output.
 pub const TICKS_PER_QUARTER: u16 = 480;
 
+/// One melodic line in score order: top-to-bottom across parts, then staves,
+/// then MusicXML voices on that staff (ascending).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GlobalTrack {
+    pub track_num: i32,
+    pub part_idx: usize,
+    pub staff: i32,
+    pub voice: i32,
+}
+
+/// Discover global tracks (1-based) for a score.
+///
+/// Walks every part top-to-bottom, every staff within each part, and every
+/// distinct pitched voice on that staff (sorted ascending).  That numbering
+/// is what the settings "Track" field refers to.
+pub fn discover_global_tracks(score: &Score) -> Vec<GlobalTrack> {
+    use std::collections::BTreeSet;
+
+    let mut tracks = Vec::new();
+    let mut next = 1i32;
+
+    for (part_idx, part) in score.parts.iter().enumerate() {
+        let num_staves = detect_staves(part) as i32;
+        for staff in 1..=num_staves {
+            let mut voices: BTreeSet<i32> = BTreeSet::new();
+            for measure in &part.measures {
+                for note in &measure.notes {
+                    if note.staff.unwrap_or(1) != staff {
+                        continue;
+                    }
+                    // Only pitched notes define a track — rest-only voices are ignored
+                    // so track numbers stay tied to audible lines.
+                    if note.pitch.is_some() && !note.rest {
+                        voices.insert(note.voice.unwrap_or(1));
+                    }
+                }
+            }
+            if voices.is_empty() {
+                continue;
+            }
+            for voice in voices {
+                tracks.push(GlobalTrack {
+                    track_num: next,
+                    part_idx,
+                    staff,
+                    voice,
+                });
+                next += 1;
+            }
+        }
+    }
+    tracks
+}
+
+/// Channels used for melody SMF tracks, avoiding accompaniment (1–3) and drums (9).
+fn melody_channel_for_index(base: u8, index: usize) -> u8 {
+    let candidates: [u8; 12] = [0, 7, 8, 11, 12, 13, 14, 15, 4, 5, 6, 10];
+    let base = (base & 0x0F) as usize;
+    candidates[(base + index) % candidates.len()]
+}
+
 /// Generate a complete Standard MIDI File (SMF Type 1).
+///
+/// `part_idx` selects which part drives unroll/timemap and accompaniment chord
+/// analysis. Melody is taken from **all** parts, filtered by global track numbers
+/// when `options.melody_tracks` is set.
 pub fn generate_midi(
     score: &Score,
     part_idx: usize,
@@ -103,55 +169,92 @@ pub fn generate_midi(
     // ── Track 0: Tempo map ──────────────────────────────────────────
     tracks.push(build_tempo_track(timemap));
 
-    // ── Track 1+ : Melody (one track per staff) ────────────────────
-    // For multi-staff parts (e.g. piano with treble + bass), each staff
-    // gets its own MIDI channel to prevent note-off/note-on conflicts
-    // when both staves play the same pitch at overlapping times.
+    // ── Melody: all parts/staves, filtered by global track numbers ──
+    // Global track = top-to-bottom line index across the score (see
+    // `discover_global_tracks`).  One SMF track is emitted per (part, staff)
+    // that has at least one selected voice, each on its own MIDI channel.
     if options.include_melody {
-        let num_staves = detect_staves(part);
-        let program = part.midi_program.unwrap_or(0).max(0).min(127) as u8;
-        // Mask melody channel to valid MIDI range (0-15) and avoid the drum
-        // channel (9) and accompaniment channels (1, 2, 3) to prevent conflicts.
-        let melody_ch = options.melody_channel & 0x0F;
-
-        if num_staves <= 1 {
-            // Single-staff part: all notes on one channel/track.
-            let melody_events = extract_melody(
-                part, unrolled, timemap, melody_ch, None, options.melody_track,
-            );
-            let mut track_events = Vec::new();
-            track_events.push(MidiEvent {
-                tick: 0,
-                bytes: vec![0xC0 | melody_ch, program],
+        let global = discover_global_tracks(score);
+        // None = all tracks; Some(set) = only those (part, staff, voice) keys.
+        // Some(empty) means the user asked for tracks that don't exist / empty
+        // custom list — emit no melody notes.
+        let selected_keys: Option<std::collections::HashSet<(usize, i32, i32)>> =
+            options.melody_tracks.as_ref().map(|nums| {
+                global
+                    .iter()
+                    .filter(|t| nums.contains(&t.track_num))
+                    .map(|t| (t.part_idx, t.staff, t.voice))
+                    .collect()
             });
-            track_events.extend(melody_events);
-            tracks.push(encode_track(&track_events, "Melody"));
-        } else {
-            // Multi-staff part: one track per staff, each on its own channel.
-            // Channels 0, 7, 8, 11, 12… (avoiding 1-3 for accompaniment, 9 for drums).
-            let staff_channels: Vec<u8> = (0..num_staves as u8)
-                .map(|s| match s {
-                    0 => melody_ch,
-                    1 => 7,
-                    2 => 8,
-                    3 => 11,
-                    _ => (12 + s - 4).min(15),
-                })
-                .collect();
+
+        let melody_ch_base = options.melody_channel & 0x0F;
+        let mut channel_index = 0usize;
+
+        for (pidx, mel_part) in score.parts.iter().enumerate() {
+            let num_staves = detect_staves(mel_part);
+            let program = mel_part.midi_program.unwrap_or(0).max(0).min(127) as u8;
+            let part_label = if mel_part.name.is_empty() {
+                format!("P{}", pidx + 1)
+            } else {
+                mel_part.name.clone()
+            };
 
             for staff_num in 1..=num_staves {
-                let ch = staff_channels[staff_num - 1];
+                let staff = staff_num as i32;
+                let voice_filter: Option<Vec<i32>> = match &selected_keys {
+                    None => None, // all voices on this staff
+                    Some(set) => {
+                        let mut voices: Vec<i32> = global
+                            .iter()
+                            .filter(|t| {
+                                t.part_idx == pidx
+                                    && t.staff == staff
+                                    && set.contains(&(pidx, staff, t.voice))
+                            })
+                            .map(|t| t.voice)
+                            .collect();
+                        voices.sort_unstable();
+                        voices.dedup();
+                        if voices.is_empty() {
+                            continue;
+                        }
+                        Some(voices)
+                    }
+                };
+
+                let ch = melody_channel_for_index(melody_ch_base, channel_index);
+
                 let events = extract_melody(
-                    part, unrolled, timemap, ch, Some(staff_num as i32), options.melody_track,
+                    mel_part,
+                    unrolled,
+                    timemap,
+                    ch,
+                    Some(staff),
+                    voice_filter.as_deref(),
                 );
+
+                // Skip empty staff chunks when filtering (keeps SMF small).
+                // When playing "all", still emit the track so structure matches.
+                if selected_keys.is_some() && events.is_empty() {
+                    continue;
+                }
+
+                channel_index += 1;
+
                 let mut track_events = Vec::new();
                 track_events.push(MidiEvent {
                     tick: 0,
                     bytes: vec![0xC0 | ch, program],
                 });
                 track_events.extend(events);
-                let name = if staff_num == 1 { "Treble" } else { "Bass" };
-                tracks.push(encode_track(&track_events, name));
+                let name = if num_staves <= 1 {
+                    part_label.clone()
+                } else if staff_num == 1 {
+                    format!("{part_label} Treble")
+                } else {
+                    format!("{part_label} Bass")
+                };
+                tracks.push(encode_track(&track_events, &name));
             }
         }
     }
@@ -210,15 +313,15 @@ pub fn generate_midi(
 /// multi-staff parts where each staff gets its own MIDI channel to prevent
 /// note-off/note-on conflicts on identical pitches.
 ///
-/// When `voice_filter` is `Some(n)`, only notes with MusicXML voice `n` are
-/// emitted (app "track" 1–4). Chord members in that voice are still included.
+/// When `voice_filter` is `Some(&[…])`, only notes whose MusicXML voice is in
+/// that list are emitted. Chord members in those voices are still included.
 fn extract_melody(
     part: &crate::model::Part,
     unrolled: &[UnrolledMeasure],
     timemap: &[TimemapEntry],
     channel: u8,
     staff_filter: Option<i32>,
-    voice_filter: Option<i32>,
+    voice_filter: Option<&[i32]>,
 ) -> Vec<MidiEvent> {
     let mut events: Vec<MidiEvent> = Vec::new();
 
@@ -230,7 +333,10 @@ fn extract_melody(
     let mut instrument_transpose: i32 = 0;
 
     for (i, um) in unrolled.iter().enumerate() {
-        let measure = &part.measures[um.original_index];
+        let measure = match part.measures.get(um.original_index) {
+            Some(m) => m,
+            None => continue,
+        };
         let entry = &timemap[i];
 
         // Update instrument transposition whenever attributes carry a new
@@ -277,7 +383,7 @@ fn extract_melody(
             // stays correct for notes we DO include), but only emit MIDI
             // events for notes that pass both filters.
             let emit = staff_filter.map_or(true, |sf| note_staff == sf)
-                && voice_filter.map_or(true, |vf| note.voice.unwrap_or(1) == vf);
+                && voice_filter.map_or(true, |vfs| vfs.contains(&note.voice.unwrap_or(1)));
 
             // Emit pending grace notes just before a principal pitched note.
             // Each grace note is ~1/8 of a beat, capped at 30-80ms, placed

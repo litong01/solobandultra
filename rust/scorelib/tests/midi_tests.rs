@@ -304,6 +304,89 @@ fn midi_chopin_melody_only() {
 }
 
 #[test]
+fn midi_dichterliebe_global_tracks_and_filter() {
+    use scorelib::discover_global_tracks;
+
+    let score = parse_file("../../sheetmusic/Dichterliebe01.musicxml").unwrap();
+    assert_eq!(score.parts.len(), 2, "Voice + Piano");
+
+    let global = discover_global_tracks(&score);
+    // Staff 1 (Voice): voice 1 → track 1
+    // Staff 2 (Piano treble): voices 1,2,3 → tracks 2,3,4
+    // Staff 3 (Piano bass): voices 3,4,5 → tracks 5,6,7
+    assert!(
+        global.len() >= 5,
+        "expected several global tracks, got {}: {:?}",
+        global.len(),
+        global
+    );
+    assert_eq!(global[0].part_idx, 0);
+    assert_eq!(global[0].staff, 1);
+    assert_eq!(global[0].voice, 1);
+    assert_eq!(global[0].track_num, 1);
+    // First piano-treble track should be global track 2
+    let t2 = global.iter().find(|t| t.track_num == 2).expect("track 2");
+    assert_eq!(t2.part_idx, 1);
+    assert_eq!(t2.staff, 1);
+
+    let all = generate_midi_from_score(
+        &score,
+        &MidiOptions {
+            include_metronome: false,
+            ..MidiOptions::default()
+        },
+    );
+    assert_eq!(&all[0..4], b"MThd");
+    let all_tracks = u16::from_be_bytes([all[10], all[11]]);
+    // tempo + Voice + Piano Treble + Piano Bass
+    assert_eq!(all_tracks, 4, "all melody should span 3 staves + tempo");
+
+    let voice_only = generate_midi_from_score(
+        &score,
+        &MidiOptions {
+            include_metronome: false,
+            melody_tracks: Some(vec![1]),
+            ..MidiOptions::default()
+        },
+    );
+    let voice_tracks = u16::from_be_bytes([voice_only[10], voice_only[11]]);
+    assert_eq!(voice_tracks, 2, "track 1 = singer only → tempo + 1 melody");
+    assert!(voice_only.len() < all.len(), "filtered MIDI should be smaller");
+
+    let piano_inner = generate_midi_from_score(
+        &score,
+        &MidiOptions {
+            include_metronome: false,
+            melody_tracks: Some(vec![2, 3]),
+            ..MidiOptions::default()
+        },
+    );
+    assert_eq!(&piano_inner[0..4], b"MThd");
+    let inner_tracks = u16::from_be_bytes([piano_inner[10], piano_inner[11]]);
+    assert!(
+        inner_tracks >= 2,
+        "tracks 2+3 are on piano treble → at least tempo + 1 melody, got {}",
+        inner_tracks
+    );
+    assert!(
+        !piano_inner.is_empty() && piano_inner.len() > 100,
+        "tracks 2/3 must produce real note data, got {} bytes",
+        piano_inner.len()
+    );
+
+    write_test_output("test_output/dichterliebe01-all.mid", &all);
+    write_test_output("test_output/dichterliebe01-track1.mid", &voice_only);
+    write_test_output("test_output/dichterliebe01-tracks2-3.mid", &piano_inner);
+    println!(
+        "✓ dichterliebe global tracks: {} lines; all={}B track1={}B tracks2+3={}B",
+        global.len(),
+        all.len(),
+        voice_only.len(),
+        piano_inner.len()
+    );
+}
+
+#[test]
 fn midi_chopin_with_inferred_accompaniment() {
     // Chopin has NO explicit <harmony> elements — chords must be inferred
     // from the melody notes. This tests the pitch-class analysis fallback.

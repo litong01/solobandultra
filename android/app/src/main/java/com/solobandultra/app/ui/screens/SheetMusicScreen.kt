@@ -103,12 +103,7 @@ enum class EnergyLevel(val key: String, val displayName: String) {
     Strong("strong", "Strong")
 }
 
-/**
- * Build the JSON string expected by the Rust FFI layer.
- *
- * Until multi-track MIDI filtering lands, only the first selected track
- * number is sent as `melody_track` (0 = all voices).
- */
+/** Build the JSON string expected by the Rust FFI layer. */
 private fun midiOptionsToJson(
     includeMelody: Boolean,
     includePiano: Boolean,
@@ -121,13 +116,6 @@ private fun midiOptionsToJson(
     melodyTracksOption: String = "all",
     melodyTracksList: String = "",
 ): String = buildString {
-    val track = if (melodyTracksOption == "custom") {
-        melodyTracksList.split(',')
-            .mapNotNull { seg -> seg.trim().toIntOrNull()?.takeIf { it in 1..4 } }
-            .firstOrNull() ?: 0
-    } else {
-        0
-    }
     append("{")
     append("\"include_melody\":$includeMelody,")
     append("\"include_piano\":$includePiano,")
@@ -136,8 +124,15 @@ private fun midiOptionsToJson(
     append("\"include_drums\":$includeDrums,")
     append("\"include_metronome\":$includeMetronome,")
     append("\"energy\":\"${energy.key}\",")
-    append("\"transpose\":$transpose,")
-    append("\"melody_track\":$track")
+    append("\"transpose\":$transpose")
+    if (melodyTracksOption == "custom") {
+        val tracks = melodyTracksList.split(',')
+            .mapNotNull { seg -> seg.trim().toIntOrNull()?.takeIf { it >= 1 } }
+            .distinct()
+        // Always send the key when custom: empty list means no melody lines
+        // (not "all tracks").
+        append(",\"melody_tracks\":\"${tracks.joinToString(",")}\"")
+    }
     append("}")
 }
 

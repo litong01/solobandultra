@@ -35,7 +35,7 @@ pub use model::*;
 pub use parser::parse_musicxml;
 pub use mxl::parse_mxl;
 pub use renderer::render_score_to_svg;
-pub use midi::{generate_midi, MidiOptions, Energy};
+pub use midi::{generate_midi, discover_global_tracks, GlobalTrack, MidiOptions, Energy};
 pub use unroller::unroll;
 pub use timemap::generate_timemap;
 pub use playback::{generate_playback_map, PlaybackMap};
@@ -511,7 +511,9 @@ pub unsafe extern "C" fn scorelib_free_string(ptr: *mut c_char) {
 /// `options_json` is a JSON string with fields:
 ///   `include_melody`, `include_piano`, `include_bass`, `include_strings`,
 ///   `include_drums`, `include_metronome`, `energy` ("soft"/"medium"/"strong"),
-///   `transpose`, `melody_track` (1–4 = MusicXML voice / app track; 0 = all).
+///   `transpose`, `melody_tracks` (comma-separated global track numbers, e.g.
+///   "1,3" — top-to-bottom lines across all parts/staves; omitted = all;
+///   present but empty = no melody lines). Legacy `melody_track`:N is also accepted.
 /// Pass null to use defaults.
 ///
 /// # Safety
@@ -816,29 +818,72 @@ pub fn parse_midi_options_from_json_str(json_str: &str) -> MidiOptions {
             opts.transpose = val;
         }
     }
-    // Parse "melody_track":N — 1–4 selects a MusicXML voice; 0 / omitted = all.
-    if let Some(pos) = json_str.find("\"melody_track\":") {
+    // Parse "melody_tracks":"1,2,3" — comma-separated global track numbers.
+    // Key present with empty string → Some([]) (no melody). Key absent → None (all).
+    if let Some(tracks) = extract_json_string_value(json_str, "melody_tracks") {
+        if tracks.trim().is_empty() {
+            opts.melody_tracks = Some(vec![]);
+        } else {
+            opts.melody_tracks = parse_melody_tracks_filter(Some(&tracks));
+        }
+    } else if let Some(pos) = json_str.find("\"melody_track\":") {
+        // Legacy single-track form: "melody_track":N
         let after = &json_str[pos + "\"melody_track\":".len()..];
         let num_str: String = after.trim().chars()
             .take_while(|c| c.is_ascii_digit())
             .collect();
         if let Ok(val) = num_str.parse::<i32>() {
-            if (1..=4).contains(&val) {
-                opts.melody_track = Some(val);
-            }
-        }
-    } else if let Some(pos) = json_str.find("\"melody_track\": ") {
-        let after = &json_str[pos + "\"melody_track\": ".len()..];
-        let num_str: String = after.trim().chars()
-            .take_while(|c| c.is_ascii_digit())
-            .collect();
-        if let Ok(val) = num_str.parse::<i32>() {
-            if (1..=4).contains(&val) {
-                opts.melody_track = Some(val);
+            if val >= 1 {
+                opts.melody_tracks = Some(vec![val]);
             }
         }
     }
     opts
+}
+
+/// Extract a JSON string value for `key` from a compact/spaced object
+/// (`"key":"value"` or `"key": "value"`). Returns None if absent/malformed.
+fn extract_json_string_value(json_str: &str, key: &str) -> Option<String> {
+    let patterns = [
+        format!("\"{key}\":\""),
+        format!("\"{key}\": \""),
+    ];
+    for pat in &patterns {
+        if let Some(pos) = json_str.find(pat) {
+            let after = &json_str[pos + pat.len()..];
+            let end = after.find('"')?;
+            return Some(after[..end].to_string());
+        }
+    }
+    None
+}
+
+/// Parse "1,3" (comma-separated global track numbers) into a Vec.
+/// Returns None if empty/invalid. Accepts any positive integers.
+pub fn parse_melody_tracks_filter(s: Option<&str>) -> Option<Vec<i32>> {
+    let s = s?.trim();
+    if s.is_empty() {
+        return None;
+    }
+    let mut tracks: Vec<i32> = Vec::new();
+    for part in s.split(',') {
+        let t = part.trim();
+        if t.is_empty() {
+            continue;
+        }
+        let n = t.parse::<i32>().ok()?;
+        if n < 1 {
+            return None;
+        }
+        if !tracks.contains(&n) {
+            tracks.push(n);
+        }
+    }
+    if tracks.is_empty() {
+        None
+    } else {
+        Some(tracks)
+    }
 }
 
 /// Parse MidiOptions from a JSON C string (C FFI helper).
@@ -1091,17 +1136,37 @@ mod tests {
     }
 
     #[test]
-    fn parse_midi_options_melody_track() {
+    fn parse_midi_options_melody_tracks() {
         let opts = parse_midi_options_from_json_str(r#"{}"#);
-        assert_eq!(opts.melody_track, None);
-        let opts = parse_midi_options_from_json_str(r#"{"melody_track":0}"#);
-        assert_eq!(opts.melody_track, None);
+        assert_eq!(opts.melody_tracks, None);
+        let opts = parse_midi_options_from_json_str(r#"{"melody_tracks":""}"#);
+        assert_eq!(opts.melody_tracks, Some(vec![]));
+        let opts = parse_midi_options_from_json_str(r#"{"melody_tracks":"2"}"#);
+        assert_eq!(opts.melody_tracks, Some(vec![2]));
+        let opts = parse_midi_options_from_json_str(r#"{"melody_tracks": "1,3"}"#);
+        assert_eq!(opts.melody_tracks, Some(vec![1, 3]));
+        // Legacy single-voice form
         let opts = parse_midi_options_from_json_str(r#"{"melody_track":2}"#);
-        assert_eq!(opts.melody_track, Some(2));
-        let opts = parse_midi_options_from_json_str(r#"{"melody_track": 3}"#);
-        assert_eq!(opts.melody_track, Some(3));
-        let opts = parse_midi_options_from_json_str(r#"{"melody_track":5}"#);
-        assert_eq!(opts.melody_track, None);
+        assert_eq!(opts.melody_tracks, Some(vec![2]));
+        let opts = parse_midi_options_from_json_str(r#"{"melody_track":0}"#);
+        assert_eq!(opts.melody_tracks, None);
+    }
+
+    #[test]
+    fn parse_melody_tracks_filter_valid() {
+        assert_eq!(parse_melody_tracks_filter(Some("1")), Some(vec![1]));
+        assert_eq!(parse_melody_tracks_filter(Some("1,3")), Some(vec![1, 3]));
+        assert_eq!(parse_melody_tracks_filter(Some(" 2 , 4 ")), Some(vec![2, 4]));
+        assert_eq!(parse_melody_tracks_filter(Some("1,1,2")), Some(vec![1, 2]));
+    }
+
+    #[test]
+    fn parse_melody_tracks_filter_empty_or_invalid() {
+        assert_eq!(parse_melody_tracks_filter(None), None);
+        assert_eq!(parse_melody_tracks_filter(Some("")), None);
+        assert_eq!(parse_melody_tracks_filter(Some("   ")), None);
+        assert_eq!(parse_melody_tracks_filter(Some("1,abc")), None);
+        assert_eq!(parse_melody_tracks_filter(Some("0")), None);
     }
 
     #[test]
