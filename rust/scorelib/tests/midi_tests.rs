@@ -270,9 +270,7 @@ fn midi_blue_bag_folly_valid_smf() {
         include_strings: true,
         include_drums: true,
         include_metronome: true,
-        melody_channel: 0,
-        energy: Energy::Medium,
-        transpose: 0,
+        ..MidiOptions::default()
     };
     let midi = generate_midi_from_score(&score, &options);
 
@@ -323,9 +321,7 @@ fn midi_chopin_with_inferred_accompaniment() {
         include_strings: true,
         include_drums: true,
         include_metronome: true,
-        melody_channel: 0,
-        energy: Energy::Medium,
-        transpose: 0,
+        ..MidiOptions::default()
     };
     let midi = generate_midi_from_score(&score, &options);
 

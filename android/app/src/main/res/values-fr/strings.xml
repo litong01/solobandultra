@@ -30,9 +30,11 @@
     <string name="settings_score_rendering">Affichage de la partition</string>
     <string name="settings_staff">Portée</string>
     <string name="settings_all">Toutes</string>
-    <string name="settings_specific_parts">Voix spécifiques</string>
+    <string name="settings_specific_staves">Portées spécifiques</string>
     <string name="settings_jianpu">Jianpu</string>
-    <string name="settings_specific_part">Voix spécifique</string>
+    <string name="settings_specific_staff">Portée spécifique</string>
+    <string name="settings_track">Piste</string>
+    <string name="settings_specific_tracks">Pistes spécifiques</string>
     <string name="settings_language">Langue</string>
     <string name="language_system">Par défaut du système</string>
     <string name="language_english">English</string>

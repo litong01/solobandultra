@@ -30,9 +30,11 @@
     <string name="settings_score_rendering">楽譜表示</string>
     <string name="settings_staff">五線譜</string>
     <string name="settings_all">すべて</string>
-    <string name="settings_specific_parts">特定のパート</string>
+    <string name="settings_specific_staves">特定の譜表</string>
     <string name="settings_jianpu">数字譜</string>
-    <string name="settings_specific_part">特定のパート</string>
+    <string name="settings_specific_staff">特定の譜表</string>
+    <string name="settings_track">トラック</string>
+    <string name="settings_specific_tracks">特定のトラック</string>
     <string name="settings_language">言語</string>
     <string name="language_system">システムのデフォルト</string>
     <string name="language_english">English</string>

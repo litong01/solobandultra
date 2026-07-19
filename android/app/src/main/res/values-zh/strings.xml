@@ -30,9 +30,11 @@
     <string name="settings_score_rendering">乐谱显示</string>
     <string name="settings_staff">五线谱</string>
     <string name="settings_all">全部</string>
-    <string name="settings_specific_parts">指定声部</string>
+    <string name="settings_specific_staves">指定谱表</string>
     <string name="settings_jianpu">简谱</string>
-    <string name="settings_specific_part">指定声部</string>
+    <string name="settings_specific_staff">指定谱表</string>
+    <string name="settings_track">音轨</string>
+    <string name="settings_specific_tracks">指定音轨</string>
     <string name="settings_language">语言</string>
     <string name="language_system">跟随系统</string>
     <string name="language_english">English</string>

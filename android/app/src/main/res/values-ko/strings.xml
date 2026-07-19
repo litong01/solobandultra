@@ -30,9 +30,11 @@
     <string name="settings_score_rendering">악보 표시</string>
     <string name="settings_staff">오선보</string>
     <string name="settings_all">전체</string>
-    <string name="settings_specific_parts">특정 파트</string>
+    <string name="settings_specific_staves">특정 보표</string>
     <string name="settings_jianpu">숫자악보</string>
-    <string name="settings_specific_part">특정 파트</string>
+    <string name="settings_specific_staff">특정 보표</string>
+    <string name="settings_track">트랙</string>
+    <string name="settings_specific_tracks">특정 트랙</string>
     <string name="settings_language">언어</string>
     <string name="language_system">시스템 기본값</string>
     <string name="language_english">English</string>

@@ -563,6 +563,8 @@ struct SettingsSheet: View {
     @State private var selectedSourceId: String = "bundled"
     @State private var selectedFileUrl: String = MidiSettings.defaultLandingFileUrl
     @State private var includeMelody: Bool = true
+    @State private var melodyTracksOption: String = "all"
+    @State private var melodyTracksList: String = ""
     @State private var includePiano: Bool = false
     @State private var includeBass: Bool = false
     @State private var includeStrings: Bool = false
@@ -710,14 +712,57 @@ struct SettingsSheet: View {
                         // Four-column checkbox grid
                         let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 4)
 
-                        LazyVGrid(columns: columns, spacing: 16) {
-                            CheckboxToggle(L10n.string("settings_melody", language: selectedLanguageCode), isOn: $includeMelody)
-                            CheckboxToggle(L10n.string("settings_piano", language: selectedLanguageCode), isOn: $includePiano)
-                            CheckboxToggle(L10n.string("settings_bass", language: selectedLanguageCode), isOn: $includeBass)
-                            CheckboxToggle(L10n.string("settings_strings", language: selectedLanguageCode), isOn: $includeStrings)
-                            CheckboxToggle(L10n.string("settings_drums", language: selectedLanguageCode), isOn: $includeDrums)
-                            CheckboxToggle(L10n.string("settings_metronome", language: selectedLanguageCode), isOn: $includeMetronome)
-                            CheckboxToggle(L10n.string("settings_feedback", language: selectedLanguageCode), isOn: $includeFeedback)
+                        VStack(alignment: .leading, spacing: 12) {
+                            LazyVGrid(columns: columns, spacing: 16) {
+                                CheckboxToggle(L10n.string("settings_melody", language: selectedLanguageCode), isOn: $includeMelody)
+                                CheckboxToggle(L10n.string("settings_piano", language: selectedLanguageCode), isOn: $includePiano)
+                                CheckboxToggle(L10n.string("settings_bass", language: selectedLanguageCode), isOn: $includeBass)
+                                CheckboxToggle(L10n.string("settings_strings", language: selectedLanguageCode), isOn: $includeStrings)
+                                CheckboxToggle(L10n.string("settings_drums", language: selectedLanguageCode), isOn: $includeDrums)
+                                CheckboxToggle(L10n.string("settings_metronome", language: selectedLanguageCode), isOn: $includeMetronome)
+                                CheckboxToggle(L10n.string("settings_feedback", language: selectedLanguageCode), isOn: $includeFeedback)
+                            }
+
+                            if includeMelody {
+                                HStack(spacing: 8) {
+                                    Text(L10n.string("settings_track", language: selectedLanguageCode))
+                                        .font(.settingsLabel)
+                                    Button {
+                                        melodyTracksOption = "all"
+                                        melodyTracksList = ""
+                                    } label: {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: melodyTracksOption == "all" ? "largecircle.fill.circle" : "circle")
+                                                .font(.caption)
+                                            Text(L10n.string("settings_all", language: selectedLanguageCode))
+                                                .font(.caption)
+                                        }
+                                        .foregroundStyle(.primary)
+                                    }
+                                    .buttonStyle(.plain)
+                                    Button {
+                                        melodyTracksOption = "custom"
+                                    } label: {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: melodyTracksOption == "custom" ? "largecircle.fill.circle" : "circle")
+                                                .font(.caption)
+                                            Text(L10n.string("settings_specific_tracks", language: selectedLanguageCode))
+                                                .font(.caption)
+                                        }
+                                        .foregroundStyle(.primary)
+                                    }
+                                    .buttonStyle(.plain)
+                                    if melodyTracksOption == "custom" {
+                                        TextField("1,2", text: $melodyTracksList)
+                                            .textFieldStyle(.roundedBorder)
+                                            .keyboardType(.numbersAndPunctuation)
+                                            .frame(width: 64)
+                                            .onChange(of: melodyTracksList) { newValue in
+                                                melodyTracksList = newValue.filter { $0.isNumber || $0 == "," }
+                                            }
+                                    }
+                                }
+                            }
                         }
                         .padding(.vertical, 4)
                     }
@@ -801,7 +846,7 @@ struct SettingsSheet: View {
                                     HStack(spacing: 4) {
                                         Image(systemName: staffStavesOption == "custom" ? "largecircle.fill.circle" : "circle")
                                             .font(.caption)
-                                        Text(L10n.string("settings_specific_parts", language: selectedLanguageCode))
+                                        Text(L10n.string("settings_specific_staves", language: selectedLanguageCode))
                                             .font(.caption)
                                     }
                                     .foregroundStyle(.primary)
@@ -832,7 +877,7 @@ struct SettingsSheet: View {
                                 }
                                 .buttonStyle(.plain)
                                 if scoreRenderingMode == "jianpu" {
-                                    Text(L10n.string("settings_specific_part", language: selectedLanguageCode))
+                                    Text(L10n.string("settings_specific_staff", language: selectedLanguageCode))
                                         .font(.settingsLabel)
                                     TextField("1", text: $jianpuStaffNumber)
                                         .textFieldStyle(.roundedBorder)
@@ -933,6 +978,8 @@ struct SettingsSheet: View {
         selectedSourceId = midiSettings.selectedSourceId
         selectedFileUrl = midiSettings.selectedFileUrl
         includeMelody = midiSettings.includeMelody
+        melodyTracksOption = midiSettings.melodyTracksOption
+        melodyTracksList = midiSettings.melodyTracksList
         includePiano = midiSettings.includePiano
         includeBass = midiSettings.includeBass
         includeStrings = midiSettings.includeStrings
@@ -956,6 +1003,8 @@ struct SettingsSheet: View {
         midiSettings.selectedSourceId = selectedSourceId
         midiSettings.selectedFileUrl = selectedFileUrl
         midiSettings.includeMelody = includeMelody
+        midiSettings.melodyTracksOption = melodyTracksOption
+        midiSettings.melodyTracksList = melodyTracksList
         midiSettings.includePiano = includePiano
         midiSettings.includeBass = includeBass
         midiSettings.includeStrings = includeStrings

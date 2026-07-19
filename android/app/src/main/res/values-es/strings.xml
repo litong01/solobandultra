@@ -30,9 +30,11 @@
     <string name="settings_score_rendering">Visualización de partitura</string>
     <string name="settings_staff">Pentagrama</string>
     <string name="settings_all">Todas</string>
-    <string name="settings_specific_parts">Partes específicas</string>
+    <string name="settings_specific_staves">Pentagramas específicos</string>
     <string name="settings_jianpu">Jianpu</string>
-    <string name="settings_specific_part">Parte específica</string>
+    <string name="settings_specific_staff">Pentagrama específico</string>
+    <string name="settings_track">Pista</string>
+    <string name="settings_specific_tracks">Pistas específicas</string>
     <string name="settings_language">Idioma</string>
     <string name="language_system">Predeterminado del sistema</string>
     <string name="language_english">English</string>

@@ -510,7 +510,8 @@ pub unsafe extern "C" fn scorelib_free_string(ptr: *mut c_char) {
 ///
 /// `options_json` is a JSON string with fields:
 ///   `include_melody`, `include_piano`, `include_bass`, `include_strings`,
-///   `include_drums`, `include_metronome`, `energy` ("soft"/"medium"/"strong").
+///   `include_drums`, `include_metronome`, `energy` ("soft"/"medium"/"strong"),
+///   `transpose`, `melody_track` (1–4 = MusicXML voice / app track; 0 = all).
 /// Pass null to use defaults.
 ///
 /// # Safety
@@ -815,6 +816,28 @@ pub fn parse_midi_options_from_json_str(json_str: &str) -> MidiOptions {
             opts.transpose = val;
         }
     }
+    // Parse "melody_track":N — 1–4 selects a MusicXML voice; 0 / omitted = all.
+    if let Some(pos) = json_str.find("\"melody_track\":") {
+        let after = &json_str[pos + "\"melody_track\":".len()..];
+        let num_str: String = after.trim().chars()
+            .take_while(|c| c.is_ascii_digit())
+            .collect();
+        if let Ok(val) = num_str.parse::<i32>() {
+            if (1..=4).contains(&val) {
+                opts.melody_track = Some(val);
+            }
+        }
+    } else if let Some(pos) = json_str.find("\"melody_track\": ") {
+        let after = &json_str[pos + "\"melody_track\": ".len()..];
+        let num_str: String = after.trim().chars()
+            .take_while(|c| c.is_ascii_digit())
+            .collect();
+        if let Ok(val) = num_str.parse::<i32>() {
+            if (1..=4).contains(&val) {
+                opts.melody_track = Some(val);
+            }
+        }
+    }
     opts
 }
 
@@ -1065,6 +1088,20 @@ mod tests {
         assert_eq!(opts.transpose, 2);
         let opts = parse_midi_options_from_json_str(r#"{"transpose": -3}"#);
         assert_eq!(opts.transpose, -3);
+    }
+
+    #[test]
+    fn parse_midi_options_melody_track() {
+        let opts = parse_midi_options_from_json_str(r#"{}"#);
+        assert_eq!(opts.melody_track, None);
+        let opts = parse_midi_options_from_json_str(r#"{"melody_track":0}"#);
+        assert_eq!(opts.melody_track, None);
+        let opts = parse_midi_options_from_json_str(r#"{"melody_track":2}"#);
+        assert_eq!(opts.melody_track, Some(2));
+        let opts = parse_midi_options_from_json_str(r#"{"melody_track": 3}"#);
+        assert_eq!(opts.melody_track, Some(3));
+        let opts = parse_midi_options_from_json_str(r#"{"melody_track":5}"#);
+        assert_eq!(opts.melody_track, None);
     }
 
     #[test]

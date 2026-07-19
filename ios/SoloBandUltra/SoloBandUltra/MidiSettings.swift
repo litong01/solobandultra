@@ -26,6 +26,9 @@ struct MusicSource: Identifiable {
 class MidiSettings: ObservableObject {
     // ── Accompaniment track toggles ──
     @Published var includeMelody: Bool = true
+    /// Melody voice filter: "all" or "custom" with comma-separated MusicXML voices (e.g. "1,3").
+    @Published var melodyTracksOption: String = "all"
+    @Published var melodyTracksList: String = ""
     @Published var includePiano: Bool = false
     @Published var includeBass: Bool = false
     @Published var includeStrings: Bool = false
@@ -70,7 +73,11 @@ class MidiSettings: ObservableObject {
     }
 
     private enum Key {
-        static let includeMelody    = "includeMelody"
+        static let includeMelody       = "includeMelody"
+        static let melodyTracksOption  = "melodyTracksOption"
+        static let melodyTracksList    = "melodyTracksList"
+        /// Legacy single-track key (migrated on load).
+        static let melodyTrack         = "melodyTrack"
         static let includePiano     = "includePiano"
         static let includeBass      = "includeBass"
         static let includeStrings   = "includeStrings"
@@ -92,7 +99,9 @@ class MidiSettings: ObservableObject {
 
     func saveToDisk() {
         let d = UserDefaults.standard
-        d.set(includeMelody,    forKey: Key.includeMelody)
+        d.set(includeMelody,       forKey: Key.includeMelody)
+        d.set(melodyTracksOption,  forKey: Key.melodyTracksOption)
+        d.set(melodyTracksList,    forKey: Key.melodyTracksList)
         d.set(includePiano,     forKey: Key.includePiano)
         d.set(includeBass,      forKey: Key.includeBass)
         d.set(includeStrings,   forKey: Key.includeStrings)
@@ -120,6 +129,17 @@ class MidiSettings: ObservableObject {
         // If no value has ever been saved, keep the compiled-in defaults.
         guard d.object(forKey: Key.includeMelody) != nil else { return }
         includeMelody    = d.bool(forKey: Key.includeMelody)
+        if let s = d.string(forKey: Key.melodyTracksOption) { melodyTracksOption = s }
+        if let s = d.string(forKey: Key.melodyTracksList) { melodyTracksList = s }
+        // Migrate legacy single-track Int (1–4) into option + list.
+        if d.object(forKey: Key.melodyTracksOption) == nil,
+           d.object(forKey: Key.melodyTrack) != nil {
+            let legacy = d.integer(forKey: Key.melodyTrack)
+            if (1...4).contains(legacy) {
+                melodyTracksOption = "custom"
+                melodyTracksList = "\(legacy)"
+            }
+        }
         includePiano     = d.bool(forKey: Key.includePiano)
         includeBass      = d.bool(forKey: Key.includeBass)
         includeStrings   = d.bool(forKey: Key.includeStrings)
@@ -192,7 +212,19 @@ class MidiSettings: ObservableObject {
     }
 
     /// Serialize to the JSON format expected by the Rust FFI layer.
+    ///
+    /// Until multi-track MIDI filtering lands, only the first selected track
+    /// number is sent as `melody_track` (0 = all voices).
     func toJson() -> String {
+        let track: Int = {
+            guard melodyTracksOption == "custom" else { return 0 }
+            let first = melodyTracksList
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .compactMap { Int($0) }
+                .first { (1...4).contains($0) }
+            return first ?? 0
+        }()
         let parts = [
             "\"include_melody\":\(includeMelody)",
             "\"include_piano\":\(includePiano)",
@@ -202,7 +234,8 @@ class MidiSettings: ObservableObject {
             "\"include_metronome\":\(includeMetronome)",
             "\"include_feedback\":\(includeFeedback)",
             "\"energy\":\"\(energy.rawValue)\"",
-            "\"transpose\":\(transpose)"
+            "\"transpose\":\(transpose)",
+            "\"melody_track\":\(track)"
         ]
         return "{\(parts.joined(separator: ","))}"
     }

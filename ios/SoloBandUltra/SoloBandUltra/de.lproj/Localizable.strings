@@ -30,9 +30,11 @@
 "settings_score_rendering" = "Notendarstellung";
 "settings_staff" = "Notenlinien";
 "settings_all" = "Alle";
-"settings_specific_parts" = "Bestimmte Stimmen";
+"settings_specific_staves" = "Bestimmte Systeme";
 "settings_jianpu" = "Jianpu";
-"settings_specific_part" = "Bestimmte Stimme";
+"settings_specific_staff" = "Bestimmtes System";
+"settings_track" = "Spur";
+"settings_specific_tracks" = "Bestimmte Spuren";
 "settings_language" = "Sprache";
 
 "language_system" = "Systemstandard";

@@ -42,6 +42,9 @@ pub struct MidiOptions {
     pub energy: Energy,
     /// Transposition in semitones (applied to the Score before generation).
     pub transpose: i32,
+    /// When set (1–4), only emit melody notes for that MusicXML voice ("track").
+    /// `None` keeps all voices (current default behavior).
+    pub melody_track: Option<i32>,
 }
 
 impl Default for MidiOptions {
@@ -56,6 +59,7 @@ impl Default for MidiOptions {
             melody_channel: 0,
             energy: Energy::Medium,
             transpose: 0,
+            melody_track: None,
         }
     }
 }
@@ -112,7 +116,9 @@ pub fn generate_midi(
 
         if num_staves <= 1 {
             // Single-staff part: all notes on one channel/track.
-            let melody_events = extract_melody(part, unrolled, timemap, melody_ch, None);
+            let melody_events = extract_melody(
+                part, unrolled, timemap, melody_ch, None, options.melody_track,
+            );
             let mut track_events = Vec::new();
             track_events.push(MidiEvent {
                 tick: 0,
@@ -136,7 +142,7 @@ pub fn generate_midi(
             for staff_num in 1..=num_staves {
                 let ch = staff_channels[staff_num - 1];
                 let events = extract_melody(
-                    part, unrolled, timemap, ch, Some(staff_num as i32),
+                    part, unrolled, timemap, ch, Some(staff_num as i32), options.melody_track,
                 );
                 let mut track_events = Vec::new();
                 track_events.push(MidiEvent {
@@ -197,18 +203,22 @@ pub fn generate_midi(
 // Melody extraction
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Extract melody note events from a part, optionally filtering by staff.
+/// Extract melody note events from a part, optionally filtering by staff and/or voice.
 ///
-/// When `staff_filter` is `None`, all notes are included (single-staff parts).
+/// When `staff_filter` is `None`, all staves are included (single-staff parts).
 /// When `Some(n)`, only notes belonging to staff `n` are included — used for
 /// multi-staff parts where each staff gets its own MIDI channel to prevent
 /// note-off/note-on conflicts on identical pitches.
+///
+/// When `voice_filter` is `Some(n)`, only notes with MusicXML voice `n` are
+/// emitted (app "track" 1–4). Chord members in that voice are still included.
 fn extract_melody(
     part: &crate::model::Part,
     unrolled: &[UnrolledMeasure],
     timemap: &[TimemapEntry],
     channel: u8,
     staff_filter: Option<i32>,
+    voice_filter: Option<i32>,
 ) -> Vec<MidiEvent> {
     let mut events: Vec<MidiEvent> = Vec::new();
 
@@ -263,10 +273,11 @@ fn extract_melody(
             let vk: VoiceKey = (note_staff, note.voice.unwrap_or(1));
             let pos_div = voice_positions.entry(vk).or_insert(0.0);
 
-            // Staff filter: always advance position tracking (so timing
+            // Staff / voice filters: always advance position tracking (so timing
             // stays correct for notes we DO include), but only emit MIDI
-            // events for notes on the target staff.
-            let emit = staff_filter.map_or(true, |sf| note_staff == sf);
+            // events for notes that pass both filters.
+            let emit = staff_filter.map_or(true, |sf| note_staff == sf)
+                && voice_filter.map_or(true, |vf| note.voice.unwrap_or(1) == vf);
 
             // Emit pending grace notes just before a principal pitched note.
             // Each grace note is ~1/8 of a beat, capped at 30-80ms, placed

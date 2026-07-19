@@ -30,9 +30,11 @@
 "settings_score_rendering" = "Affichage de la partition";
 "settings_staff" = "Portée";
 "settings_all" = "Toutes";
-"settings_specific_parts" = "Voix spécifiques";
+"settings_specific_staves" = "Portées spécifiques";
 "settings_jianpu" = "Jianpu";
-"settings_specific_part" = "Voix spécifique";
+"settings_specific_staff" = "Portée spécifique";
+"settings_track" = "Piste";
+"settings_specific_tracks" = "Pistes spécifiques";
 "settings_language" = "Langue";
 
 "language_system" = "Par défaut du système";

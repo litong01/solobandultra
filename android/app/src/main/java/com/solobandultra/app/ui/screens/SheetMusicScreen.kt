@@ -103,7 +103,12 @@ enum class EnergyLevel(val key: String, val displayName: String) {
     Strong("strong", "Strong")
 }
 
-/** Build the JSON string expected by the Rust FFI layer. */
+/**
+ * Build the JSON string expected by the Rust FFI layer.
+ *
+ * Until multi-track MIDI filtering lands, only the first selected track
+ * number is sent as `melody_track` (0 = all voices).
+ */
 private fun midiOptionsToJson(
     includeMelody: Boolean,
     includePiano: Boolean,
@@ -112,8 +117,17 @@ private fun midiOptionsToJson(
     includeDrums: Boolean,
     includeMetronome: Boolean,
     energy: EnergyLevel,
-    transpose: Int
+    transpose: Int,
+    melodyTracksOption: String = "all",
+    melodyTracksList: String = "",
 ): String = buildString {
+    val track = if (melodyTracksOption == "custom") {
+        melodyTracksList.split(',')
+            .mapNotNull { seg -> seg.trim().toIntOrNull()?.takeIf { it in 1..4 } }
+            .firstOrNull() ?: 0
+    } else {
+        0
+    }
     append("{")
     append("\"include_melody\":$includeMelody,")
     append("\"include_piano\":$includePiano,")
@@ -122,7 +136,8 @@ private fun midiOptionsToJson(
     append("\"include_drums\":$includeDrums,")
     append("\"include_metronome\":$includeMetronome,")
     append("\"energy\":\"${energy.key}\",")
-    append("\"transpose\":$transpose")
+    append("\"transpose\":$transpose,")
+    append("\"melody_track\":$track")
     append("}")
 }
 
@@ -192,6 +207,25 @@ fun SheetMusicScreen(
     // MIDI settings state — initialised from persisted prefs so they survive process death.
     // rememberSaveable still handles configuration changes (rotation) as before.
     var includeMelody by rememberSaveable { mutableStateOf(prefs.getBoolean("includeMelody", true)) }
+    var melodyTracksOption by rememberSaveable {
+        mutableStateOf(
+            prefs.getString("melodyTracksOption", null)
+                ?: run {
+                    // Migrate legacy single-track Int (1–4).
+                    val legacy = prefs.getInt("melodyTrack", 0)
+                    if (legacy in 1..4) "custom" else "all"
+                }
+        )
+    }
+    var melodyTracksList by rememberSaveable {
+        mutableStateOf(
+            prefs.getString("melodyTracksList", null)
+                ?: run {
+                    val legacy = prefs.getInt("melodyTrack", 0)
+                    if (legacy in 1..4) legacy.toString() else ""
+                }
+        )
+    }
     var includePiano by rememberSaveable { mutableStateOf(prefs.getBoolean("includePiano", false)) }
     var includeBass by rememberSaveable { mutableStateOf(prefs.getBoolean("includeBass", false)) }
     var includeStrings by rememberSaveable { mutableStateOf(prefs.getBoolean("includeStrings", false)) }
@@ -492,11 +526,13 @@ fun SheetMusicScreen(
     // Derive the options JSON from current settings
     val optionsJson = remember(
         includeMelody, includePiano, includeBass,
-        includeStrings, includeDrums, includeMetronome, energy, transpose
+        includeStrings, includeDrums, includeMetronome, energy, transpose,
+        melodyTracksOption, melodyTracksList
     ) {
         midiOptionsToJson(
             includeMelody, includePiano, includeBass,
-            includeStrings, includeDrums, includeMetronome, energy, transpose
+            includeStrings, includeDrums, includeMetronome, energy, transpose,
+            melodyTracksOption, melodyTracksList
         )
     }
 
@@ -1036,6 +1072,8 @@ fun SheetMusicScreen(
                 initialSelectedSourceId = selectedSourceId,
                 initialSelectedFileUrl = selectedFileUrl,
                 initialIncludeMelody = includeMelody,
+                initialMelodyTracksOption = melodyTracksOption,
+                initialMelodyTracksList = melodyTracksList,
                 initialIncludePiano = includePiano,
                 initialIncludeBass = includeBass,
                 initialIncludeStrings = includeStrings,
@@ -1052,10 +1090,12 @@ fun SheetMusicScreen(
                 initialStaffStavesList = staffStavesList,
                 initialJianpuStaffNumber = jianpuStaffNumber,
                 initialSelectedLangTag = context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE).getString("app_language", "") ?: "",
-                onDone = { src, file, mel, pia, bas, str, drm, met, fbk, spd, mute, rep, trans, cursor, rendMode, staffOpt, staffList, jianpuNum, selectedLangTag ->
+                onDone = { src, file, mel, melTracksOpt, melTracksList, pia, bas, str, drm, met, fbk, spd, mute, rep, trans, cursor, rendMode, staffOpt, staffList, jianpuNum, selectedLangTag ->
                     selectedSourceId = src
                     selectedFileUrl = file
                     includeMelody = mel
+                    melodyTracksOption = melTracksOpt
+                    melodyTracksList = melTracksList
                     includePiano = pia
                     includeBass = bas
                     includeStrings = str
@@ -1075,6 +1115,8 @@ fun SheetMusicScreen(
                     // Persist so settings survive full app restart
                     prefs.edit()
                         .putBoolean("includeMelody", mel)
+                        .putString("melodyTracksOption", melTracksOpt)
+                        .putString("melodyTracksList", melTracksList)
                         .putBoolean("includePiano", pia)
                         .putBoolean("includeBass", bas)
                         .putBoolean("includeStrings", str)
@@ -1450,6 +1492,8 @@ private fun SettingsSheetContent(
     initialSelectedSourceId: String,
     initialSelectedFileUrl: String,
     initialIncludeMelody: Boolean,
+    initialMelodyTracksOption: String,
+    initialMelodyTracksList: String,
     initialIncludePiano: Boolean,
     initialIncludeBass: Boolean,
     initialIncludeStrings: Boolean,
@@ -1466,12 +1510,14 @@ private fun SettingsSheetContent(
     initialStaffStavesList: String,
     initialJianpuStaffNumber: String,
     initialSelectedLangTag: String,
-    onDone: (String, String, Boolean, Boolean, Boolean, Boolean, Boolean, Boolean, Boolean, Double, Boolean, Int, Int, Boolean, String, String, String, String, String) -> Unit
+    onDone: (String, String, Boolean, String, String, Boolean, Boolean, Boolean, Boolean, Boolean, Boolean, Double, Boolean, Int, Int, Boolean, String, String, String, String, String) -> Unit
 ) {
     // Local working copies (only applied when Apply is tapped)
     var selectedSourceId by remember { mutableStateOf(initialSelectedSourceId) }
     var selectedFileUrl by remember { mutableStateOf(initialSelectedFileUrl) }
     var includeMelody by remember { mutableStateOf(initialIncludeMelody) }
+    var melodyTracksOption by remember { mutableStateOf(initialMelodyTracksOption) }
+    var melodyTracksList by remember { mutableStateOf(initialMelodyTracksList) }
     var includePiano by remember { mutableStateOf(initialIncludePiano) }
     var includeBass by remember { mutableStateOf(initialIncludeBass) }
     var includeStrings by remember { mutableStateOf(initialIncludeStrings) }
@@ -1523,7 +1569,8 @@ private fun SettingsSheetContent(
             TextButton(onClick = {
                 onDone(
                     selectedSourceId, selectedFileUrl,
-                    includeMelody, includePiano, includeBass, includeStrings,
+                    includeMelody, melodyTracksOption, melodyTracksList,
+                    includePiano, includeBass, includeStrings,
                     includeDrums, includeMetronome, includeFeedback, playbackSpeed,
                     muteMusic, repeatCount, transpose, showCursor,
                     scoreRenderingMode, staffStavesOption, staffStavesList, jianpuStaffNumber,
@@ -1691,6 +1738,61 @@ stringResourceForLocale(R.string.settings_music),
                     CompactCheckbox(stringResourceForLocale(R.string.settings_metronome), includeMetronome, { includeMetronome = it }, Modifier.weight(1f))
                     CompactCheckbox(stringResourceForLocale(R.string.settings_feedback), includeFeedback, { includeFeedback = it }, Modifier.weight(1f))
                     Spacer(modifier = Modifier.weight(1f))
+                }
+                if (includeMelody) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            stringResourceForLocale(R.string.settings_track),
+                            style = settingsLabelStyle()
+                        )
+                        RadioButton(
+                            selected = melodyTracksOption == "all",
+                            onClick = {
+                                melodyTracksOption = "all"
+                                melodyTracksList = ""
+                            },
+                            modifier = Modifier.scale(0.72f)
+                        )
+                        Text(
+                            stringResourceForLocale(R.string.settings_all),
+                            style = settingsLabelStyle().copy(fontSize = 11.sp),
+                            modifier = Modifier.clickable {
+                                melodyTracksOption = "all"
+                                melodyTracksList = ""
+                            }
+                        )
+                        RadioButton(
+                            selected = melodyTracksOption == "custom",
+                            onClick = { melodyTracksOption = "custom" },
+                            modifier = Modifier.scale(0.72f)
+                        )
+                        Text(
+                            stringResourceForLocale(R.string.settings_specific_tracks),
+                            style = settingsLabelStyle().copy(fontSize = 11.sp),
+                            modifier = Modifier.clickable { melodyTracksOption = "custom" }
+                        )
+                        if (melodyTracksOption == "custom") {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            OutlinedTextField(
+                                value = melodyTracksList,
+                                onValueChange = { new ->
+                                    melodyTracksList = new.filter { c -> c.isDigit() || c == ',' }
+                                },
+                                placeholder = {
+                                    Text(
+                                        stringResourceForLocale(R.string.placeholder_tracks),
+                                        style = settingsLabelStyle()
+                                    )
+                                },
+                                modifier = Modifier.width(72.dp),
+                                singleLine = true
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -1940,7 +2042,7 @@ stringResourceForLocale(R.string.settings_music),
                         modifier = Modifier.scale(0.72f)
                     )
                     Text(
-                        stringResourceForLocale(R.string.settings_specific_parts),
+                        stringResourceForLocale(R.string.settings_specific_staves),
                         style = settingsLabelStyle().copy(fontSize = 11.sp),
                         modifier = Modifier.clickable {
                             scoreRenderingMode = "staff"
@@ -1979,7 +2081,7 @@ stringResourceForLocale(R.string.settings_music),
                     if (scoreRenderingMode == "jianpu") {
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            stringResourceForLocale(R.string.settings_specific_part),
+                            stringResourceForLocale(R.string.settings_specific_staff),
                             style = settingsLabelStyle()
                         )
                         Spacer(modifier = Modifier.width(4.dp))

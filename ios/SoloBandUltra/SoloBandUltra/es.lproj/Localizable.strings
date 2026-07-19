@@ -30,9 +30,11 @@
 "settings_score_rendering" = "Visualización de partitura";
 "settings_staff" = "Pentagrama";
 "settings_all" = "Todas";
-"settings_specific_parts" = "Partes específicas";
+"settings_specific_staves" = "Pentagramas específicos";
 "settings_jianpu" = "Jianpu";
-"settings_specific_part" = "Parte específica";
+"settings_specific_staff" = "Pentagrama específico";
+"settings_track" = "Pista";
+"settings_specific_tracks" = "Pistas específicas";
 "settings_language" = "Idioma";
 
 "language_system" = "Predeterminado del sistema";

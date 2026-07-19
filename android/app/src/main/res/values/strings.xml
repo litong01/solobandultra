@@ -34,9 +34,12 @@
     <string name="settings_score_rendering">Score Rendering</string>
     <string name="settings_staff">Staff</string>
     <string name="settings_all">All</string>
-    <string name="settings_specific_parts">Specific parts</string>
+    <string name="settings_specific_staves">Specific staves</string>
     <string name="settings_jianpu">Jianpu</string>
-    <string name="settings_specific_part">Specific part</string>
+    <string name="settings_specific_staff">Specific staff</string>
+    <string name="settings_track">Track</string>
+    <string name="settings_specific_tracks">Specific tracks</string>
+    <string name="placeholder_tracks">1,2</string>
     <string name="settings_language">Language</string>
 
     <!-- Language options (for picker) -->

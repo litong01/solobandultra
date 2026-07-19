@@ -30,9 +30,11 @@
     <string name="settings_score_rendering">Notendarstellung</string>
     <string name="settings_staff">Notenlinien</string>
     <string name="settings_all">Alle</string>
-    <string name="settings_specific_parts">Bestimmte Stimmen</string>
+    <string name="settings_specific_staves">Bestimmte Systeme</string>
     <string name="settings_jianpu">Jianpu</string>
-    <string name="settings_specific_part">Bestimmte Stimme</string>
+    <string name="settings_specific_staff">Bestimmtes System</string>
+    <string name="settings_track">Spur</string>
+    <string name="settings_specific_tracks">Bestimmte Spuren</string>
     <string name="settings_language">Sprache</string>
     <string name="language_system">Systemstandard</string>
     <string name="language_english">English</string>

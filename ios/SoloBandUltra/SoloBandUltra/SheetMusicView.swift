@@ -173,6 +173,8 @@ struct SheetMusicView: View {
             }
             // ── Accompaniment toggles → regenerate MIDI (track selection changed) ──
             .onChange(of: midiSettings.includeMelody) { _ in regenerateMidi() }
+            .onChange(of: midiSettings.melodyTracksOption) { _ in regenerateMidi() }
+            .onChange(of: midiSettings.melodyTracksList) { _ in regenerateMidi() }
             .onChange(of: midiSettings.includePiano) { _ in regenerateMidi() }
             .onChange(of: midiSettings.includeBass) { _ in regenerateMidi() }
             .onChange(of: midiSettings.includeStrings) { _ in regenerateMidi() }

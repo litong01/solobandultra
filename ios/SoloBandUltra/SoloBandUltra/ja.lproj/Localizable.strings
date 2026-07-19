@@ -30,9 +30,11 @@
 "settings_score_rendering" = "楽譜表示";
 "settings_staff" = "五線譜";
 "settings_all" = "すべて";
-"settings_specific_parts" = "特定のパート";
+"settings_specific_staves" = "特定の譜表";
 "settings_jianpu" = "数字譜";
-"settings_specific_part" = "特定のパート";
+"settings_specific_staff" = "特定の譜表";
+"settings_track" = "トラック";
+"settings_specific_tracks" = "特定のトラック";
 "settings_language" = "言語";
 
 /* Language names */

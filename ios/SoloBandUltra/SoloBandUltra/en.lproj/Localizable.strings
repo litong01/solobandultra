@@ -30,9 +30,11 @@
 "settings_score_rendering" = "Score Rendering";
 "settings_staff" = "Staff";
 "settings_all" = "All";
-"settings_specific_parts" = "Specific parts";
+"settings_specific_staves" = "Specific staves";
 "settings_jianpu" = "Jianpu";
-"settings_specific_part" = "Specific part";
+"settings_specific_staff" = "Specific staff";
+"settings_track" = "Track";
+"settings_specific_tracks" = "Specific tracks";
 "settings_language" = "Language";
 
 /* Language names */

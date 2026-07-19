@@ -30,9 +30,11 @@
 "settings_score_rendering" = "악보 표시";
 "settings_staff" = "오선보";
 "settings_all" = "전체";
-"settings_specific_parts" = "특정 파트";
+"settings_specific_staves" = "특정 보표";
 "settings_jianpu" = "숫자악보";
-"settings_specific_part" = "특정 파트";
+"settings_specific_staff" = "특정 보표";
+"settings_track" = "트랙";
+"settings_specific_tracks" = "특정 트랙";
 "settings_language" = "언어";
 
 /* Language names */
