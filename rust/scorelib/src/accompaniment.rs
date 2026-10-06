@@ -6,7 +6,7 @@
 //! implementation).
 
 use crate::midi::{Energy, MidiEvent, TICKS_PER_QUARTER, ms_to_ticks};
-use crate::model::Part;
+use crate::model::{Key, Measure, Part};
 use crate::timemap::TimemapEntry;
 use crate::unroller::UnrolledMeasure;
 
@@ -141,42 +141,32 @@ fn analyze_chords_from_harmonies(
 
 /// Infer chords from melody notes when no explicit harmonies exist.
 ///
-/// For each measure, collects the pitch classes of all sounding notes,
-/// then picks the most likely chord root and quality using the key
-/// signature and standard diatonic harmony rules.
+/// For each measure, builds a duration-weighted pitch-class histogram (long
+/// notes dominate over passing sixteenths), then fits the seven diatonic
+/// triads in the measure's active key.  Empty measures inherit the previous chord.
 fn analyze_chords_from_melody(
     part: &Part,
     unrolled: &[UnrolledMeasure],
     timemap: &[TimemapEntry],
 ) -> Vec<Chord> {
-    // Detect key from the first key signature found
-    let key_root = detect_key_root(part);
+    let measure_keys = precompute_measure_keys(part);
+    let default_key = measure_keys.first().cloned().unwrap_or_else(|| Key {
+        fifths: 0,
+        mode: Some("major".into()),
+    });
+    let default_root = key_tonic_pitch_class(&default_key);
 
     let mut chords: Vec<Chord> = Vec::new();
 
     for (i, um) in unrolled.iter().enumerate() {
         let measure = &part.measures[um.original_index];
         let entry = &timemap[i];
+        let key = &measure_keys[um.original_index];
+        let divisions = entry.divisions.max(measure_divisions(measure));
 
-        // Collect unique pitch classes from all sounding notes in this measure.
-        // Include chord notes (simultaneous notes marked with <chord/>) — these
-        // carry the intervals that define chord quality (e.g. C-E-G written out
-        // as a chordal texture).  Only skip grace notes and rests.
-        let mut pitch_classes: Vec<u8> = Vec::new();
-        for note in &measure.notes {
-            if note.rest || note.grace {
-                continue;
-            }
-            if let Some(ref pitch) = note.pitch {
-                let pc = (pitch.to_midi().rem_euclid(12)) as u8;
-                if !pitch_classes.contains(&pc) {
-                    pitch_classes.push(pc);
-                }
-            }
-        }
+        let hist = measure_pitch_histogram(measure, divisions);
 
-        if pitch_classes.is_empty() {
-            // Rest-only measure — repeat previous chord or use tonic
+        if hist.iter().all(|&w| w == 0.0) {
             if let Some(prev) = chords.last().cloned() {
                 chords.push(Chord {
                     root: prev.root,
@@ -186,7 +176,7 @@ fn analyze_chords_from_melody(
                 });
             } else {
                 chords.push(Chord {
-                    root: key_root,
+                    root: default_root,
                     kind: ChordKind::Major,
                     time_ms: entry.timestamp_ms,
                     duration_ms: entry.duration_ms,
@@ -195,8 +185,7 @@ fn analyze_chords_from_melody(
             continue;
         }
 
-        let root = find_most_likely_root(&pitch_classes, key_root);
-        let kind = infer_chord_kind(&pitch_classes, root);
+        let (root, kind) = fit_diatonic_triad(&hist, key);
 
         chords.push(Chord {
             root,
@@ -209,18 +198,156 @@ fn analyze_chords_from_melody(
     chords
 }
 
-/// Detect the key root pitch class from the first key signature in the part.
-/// Maps the `fifths` value (circle of fifths position) to a pitch class.
-/// Falls back to C major (0) if no key signature is found.
-fn detect_key_root(part: &Part) -> u8 {
-    for m in &part.measures {
-        if let Some(ref attrs) = m.attributes {
-            if let Some(ref key) = attrs.key {
-                return fifths_to_pitch_class(key.fifths);
+/// Key signature in effect at each original measure index (carried forward).
+fn precompute_measure_keys(part: &Part) -> Vec<Key> {
+    let mut keys = Vec::with_capacity(part.measures.len());
+    let mut current = Key {
+        fifths: 0,
+        mode: Some("major".into()),
+    };
+    for measure in &part.measures {
+        if let Some(ref attrs) = measure.attributes {
+            if let Some(ref k) = attrs.key {
+                current = k.clone();
             }
         }
+        keys.push(current.clone());
     }
-    0 // Default: C major
+    keys
+}
+
+fn key_is_major(key: &Key) -> bool {
+    !matches!(
+        key.mode.as_deref(),
+        Some("minor") | Some("aeolian") | Some("dorian") | Some("phrygian")
+    )
+}
+
+fn key_tonic_pitch_class(key: &Key) -> u8 {
+    fifths_to_pitch_class(key.fifths)
+}
+
+fn measure_divisions(measure: &Measure) -> i32 {
+    measure
+        .attributes
+        .as_ref()
+        .and_then(|a| a.divisions)
+        .unwrap_or(1)
+        .max(1)
+}
+
+/// Duration-weighted pitch-class histogram for one measure (quarter-note units).
+fn measure_pitch_histogram(measure: &Measure, divisions: i32) -> [f64; 12] {
+    let mut hist = [0.0; 12];
+    let div = divisions.max(1) as f64;
+    for note in &measure.notes {
+        if note.rest || note.grace {
+            continue;
+        }
+        if let Some(ref pitch) = note.pitch {
+            let pc = (pitch.to_midi().rem_euclid(12)) as usize;
+            hist[pc] += note.duration as f64 / div;
+        }
+    }
+    hist
+}
+
+/// Diatonic triads as (root pitch class, quality), index 0 = I … 6 = vii°.
+fn diatonic_triads(key: &Key) -> [(u8, ChordKind); 7] {
+    let tonic = key_tonic_pitch_class(key);
+    if key_is_major(key) {
+        [
+            (tonic, ChordKind::Major),
+            ((tonic + 2) % 12, ChordKind::Minor),
+            ((tonic + 4) % 12, ChordKind::Minor),
+            ((tonic + 5) % 12, ChordKind::Major),
+            ((tonic + 7) % 12, ChordKind::Major),
+            ((tonic + 9) % 12, ChordKind::Minor),
+            ((tonic + 11) % 12, ChordKind::Diminished),
+        ]
+    } else {
+        [
+            (tonic, ChordKind::Minor),
+            ((tonic + 2) % 12, ChordKind::Diminished),
+            ((tonic + 3) % 12, ChordKind::Major),
+            ((tonic + 5) % 12, ChordKind::Minor),
+            ((tonic + 7) % 12, ChordKind::Minor),
+            ((tonic + 8) % 12, ChordKind::Major),
+            ((tonic + 10) % 12, ChordKind::Major),
+        ]
+    }
+}
+
+fn triad_pitch_classes(root: u8, kind: ChordKind) -> [u8; 3] {
+    match kind {
+        ChordKind::Major => [root, (root + 4) % 12, (root + 7) % 12],
+        ChordKind::Minor => [root, (root + 3) % 12, (root + 7) % 12],
+        ChordKind::Diminished => [root, (root + 3) % 12, (root + 6) % 12],
+        ChordKind::Augmented => [root, (root + 4) % 12, (root + 8) % 12],
+        ChordKind::Dominant7 | ChordKind::MajorSeventh | ChordKind::MinorSeventh
+        | ChordKind::HalfDiminished => {
+            let v = get_chord_voicing(root, kind);
+            [
+                (v[0] % 12) as u8,
+                (v[1] % 12) as u8,
+                (v[2] % 12) as u8,
+            ]
+        }
+    }
+}
+
+/// Tie-break order: I > V > IV > vi > ii > iii > vii° (indices into the seven triads).
+const TRIAD_PREFERENCE: [usize; 7] = [0, 4, 3, 5, 1, 2, 6];
+
+const NON_CHORD_TONE_PENALTY: f64 = 0.45;
+
+fn score_triad(hist: &[f64; 12], root: u8, kind: ChordKind) -> f64 {
+    let tones = triad_pitch_classes(root, kind);
+    let mut chord_w = 0.0;
+    let mut non_chord_w = 0.0;
+    for pc in 0..12 {
+        let w = hist[pc];
+        if w == 0.0 {
+            continue;
+        }
+        if tones.contains(&(pc as u8)) {
+            chord_w += w;
+        } else {
+            non_chord_w += w;
+        }
+    }
+    chord_w - NON_CHORD_TONE_PENALTY * non_chord_w
+}
+
+fn fit_diatonic_triad(hist: &[f64; 12], key: &Key) -> (u8, ChordKind) {
+    let triads = diatonic_triads(key);
+    let mut best_score = f64::NEG_INFINITY;
+    let mut best_idx = 0usize;
+
+    for (idx, &(root, kind)) in triads.iter().enumerate() {
+        let score = score_triad(hist, root, kind);
+        let better = if score > best_score + 1e-9 {
+            true
+        } else if (score - best_score).abs() <= 1e-9 {
+            preference_rank(idx) < preference_rank(best_idx)
+        } else {
+            false
+        };
+        if better {
+            best_score = score;
+            best_idx = idx;
+        }
+    }
+
+    let (root, kind) = triads[best_idx];
+    (root, kind)
+}
+
+fn preference_rank(triad_index: usize) -> usize {
+    TRIAD_PREFERENCE
+        .iter()
+        .position(|&i| i == triad_index)
+        .unwrap_or(7)
 }
 
 /// Convert a circle-of-fifths position to a pitch class.
@@ -228,33 +355,6 @@ fn detect_key_root(part: &Part) -> u8 {
 fn fifths_to_pitch_class(fifths: i32) -> u8 {
     // Each step on the circle of fifths adds 7 semitones
     ((fifths * 7).rem_euclid(12)) as u8
-}
-
-/// Find the most likely chord root from a set of pitch classes.
-///
-/// Checks diatonic scale degrees in priority order: I, V, IV, vi, ii, iii.
-/// This ordering reflects common harmonic patterns — tonic and dominant are
-/// most frequent, followed by subdominant and relative minor.
-fn find_most_likely_root(pitches: &[u8], key_root: u8) -> u8 {
-    // Diatonic scale degree roots in priority order (semitones from key root)
-    let diatonic_offsets: [u8; 6] = [
-        0,  // I   (tonic)
-        7,  // V   (dominant)
-        5,  // IV  (subdominant)
-        9,  // vi  (relative minor / submediant)
-        2,  // ii  (supertonic)
-        4,  // iii (mediant)
-    ];
-
-    for &offset in &diatonic_offsets {
-        let candidate = (key_root + offset) % 12;
-        if pitches.contains(&candidate) {
-            return candidate;
-        }
-    }
-
-    // Fallback: use the first pitch class encountered
-    pitches[0]
 }
 
 /// Infer the chord quality from the pitch classes present relative to the root.
@@ -349,7 +449,7 @@ fn parse_chord_kind(kind: &str) -> ChordKind {
 /// Get MIDI notes for a chord voicing rooted around MIDI note 48 (C3).
 fn get_chord_voicing(root: u8, kind: ChordKind) -> Vec<u8> {
     let base = 48 + root;
-    match kind {
+    let raw = match kind {
         ChordKind::Major => vec![base, base + 4, base + 7],
         ChordKind::Minor => vec![base, base + 3, base + 7],
         ChordKind::Dominant7 => vec![base, base + 4, base + 7, base + 10],
@@ -358,24 +458,74 @@ fn get_chord_voicing(root: u8, kind: ChordKind) -> Vec<u8> {
         ChordKind::Diminished => vec![base, base + 3, base + 6],
         ChordKind::HalfDiminished => vec![base, base + 3, base + 6, base + 10],
         ChordKind::Augmented => vec![base, base + 4, base + 8],
-    }
+    };
+    compact_voicing(&raw, 60)
 }
 
-/// Add a 7th to a voicing if it doesn't already have one.
-fn add_seventh(voicing: &[u8], kind: ChordKind) -> Vec<u8> {
-    let mut v = voicing.to_vec();
-    let seventh_interval = match kind {
-        ChordKind::Major => 11,
-        ChordKind::Minor => 10,
-        ChordKind::Dominant7 | ChordKind::MinorSeventh | ChordKind::HalfDiminished => 10,
-        ChordKind::MajorSeventh => 11,
-        ChordKind::Diminished => 9,
-        ChordKind::Augmented => 11,
-    };
-    if v.len() < 4 {
-        v.push(v[0] + seventh_interval);
+/// Fold voicing octaves so notes sit near `center` (e.g. C4 = 60).
+fn compact_voicing(notes: &[u8], center: u8) -> Vec<u8> {
+    notes
+        .iter()
+        .map(|&n| {
+            let mut m = n;
+            while m > center + 12 {
+                m = m.saturating_sub(12);
+            }
+            while m < center.saturating_sub(12) {
+                m = m.saturating_add(12);
+            }
+            m.min(127)
+        })
+        .collect()
+}
+
+fn bass_midi_for_root(root_pc: u8) -> u8 {
+    (36 + (root_pc % 12)).min(127)
+}
+
+/// Beat start times (ms) from the timemap that fall in `[start_ms, end_ms)`.
+fn beat_starts_in_range(
+    timemap: &[TimemapEntry],
+    start_ms: f64,
+    end_ms: f64,
+) -> Vec<(f64, f64, i32)> {
+    let mut out = Vec::new();
+    for entry in timemap {
+        let (ts_beats, ts_beat_type) = entry.time_sig;
+        let beats = felt_beats(ts_beats, ts_beat_type).max(1);
+        let beat_dur_ms = entry.duration_ms / beats as f64;
+        for b in 0..beats {
+            let t = entry.timestamp_ms + b as f64 * beat_dur_ms;
+            if t >= start_ms && t < end_ms {
+                out.push((t, beat_dur_ms, b));
+            }
+        }
     }
-    v
+    out
+}
+
+/// Eighth-note grid times (ms) in `[start_ms, end_ms)` using the timemap.
+fn eighth_starts_in_range(
+    timemap: &[TimemapEntry],
+    start_ms: f64,
+    end_ms: f64,
+) -> Vec<(f64, f64)> {
+    let mut out = Vec::new();
+    for entry in timemap {
+        let (ts_beats, ts_beat_type) = entry.time_sig;
+        let beats = felt_beats(ts_beats, ts_beat_type).max(1);
+        let beat_dur_ms = entry.duration_ms / beats as f64;
+        let eighth_dur_ms = beat_dur_ms / 2.0;
+        for b in 0..beats {
+            for sub in 0..2 {
+                let t = entry.timestamp_ms + b as f64 * beat_dur_ms + sub as f64 * eighth_dur_ms;
+                if t >= start_ms && t < end_ms {
+                    out.push((t, eighth_dur_ms));
+                }
+            }
+        }
+    }
+    out
 }
 
 /// Find the smoothest inversion of `voicing` relative to `previous`.
@@ -504,67 +654,41 @@ pub fn generate_metronome(timemap: &[TimemapEntry]) -> Vec<MidiEvent> {
 
 const PIANO_CHANNEL: u8 = 1;
 
-/// Generate piano accompaniment events (broken chord / arpeggio pattern).
+/// Generate piano accompaniment events (beat-aligned R–3–5–3 eighth arpeggio).
 pub fn generate_piano(chords: &[Chord], energy: Energy, timemap: &[TimemapEntry]) -> Vec<MidiEvent> {
     let em = energy_multipliers(energy);
     let mut events = Vec::new();
     let mut prev_voicing: Vec<u8> = Vec::new();
+    let base_vel = velocity(80.0, em.piano);
 
     for chord in chords {
         let raw_voicing = get_chord_voicing(chord.root, chord.kind);
-        let voicing_7 = add_seventh(&raw_voicing, chord.kind);
-        let voicing = get_smoother_voicing(&voicing_7, &prev_voicing);
+        let voicing = get_smoother_voicing(&raw_voicing, &prev_voicing);
+        prev_voicing = voicing.clone();
 
-        // Skip bass note (index 0) — leave that for the bass track
-        let piano_notes: Vec<u8> = if voicing.len() > 1 {
-            voicing[1..].to_vec()
-        } else {
-            voicing.clone()
-        };
+        let root = voicing[0];
+        let third = voicing.get(1).copied().unwrap_or(root + 4);
+        let fifth = voicing.get(2).copied().unwrap_or(root + 7);
+        let pattern = [root, third, fifth, third];
 
-        let base_vel = velocity(80.0, em.piano);
-        let dur_ms = chord.duration_ms * 0.5;
+        let end_ms = chord.time_ms + chord.duration_ms;
+        let eighths = eighth_starts_in_range(timemap, chord.time_ms, end_ms);
 
-        // Arpeggio: stagger each note slightly
-        for (j, &note) in piano_notes.iter().enumerate() {
-            let stagger_ms = j as f64 * 15.0;
-            let note_time_ms = chord.time_ms + stagger_ms;
-            let on_tick = ms_to_ticks(note_time_ms, timemap);
-            let off_tick = ms_to_ticks(note_time_ms + dur_ms, timemap);
+        for (idx, (t, eighth_dur)) in eighths.iter().enumerate() {
+            let note = pattern[idx % pattern.len()].min(127);
+            let note_dur = (*eighth_dur * 0.85).max(20.0);
+            let on_tick = ms_to_ticks(*t, timemap);
+            let off_tick = ms_to_ticks(t + note_dur, timemap);
 
-            let note_vel = base_vel.min(127);
             events.push(MidiEvent {
                 tick: on_tick,
-                bytes: vec![0x90 | PIANO_CHANNEL, note.min(127), note_vel],
+                bytes: vec![0x90 | PIANO_CHANNEL, note, base_vel],
             });
             events.push(MidiEvent {
                 tick: off_tick,
-                bytes: vec![0x80 | PIANO_CHANNEL, note.min(127), 0],
+                bytes: vec![0x80 | PIANO_CHANNEL, note, 0],
             });
         }
-
-        // Second sweep if chord is long enough (> 1 second)
-        if chord.duration_ms > 1000.0 {
-            let sweep_time = chord.time_ms + chord.duration_ms * 0.5;
-            for (j, &note) in piano_notes.iter().enumerate() {
-                let stagger_ms = j as f64 * 15.0;
-                let note_time_ms = sweep_time + stagger_ms;
-                let on_tick = ms_to_ticks(note_time_ms, timemap);
-                let off_tick = ms_to_ticks(note_time_ms + dur_ms * 0.8, timemap);
-
-                let note_vel = (base_vel as f64 * 0.85).round().max(1.0).min(127.0) as u8;
-                events.push(MidiEvent {
-                    tick: on_tick,
-                    bytes: vec![0x90 | PIANO_CHANNEL, note.min(127), note_vel],
-                });
-                events.push(MidiEvent {
-                    tick: off_tick,
-                    bytes: vec![0x80 | PIANO_CHANNEL, note.min(127), 0],
-                });
-            }
-        }
-
-        prev_voicing = voicing;
     }
 
     events
@@ -576,58 +700,34 @@ pub fn generate_piano(chords: &[Chord], energy: Energy, timemap: &[TimemapEntry]
 
 const BASS_CHANNEL: u8 = 2;
 
-/// Generate walking bass events.
+/// Generate bass events aligned to the score beat grid (root / fifth in 2-beat cells).
 pub fn generate_bass(chords: &[Chord], energy: Energy, timemap: &[TimemapEntry]) -> Vec<MidiEvent> {
     let em = energy_multipliers(energy);
     let mut events = Vec::new();
     let base_vel = velocity(90.0, em.bass);
 
     for chord in chords {
-        // Root note in bass range (E1-D#2 → MIDI 36-47)
-        let bass_note = 36 + (chord.root % 12);
+        let bass_root = bass_midi_for_root(chord.root);
+        let end_ms = chord.time_ms + chord.duration_ms;
+        let beats = beat_starts_in_range(timemap, chord.time_ms, end_ms);
 
-        // Beat 1: root
-        let dur1 = chord.duration_ms * 0.45;
-        let on1 = ms_to_ticks(chord.time_ms, timemap);
-        let off1 = ms_to_ticks(chord.time_ms + dur1, timemap);
-        events.push(MidiEvent {
-            tick: on1,
-            bytes: vec![0x90 | BASS_CHANNEL, bass_note, base_vel],
-        });
-        events.push(MidiEvent {
-            tick: off1,
-            bytes: vec![0x80 | BASS_CHANNEL, bass_note, 0],
-        });
-
-        // Beat 2/3: fifth
-        let fifth_time = chord.time_ms + chord.duration_ms * 0.5;
-        let fifth_note = bass_note + 7;
-        let dur2 = chord.duration_ms * 0.35;
-        let on2 = ms_to_ticks(fifth_time, timemap);
-        let off2 = ms_to_ticks(fifth_time + dur2, timemap);
-        events.push(MidiEvent {
-            tick: on2,
-            bytes: vec![0x90 | BASS_CHANNEL, fifth_note.min(127), base_vel],
-        });
-        events.push(MidiEvent {
-            tick: off2,
-            bytes: vec![0x80 | BASS_CHANNEL, fifth_note.min(127), 0],
-        });
-
-        // Approach note (octave) if chord is long enough
-        if chord.duration_ms > 1200.0 {
-            let oct_time = chord.time_ms + chord.duration_ms * 0.75;
-            let oct_note = bass_note + 12;
-            let dur3 = chord.duration_ms * 0.20;
-            let on3 = ms_to_ticks(oct_time, timemap);
-            let off3 = ms_to_ticks(oct_time + dur3, timemap);
+        for (t, beat_dur, beat_in_measure) in beats {
+            let in_cell = beat_in_measure % 2;
+            let note = if in_cell == 0 {
+                bass_root
+            } else {
+                (bass_root + 7).min(127)
+            };
+            let note_dur = (beat_dur * 0.42).max(30.0);
+            let on_tick = ms_to_ticks(t, timemap);
+            let off_tick = ms_to_ticks(t + note_dur, timemap);
             events.push(MidiEvent {
-                tick: on3,
-                bytes: vec![0x90 | BASS_CHANNEL, oct_note.min(127), base_vel],
+                tick: on_tick,
+                bytes: vec![0x90 | BASS_CHANNEL, note, base_vel],
             });
             events.push(MidiEvent {
-                tick: off3,
-                bytes: vec![0x80 | BASS_CHANNEL, oct_note.min(127), 0],
+                tick: off_tick,
+                bytes: vec![0x80 | BASS_CHANNEL, note, 0],
             });
         }
     }
@@ -854,6 +954,50 @@ mod tests {
         assert_eq!(parse_chord_kind("augmented"), ChordKind::Augmented);
         // Unknown defaults to Major
         assert_eq!(parse_chord_kind("unknown-quality"), ChordKind::Major);
+    }
+
+    #[test]
+    fn fit_diatonic_triad_duration_weighted() {
+        let key = Key {
+            fifths: 0,
+            mode: Some("major".into()),
+        };
+        // C whole note should beat passing F sixteenth (tonic vs IV color)
+        let mut hist = [0.0; 12];
+        hist[0] = 4.0; // C
+        hist[5] = 0.25; // F passing
+        hist[7] = 4.0; // G
+        let (root, kind) = fit_diatonic_triad(&hist, &key);
+        assert_eq!(root, 0);
+        assert_eq!(kind, ChordKind::Major);
+
+        // Dominant-weighted measure in C major
+        let mut hist2 = [0.0; 12];
+        hist2[7] = 2.0;
+        hist2[11] = 2.0;
+        hist2[2] = 2.0;
+        let (root2, kind2) = fit_diatonic_triad(&hist2, &key);
+        assert_eq!(root2, 7);
+        assert_eq!(kind2, ChordKind::Major);
+    }
+
+    #[test]
+    fn score_triad_penalizes_non_chord_tones() {
+        let key = Key {
+            fifths: 0,
+            mode: Some("major".into()),
+        };
+        let triads = diatonic_triads(&key);
+        let (i_root, i_kind) = triads[0];
+        let (v_root, v_kind) = triads[4];
+        let mut hist = [0.0; 12];
+        hist[0] = 1.0;
+        hist[4] = 1.0;
+        hist[7] = 1.0;
+        hist[6] = 2.0; // F# — strong non-diatonic lean if ignored
+        let score_i = score_triad(&hist, i_root, i_kind);
+        let score_v = score_triad(&hist, v_root, v_kind);
+        assert!(score_i > score_v);
     }
 
     #[test]
