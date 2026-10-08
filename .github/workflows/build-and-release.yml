@@ -1,17 +1,18 @@
 name: Build & Release
 
 on:
-  # Trigger on version tags
+  # Publish v4.0.0 on every push to main
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
 
   # Allow manual trigger with a custom tag name
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'Release tag name (e.g., v1.0.0)'
+        description: 'Release tag name (e.g., v4.0.0)'
         required: true
+        default: 'v4.0.0'
         type: string
 
 # Ensure only one release workflow runs at a time
@@ -345,7 +346,7 @@ jobs:
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             echo "tag=$INPUT_TAG" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+            echo "tag=v4.0.0" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Create GitHub Release
