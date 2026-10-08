@@ -307,7 +307,7 @@ fn midi_chopin_melody_only() {
 fn midi_dichterliebe_global_tracks_and_filter() {
     use scorelib::discover_global_tracks;
 
-    let score = parse_file("../../sheetmusic/Dichterliebe01.musicxml").unwrap();
+    let score = parse_file("../../sheetmusic/dichterliebe01.musicxml").unwrap();
     assert_eq!(score.parts.len(), 2, "Voice + Piano");
 
     let global = discover_global_tracks(&score);
