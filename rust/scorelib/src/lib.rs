@@ -20,6 +20,7 @@ pub mod unroller;
 pub mod timemap;
 pub mod midi;
 pub mod accompaniment;
+mod humanize;
 pub mod playback;
 pub mod audio;
 pub mod note_timeline;

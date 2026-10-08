@@ -36,6 +36,19 @@ const DEFAULT_TIME_SIG: (i32, i32) = (4, 4);
 /// Default divisions per quarter note.
 const DEFAULT_DIVISIONS: i32 = 1;
 
+/// Number of felt beats in a measure.
+///
+/// Compound meters (6/8, 9/8, 12/8) are felt in groups of three eighths, so
+/// 6/8 has 2 beats, 9/8 has 3, and 12/8 has 4. 3/8 stays simple. Simple meters
+/// use the numerator directly.
+pub(crate) fn felt_beats(beats: i32, beat_type: i32) -> i32 {
+    if beat_type == 8 && beats > 3 && beats % 3 == 0 {
+        beats / 3
+    } else {
+        beats
+    }
+}
+
 /// State snapshot at a particular original measure position.
 /// Pre-computed by walking measures in score order so that jumps
 /// (D.S., D.C.) correctly restore the tempo/time-sig/divisions

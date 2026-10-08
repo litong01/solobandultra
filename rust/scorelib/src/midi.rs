@@ -66,7 +66,7 @@ impl Default for MidiOptions {
 }
 
 /// A single MIDI event (note on/off, program change, etc.)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MidiEvent {
     /// Absolute time in ticks from the start of the track
     pub tick: u32,
@@ -261,13 +261,14 @@ pub fn generate_midi(
 
     // ── Accompaniment tracks ────────────────────────────────────────
     let chords = accompaniment::analyze_chords(part, unrolled, timemap);
+    let style = accompaniment::infer_style(part, &chords, timemap);
 
     if options.include_metronome {
         let events = accompaniment::generate_metronome(timemap);
         tracks.push(encode_track(&events, "Metronome"));
     }
     if options.include_piano {
-        let events = accompaniment::generate_piano(&chords, options.energy, timemap);
+        let events = accompaniment::generate_piano(&chords, options.energy, timemap, style);
         let mut te = vec![MidiEvent {
             tick: 0,
             bytes: vec![0xC1, 0], // Channel 1, Acoustic Grand Piano
@@ -276,7 +277,7 @@ pub fn generate_midi(
         tracks.push(encode_track(&te, "Piano"));
     }
     if options.include_bass {
-        let events = accompaniment::generate_bass(&chords, options.energy, timemap);
+        let events = accompaniment::generate_bass(&chords, options.energy, timemap, style);
         let mut te = vec![MidiEvent {
             tick: 0,
             bytes: vec![0xC2, 32], // Channel 2, Acoustic Bass
@@ -285,7 +286,7 @@ pub fn generate_midi(
         tracks.push(encode_track(&te, "Bass"));
     }
     if options.include_strings {
-        let events = accompaniment::generate_strings(&chords, options.energy, timemap);
+        let events = accompaniment::generate_strings(&chords, options.energy, timemap, style);
         let mut te = vec![MidiEvent {
             tick: 0,
             bytes: vec![0xC3, 48], // Channel 3, String Ensemble 1
@@ -294,7 +295,7 @@ pub fn generate_midi(
         tracks.push(encode_track(&te, "Strings"));
     }
     if options.include_drums {
-        let events = accompaniment::generate_drums(&chords, options.energy, timemap);
+        let events = accompaniment::generate_drums(&chords, options.energy, timemap, style);
         tracks.push(encode_track(&events, "Drums"));
     }
 
@@ -645,6 +646,49 @@ pub fn ms_to_ticks(target_ms: f64, timemap: &[TimemapEntry]) -> u32 {
     ticks.round() as u32
 }
 
+/// Convert MIDI ticks back to milliseconds, inverse of [`ms_to_ticks`].
+pub fn ticks_to_ms(target_ticks: u32, timemap: &[TimemapEntry]) -> f64 {
+    if timemap.is_empty() {
+        return 0.0;
+    }
+
+    let target = target_ticks as f64;
+    let mut ticks: f64 = 0.0;
+    let mut prev_ms: f64 = 0.0;
+    let mut prev_tempo: f64 = timemap[0].tempo_bpm;
+
+    for entry in timemap {
+        let entry_ms = entry.timestamp_ms;
+        let segment_ms = (entry_ms - prev_ms).max(0.0);
+        let ticks_per_ms = (TICKS_PER_QUARTER as f64 * prev_tempo) / 60_000.0;
+        let segment_ticks = if ticks_per_ms > 0.0 {
+            segment_ms * ticks_per_ms
+        } else {
+            0.0
+        };
+        if ticks + segment_ticks + 1e-6 >= target {
+            let remaining = (target - ticks).max(0.0);
+            let ms = if ticks_per_ms > 0.0 {
+                remaining / ticks_per_ms
+            } else {
+                0.0
+            };
+            return prev_ms + ms;
+        }
+        ticks += segment_ticks;
+        prev_ms = entry_ms;
+        prev_tempo = entry.tempo_bpm;
+    }
+
+    let ticks_per_ms = (TICKS_PER_QUARTER as f64 * prev_tempo) / 60_000.0;
+    let remaining = (target - ticks).max(0.0);
+    if ticks_per_ms > 0.0 {
+        prev_ms + remaining / ticks_per_ms
+    } else {
+        prev_ms
+    }
+}
+
 /// Detect the number of staves in a part by scanning attributes and note specifc parts.
 /// Clamped to [1, 8] to prevent OOM from malformed input (negative values wrapping
 /// to huge usize, or absurdly large stave counts).
@@ -876,6 +920,14 @@ mod tests {
 
         let t1000 = ms_to_ticks(1000.0, &timemap);
         assert_eq!(t1000, 960, "1000ms at 120 BPM should be 960 ticks (2 quarters)");
+
+        for ms in [0.0, 1.0, 250.0, 500.0, 1500.0, 2000.0] {
+            let back = ticks_to_ms(ms_to_ticks(ms, &timemap), &timemap);
+            assert!(
+                (back - ms).abs() < 1.5,
+                "roundtrip {ms} ms → {back} ms"
+            );
+        }
     }
 
     #[test]
